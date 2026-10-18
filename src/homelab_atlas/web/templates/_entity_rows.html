@@ -1,0 +1,11 @@
+{% for e in rows %}
+<tr>
+  <td><a href="/entity?key={{ e.key | urlencode }}">{{ e.display_name }}</a></td>
+  <td>{{ e.kind }}</td>
+  <td><span class="pill {{ e.status }}">{{ e.status }}</span></td>
+  <td>{% if e.same_as %}<a href="/entity?key={{ e.same_as | urlencode }}">{{ e.same_as }}</a>{% endif %}</td>
+  <td class="muted">{{ e.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
+</tr>
+{% else %}
+<tr><td colspan="5" class="muted">No matches.</td></tr>
+{% endfor %}

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block main %}
+<h1>Dashboard</h1>
+{% if annotation_errors %}
+<div class="card warn"><strong>Annotation files skipped:</strong>
+  <ul>{% for e in annotation_errors %}<li>{{ e }}</li>{% endfor %}</ul></div>
+{% endif %}
+<section class="grid stats">
+  {% for kind, n in d.counts.items() %}
+  <a class="card stat" href="/entities?kind={{ kind | urlencode }}"><span class="n">{{ n }}</span><span class="label">{{ kind }}</span></a>
+  {% endfor %}
+  <a class="card stat {% if d.unknown %}alert{% endif %}" href="/unknown"><span class="n">{{ d.unknown }}</span><span class="label">unknown devices</span></a>
+</section>
+
+<section class="grid two">
+  <div class="card">
+    <h2>Last scan</h2>
+    {% if d.last_scan %}
+    <p>#{{ d.last_scan.id }} · {{ d.last_scan.label or d.last_scan.mode }} · {{ d.last_scan.started_at.strftime("%Y-%m-%d %H:%M UTC") }} · {{ d.last_scan.status }}</p>
+    <table><thead><tr><th>Collector</th><th>Runs</th></tr></thead><tbody>
+      {% for c, st in d.by_collector.items() %}
+      <tr><td>{{ c }}</td><td>{% for k, v in st.items() %}<span class="pill {{ k }}">{{ v }} {{ k }}</span> {% endfor %}</td></tr>
+      {% endfor %}
+    </tbody></table>
+    {% else %}<p class="muted">No scans yet. Run <code>atlas scan</code>.</p>{% endif %}
+  </div>
+  <div class="card">
+    <h2>Needs attention</h2>
+    {% if d.problems or d.missing %}
+    <ul class="plain">
+      {% for r in d.problems %}<li><span class="pill {{ r.status }}">{{ r.status }}</span> {{ r.target }} · {{ r.collector }} <span class="muted">{{ (r.errors | first) if r.errors else "" }}</span></li>{% endfor %}
+      {% for e in d.missing %}<li><span class="pill failed">missing</span> <a href="/entity?key={{ e.key | urlencode }}">{{ e.display_name }}</a></li>{% endfor %}
+    </ul>
+    {% else %}<p class="muted">Nothing.</p>{% endif %}
+  </div>
+</section>
+
+<section class="card">
+  <h2>Recent changes <a class="more" href="/changes">all</a></h2>
+  <table class="events"><tbody>
+    {% for row in d.events %}{% set e = row.event %}
+    <tr><td><span class="sev {{ e.severity }}">{{ e.severity }}</span></td><td><code>{{ e.type }}</code></td>
+        <td><a href="/entity?key={{ e.entity_key | urlencode }}">{{ e.summary }}</a></td></tr>
+    {% else %}<tr><td class="muted">No changes yet.</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+{% endblock %}

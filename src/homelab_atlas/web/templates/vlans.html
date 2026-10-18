@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}VLANs{% endblock %}
+{% block main %}
+<h1>VLANs and networks</h1>
+<table class="data"><thead><tr><th>VLAN</th><th>Name</th><th>Subnet</th><th>Gateway</th><th>DHCP</th><th>SSIDs</th><th>PVE nodes</th><th>Guest NICs</th><th>Members</th></tr></thead><tbody>
+{% for n in rows %}
+<tr>
+  <td>{{ n.vlan }}</td><td>{{ n.name }}{% if n.isolation %} <span class="pill info">isolated</span>{% endif %}</td>
+  <td><code>{{ n.subnet or "" }}</code></td><td><code>{{ n.gateway or "" }}</code></td><td>{{ n.dhcp or "" }}</td>
+  <td>{{ n.ssids | join(", ") }}</td><td>{{ n.pve_nodes | join(", ") }}</td><td>{{ n.tagged_guest_nics or "" }}</td>
+  <td class="members">{{ n.members | join(", ") }}</td>
+</tr>
+{% else %}
+<tr><td colspan="9" class="muted">No UniFi networks collected yet.</td></tr>
+{% endfor %}
+</tbody></table>
+{% endblock %}

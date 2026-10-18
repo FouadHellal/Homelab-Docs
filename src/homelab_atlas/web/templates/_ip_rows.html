@@ -1,0 +1,13 @@
+{% for r in rows %}
+<tr>
+  <td><code>{{ r.prefix or r.ip }}</code></td>
+  <td><a href="/entity?key={{ r.key | urlencode }}">{{ r.name }}</a></td>
+  <td><code>{{ r.mac or "" }}</code></td>
+  <td>{{ r.iface or "" }}</td>
+  <td>{{ r.network or "" }}</td>
+  <td>{{ r.vlan if r.vlan is not none else "" }}</td>
+  <td class="muted">{{ r.source }}</td>
+</tr>
+{% else %}
+<tr><td colspan="7" class="muted">No matches.</td></tr>
+{% endfor %}

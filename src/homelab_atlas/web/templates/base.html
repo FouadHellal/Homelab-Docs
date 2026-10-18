@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false, "selfRequestsOnly": true, "historyCacheSize": 0}'>
+  <title>{% block title %}atlas{% endblock %} · atlas</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/vendor/htmx.min.js" nonce="{{ nonce }}" defer></script>
+  <script src="/static/app.js" nonce="{{ nonce }}" defer></script>
+  {% block head %}{% endblock %}
+</head>
+<body{% if user %} hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'{% endif %}>
+{% if user %}
+<header class="top">
+  <a class="brand" href="/">atlas{% if lab %} <span class="badge lab">demo lab</span>{% endif %}</a>
+  <nav>
+    {% for href, label in [("/", "Dashboard"), ("/entities", "Inventory"), ("/topology", "Topology"), ("/ips", "IPs"), ("/vlans", "VLANs"), ("/ports", "Ports"), ("/changes", "Changes"), ("/unknown", "Unknown")] %}
+    <a href="{{ href }}"{% if path == href or (href != "/" and path.startswith(href)) %} aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+  <div class="who">
+    <button type="button" id="theme-toggle" class="ghost" aria-label="Toggle light/dark">◐</button>
+    <span>{{ user.username }}</span>
+    <form method="post" action="/logout" class="inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button type="submit" class="ghost">Log out</button>
+    </form>
+  </div>
+</header>
+{% endif %}
+<main>{% block main %}{% endblock %}</main>
+<footer>homelab-atlas {{ version }} · read-only</footer>
+</body>
+</html>

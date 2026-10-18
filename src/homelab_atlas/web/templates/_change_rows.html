@@ -1,0 +1,17 @@
+{% set ns = namespace(scan=None) %}
+{% for row in rows %}{% set e = row.event %}
+{% if e.scan_id != ns.scan %}{% set ns.scan = e.scan_id %}
+<tr class="scan-head"><th colspan="4">Scan #{{ e.scan_id }} · {{ row.label or "" }} · {{ row.at.strftime("%Y-%m-%d %H:%M UTC") }}</th></tr>
+{% endif %}
+<tr>
+  <td><span class="sev {{ e.severity }}">{{ e.severity }}</span></td>
+  <td><code>{{ e.type }}</code></td>
+  <td><a href="/entity?key={{ e.entity_key | urlencode }}">{{ e.summary }}</a></td>
+  <td class="muted">{{ e.path }}</td>
+</tr>
+{% if loop.last and rows | length >= 100 %}
+<tr hx-get="/changes?before={{ e.id }}&severity={{ severity | urlencode }}&q={{ q | urlencode }}" hx-trigger="revealed" hx-swap="outerHTML"><td colspan="4" class="muted">Loading more…</td></tr>
+{% endif %}
+{% else %}
+<tr><td colspan="4" class="muted">No changes.</td></tr>
+{% endfor %}

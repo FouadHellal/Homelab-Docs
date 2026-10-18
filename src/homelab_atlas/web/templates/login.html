@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Log in{% endblock %}
+{% block main %}
+<section class="login card">
+  <h1>atlas</h1>
+  <p class="muted">Read-only homelab inventory{% if lab %} · demo lab{% endif %}</p>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="/login">
+    <input type="hidden" name="csrf_token" value="{{ login_csrf }}">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label>Username <input name="username" autocomplete="username" required maxlength="64" autofocus></label>
+    <label>Password <input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label>
+    <button type="submit">Log in</button>
+  </form>
+</section>
+{% endblock %}

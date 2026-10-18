@@ -102,3 +102,12 @@ def _register_scan_commands() -> None:
 
 
 _register_scan_commands()
+
+
+def _register_web_commands() -> None:
+    from homelab_atlas.cli_web import register  # noqa: PLC0415
+
+    register(app)
+
+
+_register_web_commands()

@@ -1,0 +1,24 @@
+<form class="annotation-form" method="post" action="/entity/annotation" hx-post="/entity/annotation" hx-target="#annotation">
+  <h2>Edit annotation</h2>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <input type="hidden" name="key" value="{{ key }}">
+  <label>Owner <input name="owner" value="{{ doc.owner or '' }}" maxlength="128"></label>
+  <label>Purpose <input name="purpose" value="{{ doc.purpose or '' }}" maxlength="512"></label>
+  <label>Criticality
+    <select name="criticality">
+      <option value="">—</option>
+      {% for c in ["low", "medium", "high", "critical"] %}<option value="{{ c }}"{% if doc.criticality == c %} selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Tags (comma-separated) <input name="tags" value="{{ doc.tags | join(', ') }}" maxlength="1024"></label>
+  <label>Links (one per line: Title | https://…)
+    <textarea name="links" rows="3" maxlength="8192">{% for l in doc.links %}{{ l.title }} | {{ l.url }}
+{% endfor %}</textarea></label>
+  <label>Notes <textarea name="notes" rows="5" maxlength="8192">{{ doc.notes or '' }}</textarea></label>
+  <div class="actions">
+    <button type="submit">Save</button>
+    <button type="button" class="ghost" hx-get="/entity?key={{ key | urlencode }}" hx-select="#annotation > *" hx-target="#annotation">Cancel</button>
+  </div>
+  <p class="muted small">Saved as git-friendly YAML in annotations/.</p>
+</form>
