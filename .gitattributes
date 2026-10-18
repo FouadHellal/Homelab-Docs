@@ -10,3 +10,6 @@ Dockerfile text eol=lf
 *.jpg binary
 *.ico binary
 *.woff2 binary
+
+# Pinned third-party files: byte-exact (SHA-256 checked by tests/web/test_web.py).
+src/homelab_atlas/web/static/vendor/*.js -text

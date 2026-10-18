@@ -13,11 +13,11 @@ repos:
       - id: detect-private-key
         exclude: ^tests/security/corpus/
       - id: end-of-file-fixer
-        exclude: ^fixtures/demo-lab/state-   # recorded output is byte-exact
+        exclude: ^(fixtures/demo-lab/state-|src/homelab_atlas/web/static/vendor/)   # byte-exact: recordings, pinned vendor files
       - id: mixed-line-ending
-        exclude: ^fixtures/demo-lab/state-   # recorded output is byte-exact
+        exclude: ^(fixtures/demo-lab/state-|src/homelab_atlas/web/static/vendor/)   # byte-exact: recordings, pinned vendor files
       - id: trailing-whitespace
-        exclude: ^fixtures/demo-lab/state-   # recorded output is byte-exact
+        exclude: ^(fixtures/demo-lab/state-|src/homelab_atlas/web/static/vendor/)   # byte-exact: recordings, pinned vendor files
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
