@@ -351,6 +351,13 @@
    "secrets": [
     "rd-ATLASFAKE-pw"
    ]
+  },
+  {
+   "id": "flag_then_flag",
+   "text": "-PASSWORD --token tk-ATLASFAKE-chained",
+   "secrets": [
+    "tk-ATLASFAKE-chained"
+   ]
   }
  ],
  "benign": [
