@@ -20,10 +20,13 @@ from homelab_atlas.collectors.base import (
 )
 from homelab_atlas.collectors.docker.collector import DockerCollector
 from homelab_atlas.collectors.linux_ssh.collector import LinuxSshCollector
+from homelab_atlas.collectors.nas import NasCollector
+from homelab_atlas.collectors.pi import PiCollector
 from homelab_atlas.collectors.proxmox.collector import ProxmoxCollector
+from homelab_atlas.collectors.unifi.collector import UnifiCollector
 from homelab_atlas.engine.scan import ScanEngine
 from homelab_atlas.inventory.hosts import Inventory, load_inventory
-from homelab_atlas.lab import load_api_recordings, load_lab
+from homelab_atlas.lab import lab_root, load_api_recordings, load_lab
 from homelab_atlas.redact import Redactor
 from homelab_atlas.security.allowlist import Endpoint
 from homelab_atlas.security.audit import AuditLog, AuditSink
@@ -34,7 +37,14 @@ from homelab_atlas.security.ssh import AsyncSshTransport, SshRunner, SshTranspor
 from homelab_atlas.store.db import make_engine, migrate, session_factory
 
 LAB_DATA_DIR = Path("data/demo-lab")
-COLLECTORS: tuple[Collector, ...] = (LinuxSshCollector(), DockerCollector(), ProxmoxCollector())
+COLLECTORS: tuple[Collector, ...] = (
+    LinuxSshCollector(),
+    DockerCollector(),
+    PiCollector(),
+    ProxmoxCollector(),
+    UnifiCollector(),
+    NasCollector(),
+)
 
 
 def default_data_dir(*, lab: bool) -> Path:
@@ -93,7 +103,10 @@ class Runtime:
         return ScanEngine(
             sessions=self.sessions,
             ctx=CollectContext(
-                inventory=inputs.inventory, ssh=runner, http=inputs.http(self.audit)
+                inventory=inputs.inventory,
+                ssh=runner,
+                http=inputs.http(self.audit),
+                config_dir=inputs.config_dir,
             ),
             collectors=COLLECTORS,
             redactor=self.redactor,
@@ -108,6 +121,7 @@ class Inputs:
     ssh: SshTransport
     #: Given the audit sink, returns the factory that builds API clients.
     http: Callable[[AuditSink], HttpFactory]
+    config_dir: Path | None = None
 
 
 PVE_TOKEN_RE = re.compile(
@@ -176,11 +190,11 @@ def replay_http(
 
 def lab_inputs(state: str) -> Inputs:
     inventory, transport = load_lab(state)
-    return Inputs(inventory, transport, replay_http(load_api_recordings(state)))
+    return Inputs(inventory, transport, replay_http(load_api_recordings(state)), lab_root())
 
 
 def live_inputs() -> Inputs:
     cfg = config_dir()
     inventory = load_inventory(cfg / "hosts.yaml")
     secrets = SecretResolver(DEFAULT_DIRS)
-    return Inputs(inventory, AsyncSshTransport(secrets), live_http(secrets, cfg))
+    return Inputs(inventory, AsyncSshTransport(secrets), live_http(secrets, cfg), cfg)

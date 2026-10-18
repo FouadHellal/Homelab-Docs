@@ -83,6 +83,8 @@ class Entity(Base):
     last_scan_id: Mapped[int | None] = mapped_column(ForeignKey("scans.id"), default=None)
     #: Topology parent: container -> host, guest -> node, node -> cluster.
     parent_key: Mapped[str | None] = mapped_column(String(256), default=None, index=True)
+    #: Same machine seen by another collector (SSH host -> its Proxmox VM or node).
+    same_as: Mapped[str | None] = mapped_column(String(256), default=None, index=True)
 
 
 class Blob(Base):

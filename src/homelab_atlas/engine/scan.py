@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from homelab_atlas.collectors.base import CollectContext, Collector, CollectorResult, FacetResult
 from homelab_atlas.engine.diff import body_sha256, diff
 from homelab_atlas.engine.events import EventSpec
+from homelab_atlas.engine.reconcile import reconcile
 from homelab_atlas.models.base import canonical
 from homelab_atlas.redact import Redactor
 from homelab_atlas.store.tables import (
@@ -115,6 +116,7 @@ class ScanEngine:
             for result in sorted(results, key=lambda r: (r.collector, r.target)):
                 summary.runs.append(result)
                 summary.events.extend(self._persist(s, scan_id, result))
+            summary.events.extend(reconcile(s, scan_id, self._ctx.inventory))
             scan_row = s.get_one(Scan, scan_id)
             scan_row.finished_at = utcnow()
             scan_row.status = "done"
