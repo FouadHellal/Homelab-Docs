@@ -2,6 +2,7 @@
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal, Protocol
 
 from pydantic import BaseModel
@@ -69,6 +70,8 @@ class CollectContext:
     inventory: Inventory
     ssh: SshRunner
     http: HttpFactory | None = None
+    #: Directory holding owner files referenced by config (manual/*.yaml, CA anchors).
+    config_dir: Path | None = None
 
 
 class Collector(Protocol):

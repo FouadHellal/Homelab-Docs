@@ -105,9 +105,31 @@ class UnifiSource(_Strict):
     _cred = field_validator("credential", "legacy_credential")(_secret_name)
 
 
+class UnasSource(_Strict):
+    """UniFi UNAS. The Drive API is undocumented (community-described), hence opt-in."""
+
+    name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+    url: str | None = Field(default=None, pattern=r"^https://")
+    credential: str | None = None
+    drive_api: bool = False
+    #: Fallback: <config dir>/manual/<file>, a small YAML describing pools/disks/shares.
+    manual: str | None = Field(default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.ya?ml$")
+    tls: TlsSettings = TlsSettings()
+    _cred = field_validator("credential")(_secret_name)
+
+    @model_validator(mode="after")
+    def _mode(self) -> "UnasSource":
+        if self.drive_api and (self.url is None or self.credential is None):
+            raise ValueError(f"{self.name}: drive_api needs url and credential")
+        if not self.drive_api and self.manual is None:
+            raise ValueError(f"{self.name}: set drive_api: true or a manual YAML file")
+        return self
+
+
 class Sources(_Strict):
     proxmox: tuple[ProxmoxSource, ...] = ()
     unifi: tuple[UnifiSource, ...] = ()
+    unas: tuple[UnasSource, ...] = ()
 
 
 class Match(_Strict):
