@@ -15,7 +15,10 @@ Read-only, agentless auto-discovery and documentation of a homelab. Spec: docs/S
 ## Commands (Windows and Linux; `uv run poe <task>`)
 - `poe check`: ruff, mypy, pytest, gitleaks (everything CI runs)
 - `poe test` / `poe lint` / `poe type` / `poe fmt`
-- `uv run atlas --help`; demo: `uv run atlas scan --lab demo:A`
+- `uv run atlas --help`
+- Demo lab: `uv run atlas scan --lab demo:A --fresh`, `uv run atlas scan --lab demo:B`, `uv run atlas diff --lab demo`
+- After changing the probe/gate templates or `ProbeSection`: `uv run atlas targets render` (a test fails on drift).
+- After changing `fixtures/demo-lab/generate.py`: rerun it and update `expected-diff-A-B.json` deliberately.
 - `make <task>` is a thin wrapper over poe on Linux.
 
 ## Conventions

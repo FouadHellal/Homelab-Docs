@@ -142,7 +142,7 @@ Every milestone: tests green, ruff + mypy clean, one demo command, a summary, th
 |---|---|---|
 | M0 | Docs approved; scaffolding, CI, pre-commit | `uv run atlas --version`, `uv run poe check` |
 | M1 | Security core: SshRunner, ReadOnlyHttpClient, Redactor, AuditLog | `atlas selftest security` |
-| M2 | Models, hosts.yaml, linux-ssh, SQLite, snapshots, diff, CLI | `atlas scan --lab demo:A && atlas scan --lab demo:B && atlas diff` emits exactly the golden event set |
+| M2 | Models, hosts.yaml, linux-ssh, SQLite, snapshots, diff, CLI | `atlas scan --lab demo:A --fresh && atlas scan --lab demo:B && atlas diff --lab demo` emits exactly `fixtures/demo-lab/expected-diff-A-B.json` |
 | M3 | docker, proxmox collectors; full demo lab | `atlas scan --lab demo:A --collector docker` |
 | M4 | unifi, nas, pi; unknown devices | `atlas scan --lab demo:A` then `atlas unknown` |
 | M5 | Web UI, topology, annotations, auth | `atlas serve --lab demo:B` |
