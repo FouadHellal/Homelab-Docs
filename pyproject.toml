@@ -70,7 +70,7 @@ select = [
     "E", "W", "F", "I", "N", "UP", "B", "S", "A", "C4", "SIM", "PT", "PTH",
     "RUF", "TID", "ASYNC", "BLE", "T20", "PL", "TRY", "ERA",
 ]
-ignore = ["TRY003", "PLR0913", "PLR0911", "PLR0912", "PLR0915", "PLR2004", "N818"]
+ignore = ["TRY003", "TRY004", "PLR0913", "PLR0911", "PLR0912", "PLR0915", "PLR2004", "N818"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["homelab_atlas", "tests"]
