@@ -128,7 +128,9 @@ def serve(
             console.print(f"demo login written to {login_file}")
     else:
         annotations = config_dir() / "annotations"
-    hosts = allowed_host or ["localhost", "127.0.0.1"]
+    # Loopback names are always accepted (container healthcheck, SSH tunnels); they cannot
+    # be used for DNS rebinding from a browser on another machine.
+    hosts = list(dict.fromkeys([*(allowed_host or []), "localhost", "127.0.0.1"]))
     scheduler = make_scheduler(rt, lab=bool(lab)) if schedule else None
     app = create_app(
         WebConfig(

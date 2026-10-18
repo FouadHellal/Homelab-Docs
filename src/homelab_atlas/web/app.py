@@ -191,6 +191,11 @@ def create_app(cfg: WebConfig) -> FastAPI:
     def partial(request: Request) -> bool:
         return request.headers.get("hx-request") == "true"
 
+    @app.get("/healthz", include_in_schema=False)
+    def healthz() -> Response:
+        """Liveness for the container healthcheck: no auth, no data, no DB."""
+        return Response("ok", media_type="text/plain")
+
     # ------------------------------------------------------------------ auth
 
     @app.get("/login", response_class=HTMLResponse)

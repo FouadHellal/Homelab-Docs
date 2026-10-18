@@ -409,3 +409,11 @@ def test_annotation_unknown_entity_and_traversal(client: TestClient, ann_dir: Pa
     )
     assert r.status_code == 404
     assert not list(ann_dir.parent.glob("passwd*"))
+
+
+def test_healthz_is_public_and_empty(client: TestClient) -> None:
+    r = client.get("/healthz")
+    assert r.status_code == 200
+    assert r.text == "ok"
+    assert "set-cookie" not in r.headers
+    assert r.headers["Cache-Control"] == "no-store"
