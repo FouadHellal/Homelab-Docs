@@ -10,14 +10,18 @@ from rich.console import Console
 from rich.table import Table
 from sqlalchemy import select
 
-from homelab_atlas.collectors.linux_ssh.collector import EXIT_HINTS, LinuxSshCollector
+from homelab_atlas.collectors.base import HttpFactory
+from homelab_atlas.collectors.linux_ssh.collector import EXIT_HINTS
 from homelab_atlas.collectors.linux_ssh.frame import FrameError, parse_frame
 from homelab_atlas.collectors.linux_ssh.parse import parse_version
+from homelab_atlas.collectors.proxmox import endpoints as pve_ep
+from homelab_atlas.collectors.proxmox.collector import ProxmoxCollector
 from homelab_atlas.engine.scan import ScanLockedError
 from homelab_atlas.inventory.hosts import Inventory, InventoryError
 from homelab_atlas.lab import LabError, parse_spec
 from homelab_atlas.probe.render import PROBE_VERSION, probe_sha256, render_all
 from homelab_atlas.runtime import (
+    Inputs,
     Runtime,
     default_data_dir,
     lab_inputs,
@@ -25,8 +29,8 @@ from homelab_atlas.runtime import (
     wipe_lab_data,
 )
 from homelab_atlas.security.allowlist import ProbeSection
-from homelab_atlas.security.errors import SecurityRefusal, TransportError
-from homelab_atlas.security.ssh import SshRunner, SshTransport
+from homelab_atlas.security.errors import HttpStatusError, SecurityRefusal, TransportError
+from homelab_atlas.security.ssh import SshRunner
 from homelab_atlas.store.db import make_engine, migrate
 from homelab_atlas.store.tables import Event, Scan
 
@@ -49,7 +53,7 @@ def _fail(message: str) -> typer.Exit:
     return typer.Exit(2)
 
 
-def _inputs(lab: str | None, live: bool) -> tuple[str, Inventory, SshTransport]:
+def _inputs(lab: str | None, live: bool) -> tuple[str, Inputs]:
     if bool(lab) == live:
         raise _fail("choose exactly one of --lab demo:A or --live")
     try:
@@ -57,8 +61,8 @@ def _inputs(lab: str | None, live: bool) -> tuple[str, Inventory, SshTransport]:
             state = parse_spec(lab)
             if state is None:
                 raise _fail("--lab needs a state here, e.g. demo:A")
-            return "demo", *lab_inputs(state)
-        return "live", *live_inputs()
+            return "demo", lab_inputs(state)
+        return "live", live_inputs()
     except (LabError, InventoryError, FileNotFoundError) as exc:
         raise _fail(str(exc)) from None
 
@@ -72,7 +76,7 @@ def scan(
     fresh: Annotated[bool, typer.Option("--fresh", help="Wipe the lab data dir first.")] = False,
 ) -> None:
     """Run collectors, store redacted snapshots and derive change events."""
-    mode, inventory, transport = _inputs(lab, live)
+    mode, inputs = _inputs(lab, live)
     ddir = data_dir or default_data_dir(lab=mode == "demo")
     if fresh:
         try:
@@ -80,7 +84,7 @@ def scan(
         except ValueError as exc:
             raise _fail(str(exc)) from None
     rt = Runtime.open(ddir, mode=mode)
-    engine = rt.scan_engine(inventory, transport)
+    engine = rt.scan_engine(inputs)
     try:
         summary = asyncio.run(engine.run(hosts=host, collectors=collector, label=lab or "live"))
     except ScanLockedError as exc:
@@ -149,6 +153,31 @@ def diff(
     console.print(table if events else f"no changes in scan #{scan_id}")
 
 
+async def _doctor_proxmox(
+    factory: HttpFactory, inventory: Inventory, name: str
+) -> tuple[bool, str]:
+    """The token may hold *.Audit privileges only (PVEAuditor + privilege separation)."""
+    try:
+        client = factory(ProxmoxCollector.source(inventory, name), pve_ep.DOCTOR)
+        async with client:
+            version = (await client.get(pve_ep.VERSION)).json().get("data", {}).get("version")
+            perms = (await client.get(pve_ep.PERMISSIONS)).json().get("data", {})
+    except SecurityRefusal as exc:
+        return False, f"refused: {exc.reason.value} ({exc.detail})"
+    except (TransportError, HttpStatusError) as exc:
+        return False, f"unreachable: {exc}"
+    if not isinstance(perms, dict) or not perms:
+        return False, "token has no permissions (ACL missing?)"
+    privs = {p for v in perms.values() if isinstance(v, dict) for p in v}
+    extra = sorted(privs - pve_ep.AUDIT_PRIVILEGES)
+    if extra:
+        return False, f"token is NOT read-only: {', '.join(extra[:6])}"
+    missing = sorted({"VM.Audit", "Sys.Audit", "Datastore.Audit", "VM.GuestAgent.Audit"} - privs)
+    if missing:
+        return False, f"PVE {version}: read-only, but missing {', '.join(missing)}"
+    return True, f"PVE {version}: token read-only (audit privileges only)"
+
+
 async def _doctor_host(runner: SshRunner, inventory: Inventory, name: str) -> tuple[bool, str]:
     host = inventory.host(name)
     target = inventory.ssh_target(host, frozenset({ProbeSection.VERSION}))
@@ -184,21 +213,33 @@ def doctor(
     host: Annotated[list[str] | None, typer.Option("--host")] = None,
 ) -> None:
     """Check inventory and target setup (reachability, pinned keys, gate, sudoers, probe hash)."""
-    mode, inventory, transport = _inputs(lab, live)
+    mode, inputs = _inputs(lab, live)
+    inventory = inputs.inventory
     rt = Runtime.open(data_dir or default_data_dir(lab=mode == "demo"), mode=mode)
-    runner = SshRunner(transport=transport, audit=rt.audit)
-    names = [h.name for h in inventory.hosts if LinuxSshCollector.name in h.collectors
-             and (not host or h.name in host)]  # fmt: skip
-    console.print(f"inventory OK: {len(inventory.hosts)} hosts, {len(names)} with linux-ssh")
+    runner = SshRunner(transport=inputs.ssh, audit=rt.audit)
+    ssh_collectors = {"linux-ssh", "docker", "pi"}
+    names = [
+        h.name
+        for h in inventory.hosts
+        if ssh_collectors & set(h.collectors) and (not host or h.name in host)
+    ]
+    sources = [s.name for s in inventory.sources.proxmox if not host or s.name in host]
+    console.print(
+        f"inventory OK: {len(inventory.hosts)} hosts ({len(names)} over SSH), "
+        f"{len(sources)} Proxmox source(s)"
+    )
+    factory = inputs.http(rt.audit)
 
     async def run_all() -> list[tuple[bool, str]]:
-        return list(await asyncio.gather(*(_doctor_host(runner, inventory, n) for n in names)))
+        checks = [_doctor_host(runner, inventory, n) for n in names]
+        checks += [_doctor_proxmox(factory, inventory, s) for s in sources]
+        return list(await asyncio.gather(*checks))
 
     table = Table(title="atlas doctor")
     for col in ("host", "result", "detail"):
         table.add_column(col)
     problems = 0
-    for name, (ok, detail) in zip(names, asyncio.run(run_all()), strict=True):
+    for name, (ok, detail) in zip([*names, *sources], asyncio.run(run_all()), strict=True):
         problems += not ok
         table.add_row(name, "[green]OK[/]" if ok else "[red]PROBLEM[/]", detail)
     console.print(table)

@@ -7,9 +7,9 @@ less	590-2.1~deb12u2	ii
 libc6	2.36-9+deb12u9	ii 
 openssh-server	1:9.2p1-2+deb12u3	ii 
 openssl	3.0.15-1~deb12u1	ii 
-proxmox-kernel-6.8	6.8.12-4	ii 
-proxmox-ve	8.3.0	ii 
-pve-manager	8.3.1	ii 
+proxmox-kernel-6.14	6.14.11-1	ii 
+proxmox-ve	9.2.0	ii 
+pve-manager	9.2.2	ii 
 qemu-guest-agent	1:7.2+dfsg-7+deb12u7	ii 
 rsync	3.2.7-1+deb12u2	ii 
 sudo	1.9.13p3-1+deb12u1	ii 

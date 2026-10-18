@@ -1,26 +1,40 @@
 """Wire config, storage, security and collectors into a runnable scan engine."""
 
 import os
+import re
 import secrets
 import shutil
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from pydantic import SecretStr
 from sqlalchemy.orm import Session, sessionmaker
 
-from homelab_atlas.collectors.base import CollectContext, Collector
+from homelab_atlas.collectors.base import (
+    ApiSource,
+    AuthScheme,
+    CollectContext,
+    Collector,
+    HttpFactory,
+)
+from homelab_atlas.collectors.docker.collector import DockerCollector
 from homelab_atlas.collectors.linux_ssh.collector import LinuxSshCollector
+from homelab_atlas.collectors.proxmox.collector import ProxmoxCollector
 from homelab_atlas.engine.scan import ScanEngine
 from homelab_atlas.inventory.hosts import Inventory, load_inventory
-from homelab_atlas.lab import load_lab
+from homelab_atlas.lab import load_api_recordings, load_lab
 from homelab_atlas.redact import Redactor
-from homelab_atlas.security.audit import AuditLog
+from homelab_atlas.security.allowlist import Endpoint
+from homelab_atlas.security.audit import AuditLog, AuditSink
+from homelab_atlas.security.errors import RefusalReason, SecurityRefusal
+from homelab_atlas.security.http import AuthHeader, ReadOnlyHttpClient, TlsPolicy, replay_transport
 from homelab_atlas.security.secrets import DEFAULT_DIRS, SecretResolver
 from homelab_atlas.security.ssh import AsyncSshTransport, SshRunner, SshTransport
 from homelab_atlas.store.db import make_engine, migrate, session_factory
 
 LAB_DATA_DIR = Path("data/demo-lab")
-COLLECTORS: tuple[Collector, ...] = (LinuxSshCollector(),)
+COLLECTORS: tuple[Collector, ...] = (LinuxSshCollector(), DockerCollector(), ProxmoxCollector())
 
 
 def default_data_dir(*, lab: bool) -> Path:
@@ -74,11 +88,13 @@ class Runtime:
             mode=mode,
         )
 
-    def scan_engine(self, inventory: Inventory, transport: SshTransport) -> ScanEngine:
-        runner = SshRunner(transport=transport, audit=self.audit)
+    def scan_engine(self, inputs: "Inputs") -> ScanEngine:
+        runner = SshRunner(transport=inputs.ssh, audit=self.audit)
         return ScanEngine(
             sessions=self.sessions,
-            ctx=CollectContext(inventory=inventory, ssh=runner),
+            ctx=CollectContext(
+                inventory=inputs.inventory, ssh=runner, http=inputs.http(self.audit)
+            ),
             collectors=COLLECTORS,
             redactor=self.redactor,
             lock_path=self.data_dir / "scan.lock",
@@ -86,11 +102,85 @@ class Runtime:
         )
 
 
-def lab_inputs(state: str) -> tuple[Inventory, SshTransport]:
-    return load_lab(state)
+@dataclass(frozen=True, slots=True)
+class Inputs:
+    inventory: Inventory
+    ssh: SshTransport
+    #: Given the audit sink, returns the factory that builds API clients.
+    http: Callable[[AuditSink], HttpFactory]
 
 
-def live_inputs() -> tuple[Inventory, SshTransport]:
+PVE_TOKEN_RE = re.compile(
+    r"[A-Za-z0-9._-]{1,64}@[A-Za-z0-9._-]{1,64}![A-Za-z0-9._-]{1,64}=[0-9a-fA-F-]{36}"
+)
+CA_FILE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+
+
+def auth_header(scheme: AuthScheme, secret: SecretStr) -> AuthHeader:
+    if scheme == "pve-token":
+        token = secret.get_secret_value()
+        if not PVE_TOKEN_RE.fullmatch(token):
+            raise SecurityRefusal(
+                RefusalReason.CONFIG, "PVE token must look like user@realm!id=<uuid>"
+            )
+        return AuthHeader("Authorization", SecretStr(f"PVEAPIToken={token}"))
+    return AuthHeader("X-API-KEY", secret)
+
+
+def live_http(secrets: SecretResolver, cfg_dir: Path) -> Callable[[AuditSink], HttpFactory]:
+    def bind(audit: AuditSink) -> HttpFactory:
+        def make(source: ApiSource, endpoints: Iterable[Endpoint]) -> ReadOnlyHttpClient:
+            if source.tls.ca_file is None or not CA_FILE_RE.fullmatch(source.tls.ca_file):
+                raise SecurityRefusal(
+                    RefusalReason.TLS_POLICY,
+                    f"{source.name}: tls.ca_file (a file in the config dir) is required",
+                )
+            tls = TlsPolicy(
+                ca_file=cfg_dir / source.tls.ca_file,
+                check_hostname=source.tls.check_hostname,
+                sha256_pin=source.tls.sha256_pin,
+            )
+            return ReadOnlyHttpClient(
+                target=source.name,
+                base_url=source.url,
+                endpoints=endpoints,
+                audit=audit,
+                tls=tls,
+                auth=auth_header(source.auth, secrets.resolve(source.credential)),
+            )
+
+        return make
+
+    return bind
+
+
+def replay_http(
+    recordings: Mapping[str, Mapping[str, tuple[int, bytes]]],
+) -> Callable[[AuditSink], HttpFactory]:
+    def bind(audit: AuditSink) -> HttpFactory:
+        def make(source: ApiSource, endpoints: Iterable[Endpoint]) -> ReadOnlyHttpClient:
+            return ReadOnlyHttpClient(
+                target=source.name,
+                base_url=source.url,
+                endpoints=endpoints,
+                audit=audit,
+                tls=None,
+                auth=AuthHeader("Authorization", SecretStr("PVEAPIToken=demo")),
+                transport=replay_transport(recordings.get(source.name, {})),
+            )
+
+        return make
+
+    return bind
+
+
+def lab_inputs(state: str) -> Inputs:
+    inventory, transport = load_lab(state)
+    return Inputs(inventory, transport, replay_http(load_api_recordings(state)))
+
+
+def live_inputs() -> Inputs:
     cfg = config_dir()
     inventory = load_inventory(cfg / "hosts.yaml")
-    return inventory, AsyncSshTransport(SecretResolver(DEFAULT_DIRS))
+    secrets = SecretResolver(DEFAULT_DIRS)
+    return Inputs(inventory, AsyncSshTransport(secrets), live_http(secrets, cfg))

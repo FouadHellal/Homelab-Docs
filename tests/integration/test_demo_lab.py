@@ -6,10 +6,9 @@ from pathlib import Path
 import pytest
 from sqlalchemy import func, select
 
-from homelab_atlas.collectors.linux_ssh.collector import LinuxSshCollector
 from homelab_atlas.engine.scan import ScanEngine, ScanLockedError, ScanSummary
-from homelab_atlas.lab import load_lab
-from homelab_atlas.runtime import Runtime
+from homelab_atlas.lab import load_api_recordings, load_lab
+from homelab_atlas.runtime import COLLECTORS, Inputs, Runtime, replay_http
 from homelab_atlas.security.audit import verify
 from homelab_atlas.store.tables import Blob, Entity, Event, Facet, Snapshot
 
@@ -20,7 +19,8 @@ GOLDEN = [tuple(x) for x in json.loads((LAB / "expected-diff-A-B.json").read_tex
 
 def engine(rt: Runtime, state: str) -> ScanEngine:
     inventory, transport = load_lab(state, LAB)
-    return rt.scan_engine(inventory, transport)
+    http = replay_http(load_api_recordings(state, LAB))
+    return rt.scan_engine(Inputs(inventory, transport, http))
 
 
 @pytest.fixture
@@ -35,8 +35,8 @@ async def scan(rt: Runtime, state: str) -> ScanSummary:
 async def test_a_then_b_matches_golden(rt: Runtime) -> None:
     first = await scan(rt, "A")
     assert {e.type for e in first.events} == {"entity.added"}
-    assert len(first.events) == 11
-    assert first.counts == {"ok": 10, "partial": 1, "failed": 1}
+    assert len(first.events) == 29  # 12 SSH hosts + cluster + 2 nodes + 14 guests
+    assert first.counts == {"ok": 15, "partial": 1, "failed": 1}
 
     second = await scan(rt, "B")
     got = sorted((e.type, e.summary) for e in second.events)
@@ -54,8 +54,10 @@ async def test_rescan_same_state_is_quiet_and_deduplicated(rt: Runtime) -> None:
     again = await scan(rt, "A")
     assert again.events == []
     with rt.sessions() as s:
-        assert s.scalar(select(func.count()).select_from(Blob)) == 11  # one body per host
-        assert s.scalar(select(func.count()).select_from(Snapshot)) == 22
+        blobs = s.scalar(select(func.count()).select_from(Blob))
+        snaps = s.scalar(select(func.count()).select_from(Snapshot))
+    assert blobs == 32  # 12 linux + 3 docker + 1 cluster + 2 nodes + 14 guests
+    assert snaps == 64
 
 
 async def test_no_secret_reaches_storage_or_audit(rt: Runtime) -> None:
@@ -98,8 +100,10 @@ async def test_partial_results_and_audit_ops(rt: Runtime) -> None:
         for p in (rt.data_dir / "audit").glob("*.jsonl")
         for line in p.read_text("utf-8").splitlines()
     }
-    allowed = {f"atlas-probe {s.value}" for s in LinuxSshCollector.requires}
+    allowed = {f"atlas-probe {s.value}" for c in COLLECTORS for s in c.requires}
+    allowed |= {e.op for c in COLLECTORS for e in c.endpoints}
     assert ops <= {"connect"} | allowed
+    assert all(op.startswith(("GET ", "atlas-probe ", "connect")) for op in ops)
 
 
 async def test_recovery_event(rt: Runtime) -> None:
@@ -124,5 +128,7 @@ async def test_scan_lock(rt: Runtime) -> None:
 async def test_host_and_collector_filters(rt: Runtime) -> None:
     summary = await engine(rt, "A").run(hosts=["web01", "db01"])
     assert sorted(r.target for r in summary.runs) == ["db01", "web01"]
-    none = await engine(rt, "A").run(collectors=["docker"])
+    docker = await engine(rt, "A").run(collectors=["docker"])
+    assert sorted(r.target for r in docker.runs) == ["docker01", "docker02", "media01"]
+    none = await engine(rt, "A").run(collectors=["nas"])
     assert none.runs == []

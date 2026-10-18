@@ -29,7 +29,8 @@ def write(tmp_path: Path, text: str) -> Path:
 
 def test_demo_lab_inventory_loads() -> None:
     inv = load_inventory(REPO / "fixtures" / "demo-lab" / "hosts.yaml")
-    assert len(inv.hosts) == 12
+    assert len(inv.hosts) == 13
+    assert [s.name for s in inv.sources.proxmox] == ["homelab"]
     assert inv.host("ipv6only01").address == "2001:db8:20::80"
 
 

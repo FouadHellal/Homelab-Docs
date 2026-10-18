@@ -1,0 +1,19 @@
+ATLAS-PROBE 1 packages a804deb73bbe749b89c60d19
+--a804deb73bbe749b89c60d19 part dpkg
+bash	5.2.15-2+b7	ii 
+ca-certificates	20230311	ii 
+curl	7.88.1-10+deb12u8	ii 
+docker-ce	5:26.1.5-1~debian.12~bookworm	ii 
+less	590-2.1~deb12u2	ii 
+libc6	2.36-9+deb12u9	ii 
+openssh-server	1:9.2p1-2+deb12u3	ii 
+openssl	3.0.15-1~deb12u1	ii 
+qemu-guest-agent	1:7.2+dfsg-7+deb12u7	ii 
+rsync	3.2.7-1+deb12u2	ii 
+sudo	1.9.13p3-1+deb12u1	ii 
+systemd	252.31-1~deb12u1	ii 
+tzdata	2024b-0+deb12u1	ii 
+unattended-upgrades	2.9.1+nmu3	ii 
+vim-tiny	2:9.0.1378-2	ii 
+--a804deb73bbe749b89c60d19 rc 0
+--a804deb73bbe749b89c60d19 end

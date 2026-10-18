@@ -207,6 +207,7 @@ class ScanEngine:
         now = utcnow()
         key = f.entity_key
         entity = s.get(Entity, key)
+        is_new = entity is None
         if entity is None:
             entity = Entity(key=key, kind=f.kind, display_name=f.display_name, first_seen=now)
             s.add(entity)
@@ -246,6 +247,8 @@ class ScanEngine:
         s.add(Snapshot(scan_id=scan_id, entity_key=key, collector=r.collector, sha256=sha))
         s.flush()
         if prev is None:
+            if not is_new:
+                return []  # a new facet (e.g. docker) on an entity we already know
             return [
                 EventSpec(
                     key,
