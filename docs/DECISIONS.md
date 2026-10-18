@@ -34,9 +34,17 @@ Format: Context → Decision → Rejected alternatives → Consequences. Status 
 
 ## ADR-004 Proxmox access
 **Facts.** PVE 9.2 is current (released 2026-05-21, Roadmap). PVE 9 dropped `VM.Monitor` and added `VM.GuestAgent.{Audit,FileRead,FileWrite,FileSystemMgmt,Unrestricted}`. `VM.GuestAgent.Audit` was added to the `audit` privilege group with `VM.Audit` (pve-devel series 2025-07-17, access-control patch 1/9), and PVEAuditor is, as far as I can tell, built from the audit groups in `AccessControl.pm` (not confirmed by a primary doc; verify at M3 with `pveum role list`). Separated API tokens get the intersection of user and token ACLs (User Management wiki). Backup job API: `schedule` replaces `starttime`/`dow` (9.2 notes).
-**Decision.** User `atlas@pve` (no password login needed), token `atlas@pve!collector` with **privsep=1**, role **PVEAuditor** on `/` for both the user and the token. If the guest-agent IPs come back empty, add a custom role `AtlasGuestAudit = VM.GuestAgent.Audit`. `atlas doctor` reads `GET /access/permissions` and **fails if any non-Audit privilege is present**. TLS: pin the PVE CA or leaf fingerprint. Endpoints (GET): `/version`, `/cluster/status`, `/cluster/resources`, `/cluster/backup`, `/cluster/backup-info/not-backed-up`, `/cluster/ha/resources`, `/cluster/sdn/vnets`, `/nodes`, `/nodes/{n}/status`, `/nodes/{n}/network`, `/nodes/{n}/storage`, `/nodes/{n}/qemu`, `/nodes/{n}/qemu/{id}/config`, `/nodes/{n}/qemu/{id}/agent/{network-get-interfaces,get-osinfo}`, `/nodes/{n}/lxc`, `/nodes/{n}/lxc/{id}/config`, `/nodes/{n}/lxc/{id}/interfaces`. Verify each path and privilege in the API viewer at M3.
+**Decision.** User `atlas@pve` (no password login needed), token `atlas@pve!collector` with **privsep=1**, role **PVEAuditor** on `/` for both the user and the token. If the guest-agent IPs come back empty, add a custom role `AtlasGuestAudit = VM.GuestAgent.Audit`. `atlas doctor` reads `GET /access/permissions` and **fails if any non-Audit privilege is present**. TLS: pin the PVE CA or leaf fingerprint. Endpoints (GET): `/version`, `/cluster/status`, `/cluster/resources`, `/cluster/backup`, `/cluster/backup-info/not-backed-up`, `/cluster/ha/resources`, `/cluster/sdn/vnets`, `/nodes`, `/nodes/{n}/status`, `/nodes/{n}/network`, `/nodes/{n}/storage`, `/nodes/{n}/qemu`, `/nodes/{n}/qemu/{id}/config`, `/nodes/{n}/qemu/{id}/agent/{network-get-interfaces,get-osinfo}`, `/nodes/{n}/lxc`, `/nodes/{n}/lxc/{id}/config`, `/nodes/{n}/lxc/{id}/interfaces`. **Verified at M3 (2026-10-18) against the PVE source**, which is what the API viewer is generated from. The complete allowlist and the privilege each endpoint checks are in `collectors/proxmox/endpoints.py`:
+- `/cluster/status`, `/cluster/backup` and `/cluster/backup-info/not-backed-up` check `Sys.Audit` on `/`.
+- `/cluster/resources` filters per object by `VM.Audit`, `Sys.Audit`, `Datastore.Audit` and `SDN.Audit`.
+- qemu/lxc `config` and lxc `interfaces` check `VM.Audit`.
+- `agent/network-get-interfaces` and `agent/get-osinfo` are **GET** endpoints and need `VM.GuestAgent.Audit` (or `.Unrestricted`). `exec`, `file-read`, `file-write` and `set-user-password` need `.FileRead`, `.FileWrite` or `.Unrestricted`, which PVEAuditor does not have; they also sit on the denied-segment list.
+- `/nodes/{n}/network` is open to any user, but bridges are hidden without SDN access (PVEAuditor has `SDN.Audit`).
+- `/access/permissions` lets a token dump its own permissions.
+
+PVEAuditor is confirmed to be the union of every category's `audit` group, and that includes `VM.GuestAgent.Audit` (AccessControl.pm `create_roles`). `atlas doctor` fails if the token holds any privilege outside the `*.Audit` set.
 **Rejected.** root@pam token (full write); a PVEVMUser-type role (VM.PowerMgmt); SSH + `pvesh` on the nodes (shell on a hypervisor).
-**Sources.** https://pve.proxmox.com/wiki/User_Management · https://pve.proxmox.com/wiki/Roadmap · https://lists.proxmox.com/pipermail/pve-devel/2025-July/073214.html · https://lore.proxmox.com/pve-devel/20250717133711.84715-9-f.ebner@proxmox.com/
+**Sources.** git.proxmox.com (HEAD, 2026-10-18): qemu-server `src/PVE/API2/Qemu/Agent.pm`; pve-container `src/PVE/API2/LXC.pm`; pve-manager `PVE/API2/{Cluster,Backup,Network}.pm` and `PVE/API2/Cluster/BackupInfo.pm`; pve-access-control `src/PVE/AccessControl.pm` and `src/PVE/API2/AccessControl.pm` · https://pve.proxmox.com/wiki/User_Management · https://pve.proxmox.com/wiki/Roadmap · https://lists.proxmox.com/pipermail/pve-devel/2025-July/073214.html · https://lore.proxmox.com/pve-devel/20250717133711.84715-9-f.ebner@proxmox.com/
 
 ## ADR-005 UniFi access
 **Facts.** The official local **Network Integration API** is served at `https://<console>/proxy/network/integration/v1/...`, needs Network ≥ 9.3, and authenticates with header `X-API-KEY`. The newest reference seen is v10.6.102. Lists are paginated with `offset`/`limit` (max 200) plus `filter`. Read coverage (v10.3.58 reference): info, sites, devices + details (ports, radios, `uplink.deviceId`) + latest stats, clients, networks, Wi-Fi broadcasts, firewall zones/policies/ordering, ACL rules, DNS policies, traffic matching lists, switch stacks/LAGs/MC-LAG, WANs, VPN, RADIUS profiles, device tags. The same API exposes POST/PUT/PATCH/DELETE and **actions** (device/port/client actions, vouchers). **API keys have no read-only scope; a key inherits the permissions of the admin who created it.** The Integration API reportedly does **not** expose uplink port numbers, client→switch port mapping or LLDP; those live only in the Classic API (`/proxy/network/api/s/{site}/stat/device`, `/stat/sta`), which uses session login `POST /api/auth/login` and `X-CSRF-Token`.
@@ -59,6 +67,13 @@ Format: Context → Decision → Rejected alternatives → Consequences. Status 
 ## ADR-007 Docker data path
 **Facts.** Docker Engine API is at 1.56 (Engine 29.8). Engines from 29.3 on support API ≥ 1.40 (docs.docker.com/reference/api/engine).
 **Decision.** Use the docker **CLI inside the probe** (`docker ps -a -q --no-trunc`, `docker inspect --format '<allowlisted template>'`, `docker image ls --format json`, `docker network inspect`, `docker volume ls --format json`, `docker compose ls --all --format json`). Compose project/service come from the `com.docker.compose.*` labels. Compose files are never read.
+**Template (M3).** The probe runs `docker inspect --format` with an allowlisted template (templates/atlas-probe.sh):
+- `.Config.Env` is reduced on the target to names via `index (split . "=") 0`.
+- Maps and lists end with a `null` / `"_"` sentinel, so the template never emits dangling commas. The parser drops the sentinels.
+- Container, image and network IDs come from `docker … -q --no-trunc` and are re-validated as 64-hex before being passed back as arguments after `--`.
+- `docker compose ls --all --format json` gives `Name`, `Status` and `ConfigFiles`.
+
+`split`, `json` and `index` are documented docker/Go-template functions (docs.docker.com/engine/cli/formatting). **Not yet run against a real engine;** verify at the first live scan (`atlas doctor` + one scan).
 **Rejected.** The remote Engine API over TCP/TLS (write-capable, and the socket is root); socket-proxy (ADR-002c).
 **Sources.** https://docs.docker.com/reference/api/engine/
 
@@ -84,6 +99,12 @@ hypothesis-based fuzz tests try bypasses.
   - cron/healthcheck lines;
   - a Shannon-entropy fallback for long tokens in argv/labels.
 
+**String lists are treated as possible argv** (container `cmd`, `healthcheck`):
+- A flag whose name is secret (`--http-api-token`, `--api-key`, but not `--password-file`) redacts the next element.
+- Tool-specific short flags (`sshpass -p`, `redis-cli -a`) are handled.
+- Contextual rules see the whole command line.
+
+Both cases were found by the M3 leak test, not by inspection.
 Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a local secret, so change detection still works without dictionary attacks. Redaction counts are recorded per run.
 **Rejected.** Only key-name rules (misses cmdline secrets); a full gitleaks ruleset at runtime (heavy). The gitleaks patterns are reused as a test corpus instead.
 
@@ -141,3 +162,19 @@ Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a
 - **Reachability:** events fire on transitions only (`host.unreachable` / `host.recovered`), not on every failed scan.
 
 **Rejected.** Generic JSON-path events (unreadable); diffing raw probe output (noisy, and it would need unredacted data).
+
+## ADR-020 Entities, facets and parents (M3)
+**Context.** One API call reports a whole cluster. One host carries several collectors' views.
+**Decision.**
+- **Facets.** A collector run returns `FacetResult`s: entity key, kind, display name, an optional model and an optional parent.
+- **Snapshots.** Each `(entity, collector)` pair is a facet with its own snapshot and diff.
+  - linux-ssh and docker both attach to `host:<machine-id>`.
+  - The docker collector reads the probe `os` section only to learn that machine-id.
+- **Model-less facets** (containers, compose projects) register entities for annotations and search. Their changes are diffed inside the parent facet, so no duplicate events.
+- **Topology.** `entities.parent_key` records container→host, guest→node and node→cluster. Migrations update the parent.
+- **Complete runs.** A run marked `complete` (the cluster list succeeded) retires facets it no longer reports: `entity.removed`, status `gone`.
+- **entity.added** fires only for genuinely new entities, not for a second collector's first facet.
+- **Collectors choose their own targets.** SSH collectors use hosts from hosts.yaml; the proxmox collector uses `sources.proxmox`.
+
+**Rejected.** One entity per container with its own snapshot (an event storm on every compose update, and IDs churn). A single merged "host" document across collectors (a failure in one collector would blank the others).
+**Known gap (M4).** The VM↔Linux-host link (by MAC) is not made yet, so `pve2 (PVE node)` and `pve2` (SSH) are separate entities. Both report the kernel upgrade.
