@@ -12,13 +12,13 @@ from typing import Final
 
 from homelab_atlas.security.allowlist import PROBE_COMMANDS, ProbeSection
 
-PROBE_VERSION: Final = "1.0.0"
+PROBE_VERSION: Final = "1.1.0"
 PROBE_PATH: Final = "/usr/local/libexec/atlas-probe"
 GATE_PATH: Final = "/usr/local/libexec/atlas-probe-gate"
 SUDO_PATH: Final = "/usr/bin/sudo"
 PROBE_USER: Final = "atlas-ro"
 #: Sections the v1 probe implements; the others exit 3 until their milestone.
-IMPLEMENTED: Final = frozenset(ProbeSection) - {ProbeSection.DOCKER, ProbeSection.PI}
+IMPLEMENTED: Final = frozenset(ProbeSection) - {ProbeSection.PI}
 
 _PATH_RE: Final = re.compile(r"/[A-Za-z0-9._/-]+")
 _USER_RE: Final = re.compile(r"[a-z_][a-z0-9_-]{0,31}")
@@ -112,7 +112,7 @@ def _readme(sums: dict[str, str]) -> bytes:
         "",
         f"User: `{PROBE_USER}`, a system account with no password (`passwd -l`), no docker group, "
         "no other sudo rights.",
-        f"Implemented sections: {sections}. `docker` and `pi` exit 3 until M3/M4.",
+        f"Implemented sections: {sections}. `pi` exits 3 until M4.",
         "",
         "Debian/Ubuntu only (systemd ≥ 246, iproute2, util-linux, dpkg).",
         "",

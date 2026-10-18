@@ -133,9 +133,19 @@ def test_probe_rejects_arguments(probe: Path, args: tuple[str, ...]) -> None:
 
 
 @needs_bash
-@pytest.mark.parametrize("section", ["docker", "pi"])
-def test_probe_unimplemented_sections(probe: Path, section: str) -> None:
-    assert run(probe, section).returncode == 3
+def test_probe_unimplemented_sections(probe: Path) -> None:
+    assert run(probe, "pi").returncode == 3
+
+
+@needs_bash
+def test_probe_docker_section_frames_cleanly(probe: Path) -> None:
+    """Without docker (dev box) every part reports rc 127; with docker (CI) parts parse."""
+    res = run(probe, "docker")
+    assert res.returncode == 0, res.stderr
+    frame = parse_frame(res.stdout, ProbeSection.DOCKER)
+    assert frame.complete
+    assert frame.errors == []
+    assert {"engine", "containers", "images", "networks", "volumes", "compose"} <= set(frame.parts)
 
 
 def test_probe_boundaries_are_random() -> None:

@@ -102,7 +102,53 @@ case "$section" in
         # shellcheck disable=SC2016  # ${...} is dpkg-query format syntax, not shell.
         part dpkg dpkg-query -W -f '${Package}\t${Version}\t${db:Status-Abbrev}\n'
         ;;
-    docker | pi)
+    docker)
+        # Allowlisted fields only: env VALUES never leave this host (names only). Lists and
+        # maps end with a null/"_" sentinel so templates never emit dangling commas.
+        # shellcheck disable=SC2016  # {{...}} are Go templates for docker, not shell.
+        ctr_tpl='{"id":{{json .Id}},"name":{{json .Name}},"image":{{json .Config.Image}},"image_id":{{json .Image}},"status":{{json .State.Status}},"exit_code":{{json .State.ExitCode}},"started_at":{{json .State.StartedAt}},"health":{{if .State.Health}}{{json .State.Health.Status}}{{else}}null{{end}},"restart_count":{{json .RestartCount}},"restart_policy":{{json .HostConfig.RestartPolicy.Name}},"labels":{{json .Config.Labels}},"env_names":[{{range .Config.Env}}{{json (index (split . "=") 0)}},{{end}}null],"cmd":{{json .Config.Cmd}},"entrypoint":{{json .Config.Entrypoint}},"healthcheck":{{if .Config.Healthcheck}}{{json .Config.Healthcheck.Test}}{{else}}null{{end}},"user":{{json .Config.User}},"privileged":{{json .HostConfig.Privileged}},"network_mode":{{json .HostConfig.NetworkMode}},"cap_add":{{json .HostConfig.CapAdd}},"readonly_rootfs":{{json .HostConfig.ReadonlyRootfs}},"ports":{{json .NetworkSettings.Ports}},"networks":{ {{range $k, $v := .NetworkSettings.Networks}}{{json $k}}:{"ip":{{json $v.IPAddress}},"ip6":{{json $v.GlobalIPv6Address}},"mac":{{json $v.MacAddress}}},{{end}}"_":null},"mounts":[{{range .Mounts}}{"type":{{json .Type}},"source":{{json .Source}},"destination":{{json .Destination}},"name":{{json .Name}},"rw":{{json .RW}}},{{end}}null]}'
+        img_tpl='{"id":{{json .Id}},"tags":{{json .RepoTags}},"digests":{{json .RepoDigests}},"created":{{json .Created}},"size":{{json .Size}},"arch":{{json .Architecture}}}'
+        net_tpl='{"id":{{json .Id}},"name":{{json .Name}},"driver":{{json .Driver}},"scope":{{json .Scope}},"internal":{{json .Internal}},"ipv6":{{json .EnableIPv6}},"subnets":[{{range .IPAM.Config}}{"subnet":{{json .Subnet}},"gateway":{{json .Gateway}}},{{end}}null]}'
+        part engine docker version --format '{{.Server.Version}} {{.Server.APIVersion}}'
+        # IDs come from docker itself and are re-validated before being passed back.
+        ctr_ids=()
+        while IFS= read -r id; do
+            case "$id" in "" | *[!0-9a-f]*) continue ;; esac
+            [ "${#id}" -eq 64 ] && ctr_ids+=("$id")
+        done < <(timeout "$TMO" docker ps -a -q --no-trunc 2>/dev/null)
+        if [ "${#ctr_ids[@]}" -gt 0 ]; then
+            part containers docker inspect --type container --format "$ctr_tpl" -- "${ctr_ids[@]}"
+        else
+            part containers true
+        fi
+        img_ids=()
+        while IFS= read -r id; do
+            case "$id" in sha256:*) ;; *) continue ;; esac
+            hex="${id#sha256:}"
+            case "$hex" in "" | *[!0-9a-f]*) continue ;; esac
+            [ "${#hex}" -eq 64 ] || continue
+            case " ${img_ids[*]-} " in *" $id "*) continue ;; esac
+            img_ids+=("$id")
+        done < <(timeout "$TMO" docker image ls -q --no-trunc 2>/dev/null)
+        if [ "${#img_ids[@]}" -gt 0 ]; then
+            part images docker image inspect --format "$img_tpl" -- "${img_ids[@]}"
+        else
+            part images true
+        fi
+        net_ids=()
+        while IFS= read -r id; do
+            case "$id" in "" | *[!0-9a-f]*) continue ;; esac
+            [ "${#id}" -eq 64 ] && net_ids+=("$id")
+        done < <(timeout "$TMO" docker network ls -q --no-trunc 2>/dev/null)
+        if [ "${#net_ids[@]}" -gt 0 ]; then
+            part networks docker network inspect --format "$net_tpl" -- "${net_ids[@]}"
+        else
+            part networks true
+        fi
+        part volumes docker volume ls --format '{{json .}}'
+        part compose docker compose ls --all --format json
+        ;;
+    pi)
         echo "atlas-probe: section $section not implemented in $VERSION" >&2
         exit 3
         ;;

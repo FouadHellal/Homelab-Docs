@@ -40,6 +40,12 @@ _UUID_RE: Final = re.compile(r"[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12
 _WORDISH_RE: Final = re.compile(r"[a-z]{3,}|[A-Z][a-z]{2,}|[A-Z]{3,}")
 #: OpenSSH public key blobs (ssh-ed25519 AAAAC3..., ssh-rsa AAAAB3...) are not secrets.
 _SSH_PUBKEY_RE: Final = re.compile(r"AAAA[BCE][0-9A-Za-z+/]+={0,2}")
+#: Short flags that take a secret only for certain tools (separate-argument form).
+CONTEXT_FLAGS: Final = (
+    (("sshpass",), frozenset({"-p"})),
+    (("redis-cli",), frozenset({"-a"})),
+    (("mysql", "mariadb", "mysqldump", "mysqladmin"), frozenset({"--password"})),
+)
 ENTROPY_MIN_LEN: Final = 24
 ENTROPY_THRESHOLD: Final = 3.5
 MAX_DEPTH: Final = 64
@@ -118,10 +124,11 @@ class Redactor:
 
     # ------------------------------------------------------------------ text
 
-    def text(self, s: str) -> str:
+    def text(self, s: str, context: str = "") -> str:
+        """Redact one string. `context` widens contextual rules (e.g. a whole argv)."""
         if not s:
             return s
-        lowered = s.lower()
+        lowered = f"{s.lower()} {context}"
         for rule in TEXT_RULES:
             if rule.context and not any(word in lowered for word in rule.context):
                 continue
@@ -167,8 +174,34 @@ class Redactor:
         if isinstance(obj, Mapping):
             return {k: self._walk_item(str(k), v, depth + 1) for k, v in obj.items()}
         if isinstance(obj, list | tuple):
+            if len(obj) > 1 and all(isinstance(v, str) for v in obj):
+                return self._argv(list(obj))
             return [self._walk(v, depth + 1) for v in obj]
         return obj  # int, float, bool, None
+
+    def _argv(self, items: list[str]) -> list[str]:
+        """String lists may be argv (container cmd, healthcheck): a secret-named flag such as
+        `--http-api-token` redacts the following element; contextual rules see the whole line."""
+        ctx = " ".join(items).lower()
+        context_flags = {
+            f for words, flags in CONTEXT_FLAGS if any(w in ctx for w in words) for f in flags
+        }
+        out: list[str] = []
+        redact_next = False
+        for item in items:
+            if redact_next and not item.startswith("-"):
+                out.append(item if MARKER_RE.fullmatch(item) else self.marker("argv", item))
+                redact_next = False
+                continue
+            out.append(self.text(item, context=ctx))
+            name = item.lstrip("-")
+            redact_next = (
+                item.startswith("-")
+                and "=" not in item
+                and bool(name)
+                and (is_secret_key(name) or item in context_flags)
+            )
+        return out
 
     def _walk_item(self, key: str, value: Any, depth: int) -> Any:
         if is_env_key(key):

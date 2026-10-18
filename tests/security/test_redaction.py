@@ -41,6 +41,16 @@ def test_benign_unchanged(r: Redactor, text: str) -> None:
     assert r.text(text) == text
 
 
+@pytest.mark.parametrize("case", CORPUS["argv"], ids=lambda c: " ".join(c["argv"])[:30])
+def test_argv_lists(r: Redactor, case: dict[str, Any]) -> None:
+    out = r.data({"cmd": case["argv"]})["cmd"]
+    joined = "\n".join(out)
+    for secret in case["secrets"]:
+        assert secret not in joined
+    for keep in case["keep"]:
+        assert keep in out
+
+
 def test_keeps_variable_names(r: Redactor) -> None:
     out = r.text("MYSQL_ROOT_PASSWORD=hunter2-ATLASFAKE other=1")
     assert out.startswith("MYSQL_ROOT_PASSWORD=«redacted:")

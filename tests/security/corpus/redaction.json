@@ -344,9 +344,19 @@
     "one-ATLASFAKE",
     "two-ATLASFAKE"
    ]
+  },
+  {
+   "id": "redis_cli_a",
+   "text": "CMD-SHELL redis-cli -a rd-ATLASFAKE-pw ping || exit 1",
+   "secrets": [
+    "rd-ATLASFAKE-pw"
+   ]
   }
  ],
  "benign": [
+  {
+   "text": "tar -a -cf backup.tar.gz /srv"
+  },
   {
    "text": "nginx:1.27-alpine"
   },
@@ -457,6 +467,112 @@
   },
   {
    "text": "the token expired"
+  }
+ ],
+ "argv": [
+  {
+   "argv": [
+    "--http-api-token",
+    "wt-ATLASFAKE-0001",
+    "--schedule",
+    "0 0 4 * * *"
+   ],
+   "secrets": [
+    "wt-ATLASFAKE-0001"
+   ],
+   "keep": [
+    "--schedule",
+    "0 0 4 * * *"
+   ]
+  },
+  {
+   "argv": [
+    "sshpass",
+    "-p",
+    "sp-ATLASFAKE",
+    "ssh",
+    "host"
+   ],
+   "secrets": [
+    "sp-ATLASFAKE"
+   ],
+   "keep": [
+    "ssh",
+    "host"
+   ]
+  },
+  {
+   "argv": [
+    "redis-cli",
+    "-a",
+    "rd-ATLASFAKE",
+    "ping"
+   ],
+   "secrets": [
+    "rd-ATLASFAKE"
+   ],
+   "keep": [
+    "ping"
+   ]
+  },
+  {
+   "argv": [
+    "mysqldump",
+    "-u",
+    "root",
+    "-pmy-ATLASFAKE",
+    "--all-databases"
+   ],
+   "secrets": [
+    "my-ATLASFAKE"
+   ],
+   "keep": [
+    "root",
+    "--all-databases"
+   ]
+  },
+  {
+   "argv": [
+    "app",
+    "--api-key",
+    "k-ATLASFAKE",
+    "--verbose"
+   ],
+   "secrets": [
+    "k-ATLASFAKE"
+   ],
+   "keep": [
+    "--verbose"
+   ]
+  },
+  {
+   "argv": [
+    "app",
+    "--password-file",
+    "/run/secrets/db",
+    "--token",
+    "--verbose"
+   ],
+   "secrets": [],
+   "keep": [
+    "/run/secrets/db",
+    "--verbose"
+   ]
+  },
+  {
+   "argv": [
+    "tar",
+    "-a",
+    "-cf",
+    "x.tgz",
+    "/srv"
+   ],
+   "secrets": [],
+   "keep": [
+    "-a",
+    "x.tgz",
+    "/srv"
+   ]
   }
  ]
 }
