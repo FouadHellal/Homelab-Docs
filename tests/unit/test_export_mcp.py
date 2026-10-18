@@ -78,7 +78,18 @@ def _sensitive(doc: dict[str, Any]) -> dict[str, set[str]]:
             continue
         if not (a.is_loopback or a.is_link_local):
             v6.add(a.compressed)
+    facet_names: set[str] = set()
+    for e in doc["entities"]:
+        for f in e["facets"].values():
+            if not isinstance(f, dict):
+                continue
+            if isinstance(f.get("os"), dict) and f["os"].get("hostname"):
+                facet_names.add(f["os"]["hostname"])
+            facet_names |= {x.get("name") or "" for x in f.get("ssids") or []}
+            facet_names |= {x.get("name") or "" for x in f.get("clients") or []}
+            facet_names |= set(f.get("search_domains") or [])
     return {
+        "facet_name": {n for n in facet_names if len(n) >= 4},
         "mac": {m.lower() for m in MAC_RE.findall(raw)},
         "ipv4": ips,
         "ipv6": v6,
@@ -185,7 +196,9 @@ def test_sanitized_exports_leak_nothing(doc: dict[str, Any], tmp_path: Path, fmt
     low = text.lower()
     for label, values in _sensitive(doc).items():
         # Names compare case-sensitively: "UCG-Ultra" as a vendor *model* string is fine.
-        leaked = sorted(v for v in values if (v in text if label == "name" else v.lower() in low))
+        leaked = sorted(
+            v for v in values if (v in text if label.endswith("name") else v.lower() in low)
+        )
         assert not leaked, f"{fmt}: {label} leaked: {leaked[:10]}"
     assert NOTE not in text and "ATLASFAKE-owner" not in text and "wiki.internal" not in text
 

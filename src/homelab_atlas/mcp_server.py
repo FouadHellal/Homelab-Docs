@@ -20,8 +20,7 @@ from sqlalchemy.orm import Session
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from homelab_atlas import __version__
-from homelab_atlas.export.build import KIND_PREFIX
-from homelab_atlas.export.sanitize import Sanitizer
+from homelab_atlas.export.build import sanitizer_from_db
 from homelab_atlas.store.tables import Annotation, Entity, Facet
 from homelab_atlas.web import queries
 
@@ -60,10 +59,8 @@ def build_server(
 
     def out(payload: Any) -> dict[str, Any]:
         if sanitize_key is not None:
-            san = Sanitizer(sanitize_key)
             with sessions() as s:
-                for e in s.scalars(select(Entity)):
-                    san.register([e.display_name], KIND_PREFIX.get(e.kind, "obj"))
+                san = sanitizer_from_db(s, sanitize_key)
             payload = san.data(json.loads(json.dumps(payload, default=str)))
         if isinstance(payload, list):
             payload = {"count": len(payload), "items": payload}
