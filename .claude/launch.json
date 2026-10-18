@@ -4,7 +4,7 @@
     {
       "name": "atlas-demo",
       "runtimeExecutable": ".venv/Scripts/atlas.exe",
-      "runtimeArgs": ["serve", "--lab", "demo", "--port", "8765"],
+      "runtimeArgs": ["serve", "--lab", "demo", "--port", "8765", "--schedule"],
       "port": 8765
     }
   ]

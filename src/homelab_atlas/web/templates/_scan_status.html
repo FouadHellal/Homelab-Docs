@@ -1,0 +1,13 @@
+<div id="scan-status">
+  {% if message %}<p class="muted">{{ message }}</p>{% endif %}
+  {% if sched.status.running %}<p><span class="pill partial">running</span> {{ sched.status.running }}</p>{% endif %}
+  <table><thead><tr><th>Collector</th><th>Every</th><th>Last</th><th>Next</th></tr></thead><tbody>
+  {% set nxt = sched.next_runs() %}
+  {% for name, c in sched.status.collectors.items() %}
+  <tr><td>{{ name }}</td><td>{{ (c.interval_s // 60) }} min</td>
+    <td>{% if c.last_status %}<span class="pill {{ c.last_status }}">{{ c.last_status }}</span>{% else %}<span class="muted">-</span>{% endif %}
+      {% if c.backoff_until %}<span class="muted">backoff ×{{ c.failures }}</span>{% endif %}</td>
+    <td class="muted">{{ nxt[name].strftime("%H:%M UTC") if nxt.get(name) else "-" }}</td></tr>
+  {% endfor %}
+  </tbody></table>
+</div>

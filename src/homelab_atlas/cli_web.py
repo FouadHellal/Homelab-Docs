@@ -10,7 +10,17 @@ import typer
 from rich.console import Console
 from sqlalchemy import func, select
 
-from homelab_atlas.runtime import LAB_DATA_DIR, Runtime, config_dir, default_data_dir
+from homelab_atlas.engine.scan import ScanEngine
+from homelab_atlas.runtime import (
+    LAB_DATA_DIR,
+    Runtime,
+    config_dir,
+    default_data_dir,
+    lab_inputs,
+    live_inputs,
+)
+from homelab_atlas.scheduler import Scheduler
+from homelab_atlas.store.retention import DEFAULT_SNAPSHOT_DAYS, prune
 from homelab_atlas.store.tables import User
 from homelab_atlas.web import auth
 
@@ -78,6 +88,20 @@ def ensure_demo_login(rt: Runtime) -> Path | None:
     return path
 
 
+def make_scheduler(rt: Runtime, *, lab: bool) -> Scheduler:
+    """Each run rebuilds inputs, so hosts.yaml edits apply without a restart."""
+    days = int(os.environ.get("ATLAS_SNAPSHOT_DAYS", str(DEFAULT_SNAPSHOT_DAYS)))
+
+    def engine() -> ScanEngine:
+        return rt.scan_engine(lab_inputs("B") if lab else live_inputs())
+
+    def retention() -> None:
+        with rt.sessions() as s:
+            prune(s, days=days)
+
+    return Scheduler(engine, retention=retention)
+
+
 def serve(
     lab: LabFlag = None,
     data_dir: DataOpt = None,
@@ -86,6 +110,9 @@ def serve(
     allowed_host: Annotated[list[str] | None, typer.Option(help="Accepted Host header(s).")] = None,
     forwarded_allow_ips: Annotated[str, typer.Option(help="Reverse proxy IPs.")] = "127.0.0.1",
     hsts: Annotated[bool, typer.Option(help="Send HSTS (behind a TLS proxy).")] = False,
+    schedule: Annotated[
+        bool, typer.Option(help="Run periodic scans + 'Scan now' (ATLAS_INTERVAL_<COLLECTOR>).")
+    ] = False,
 ) -> None:
     """Run the web UI (read-only towards targets)."""
     import uvicorn  # noqa: PLC0415
@@ -102,6 +129,7 @@ def serve(
     else:
         annotations = config_dir() / "annotations"
     hosts = allowed_host or ["localhost", "127.0.0.1"]
+    scheduler = make_scheduler(rt, lab=bool(lab)) if schedule else None
     app = create_app(
         WebConfig(
             sessions=rt.sessions,
@@ -109,6 +137,7 @@ def serve(
             allowed_hosts=hosts,
             hsts=hsts,
             lab=bool(lab),
+            scheduler=scheduler,
         )
     )
     console.print(f"atlas UI on http://{host}:{port} (annotations: {annotations})")
