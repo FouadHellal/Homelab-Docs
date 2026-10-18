@@ -145,6 +145,16 @@ Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a
 - `--insecure-http` only for localhost dev.
 
 **Rejected.** SPA + JWT in localStorage; basic auth at the proxy only (no CSRF and no per-user audit).
+**Implemented (M5).**
+- **Passwords:** argon2-cffi `PasswordHasher` defaults (argon2id). Lockout after 5 failures for 15 min. Unknown users are verified against a dummy hash, so timing doesn't reveal valid names. There's also a per-client login throttle (20 attempts / 10 min).
+- **Sessions:** server-side table storing only the SHA-256 of the token. 30 min idle, 12 h absolute. `set_password` ends all of that user's sessions.
+- **CSRF:** a synchronizer token per session, sent as the `X-CSRF-Token` header (HTMX `hx-headers`) or a form field. Same-origin `Origin` check. The login form uses a double-submit `__Host-atlas-login` cookie.
+- **Cookies:** `__Host-` prefix, Secure, HttpOnly, SameSite=Strict.
+- **CSP:** `default-src 'none'`, scripts only `'self'` + per-response nonce, no `unsafe-inline`/`unsafe-eval`. `style-src 'self'` plus **one hash**: the fixed `<style>` cytoscape 3.34.4 injects (verified in the browser, no other violations).
+- **htmx config:** `allowEval:false`, `allowScriptTags:false`, `selfRequestsOnly:true`.
+- **Other headers and guards:** TrustedHost, `Cache-Control: no-store` on every non-static response, X-Frame-Options DENY, COOP/CORP, Permissions-Policy, optional HSTS (`--hsts` behind a TLS proxy).
+- **Templates:** autoescape, and a test fails on any `|safe`.
+- **Vendored JS:** htmx 2.0.11 and cytoscape 3.34.4 were taken from npm tarballs verified against the registry sha512 integrity, and their SHA-256s are pinned in a test (static/vendor/VENDOR.md).
 
 ## ADR-014 MCP server
 **Facts.** The official Python SDK `mcp` has a 2.x stable line (mid-2026). 1.x is in maintenance. Verify the exact version on PyPI at M6.
@@ -208,3 +218,14 @@ Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a
 
 **Rejected.** OUI vendor lookup (needs a downloaded database; possible later as a vendored file); active probing of unknowns (ADR-016); auto-adding unknowns to inventory (a human decision).
 **Follow-up (M5).** Acknowledging an unknown device is an annotation (`acknowledged: true`), editable in the UI.
+
+## ADR-022 Annotations: YAML is the source of truth (M5)
+**Decision.**
+- **Storage:** `annotations/*.yaml`, one file per entity, file name = slug(key) + sha256(key)[:10]. User input never chooses a path.
+- **Writes:** atomic (temp file + replace), with a fixed key order so git diffs stay small.
+- **Index:** the DB table `annotations` is rebuilt from YAML at UI start and after every save. Invalid files are skipped and listed on the dashboard.
+- **Validation:** links must be http(s), tags are slug-like, criticality is an enum, `extra=forbid`.
+- **Acknowledging an unknown device** writes `acknowledged: true` and sets the entity status to `acknowledged`. Reconciliation keeps that status.
+- **Locations:** live mode uses `$ATLAS_CONFIG_DIR/annotations` (your private config repo). The demo lab copies `fixtures/demo-lab/annotations` to `data/demo-lab/annotations` on first `serve`, so UI edits never touch committed fixtures.
+
+**Rejected.** DB as the source of truth (not git-friendly); one big YAML file (merge conflicts); free-form file names from the UI (path traversal).
