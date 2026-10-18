@@ -1,0 +1,90 @@
+# atlas production stack (docs/DEPLOY.md). Put it behind your TLS reverse proxy; never
+# publish it to the internet. Copy to your deploy host next to ./config and ./secrets.
+#
+#   ./config/hosts.yaml            inventory (secret *names* only), CA files it references
+#   ./config/annotations/          human layer (YAML, ideally a private git repo)
+#   ./secrets/<name>               one file per secret named in hosts.yaml, chown 10001, mode 0400
+#
+# Required env (an .env file next to this one, or the shell):
+#   ATLAS_HOSTNAME   the name your proxy serves atlas under, e.g. atlas.home.arpa
+# Optional: ATLAS_VERSION (image tag), ATLAS_BIND (host IP to publish on, default 127.0.0.1),
+#   ATLAS_PROXY_IP (proxy address for X-Forwarded-*), ATLAS_INTERVAL_<COLLECTOR>, ATLAS_SNAPSHOT_DAYS.
+
+name: atlas
+
+x-hardening: &hardening
+  image: ghcr.io/fouadhellal/homelab-docs:${ATLAS_VERSION:-latest}
+  user: "10001:10001"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs: ["/tmp:size=64m,mode=1777,noexec,nosuid,nodev"]
+  pids_limit: 256
+  mem_limit: 768m
+  restart: unless-stopped
+  init: true
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+services:
+  atlas:
+    <<: *hardening
+    command:
+      - atlas
+      - serve
+      - --host=0.0.0.0
+      - --port=8080
+      - --schedule
+      - --hsts
+      - --allowed-host=${ATLAS_HOSTNAME:?set ATLAS_HOSTNAME}
+      - --forwarded-allow-ips=${ATLAS_PROXY_IP:-127.0.0.1}
+    ports:
+      - "${ATLAS_BIND:-127.0.0.1}:8080:8080"
+    environment:
+      ATLAS_SNAPSHOT_DAYS: ${ATLAS_SNAPSHOT_DAYS:-90}
+      ATLAS_INTERVAL_UNIFI: ${ATLAS_INTERVAL_UNIFI:-900}
+      ATLAS_INTERVAL_PROXMOX: ${ATLAS_INTERVAL_PROXMOX:-900}
+      ATLAS_INTERVAL_LINUX_SSH: ${ATLAS_INTERVAL_LINUX_SSH:-3600}
+      ATLAS_INTERVAL_DOCKER: ${ATLAS_INTERVAL_DOCKER:-3600}
+      ATLAS_INTERVAL_PI: ${ATLAS_INTERVAL_PI:-3600}
+      ATLAS_INTERVAL_NAS: ${ATLAS_INTERVAL_NAS:-21600}
+    volumes:
+      - atlas-data:/data
+      - ./config:/config:ro
+      - ./config/annotations:/config/annotations   # the UI's annotation editor writes here
+    # Names must match `credential:` / `key:` in hosts.yaml. Remove the ones you do not use.
+    secrets: [proxmox_auditor, unifi_api_key, ssh_atlas_ro]
+
+  # Optional read-only MCP endpoint: `docker compose --profile mcp up -d`.
+  mcp:
+    <<: *hardening
+    profiles: [mcp]
+    command:
+      - atlas
+      - mcp
+      - --http
+      - --host=0.0.0.0
+      - --port=8765
+      - --allowed-host=${ATLAS_MCP_HOST:-127.0.0.1:8765}
+    ports:
+      - "${ATLAS_MCP_BIND:-127.0.0.1}:8765:8765"
+    volumes:
+      - atlas-data:/data
+    secrets: [mcp_token]
+    depends_on:
+      atlas: { condition: service_healthy }   # atlas runs the DB migrations first
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8765), 3).close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  atlas-data:
+
+secrets:
+  proxmox_auditor: { file: ./secrets/proxmox_auditor }
+  unifi_api_key: { file: ./secrets/unifi_api_key }
+  ssh_atlas_ro: { file: ./secrets/ssh_atlas_ro }
+  mcp_token: { file: ./secrets/mcp_token }
