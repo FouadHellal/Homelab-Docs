@@ -91,31 +91,6 @@ TEXT_RULES: Final[tuple[TextRule, ...]] = (
         "argon2",
         _r(r"\$argon2(?:id|i|d)\$v=\d+\$m=\d+,t=\d+,p=\d+\$[A-Za-z0-9+/]+\$[A-Za-z0-9+/]+"),
     ),
-    # --- command lines ------------------------------------------------------------
-    TextRule(
-        "cli_flag",
-        _r(
-            r"(?i)(?<![\w-])--?(?:password|passwd|pass|pwd|token|secret|api[-_]?key|apikey|"
-            r"auth[-_]?token|access[-_]?key|secret[-_]?key|client[-_]?secret|private[-_]?key|"
-            r"psk|passphrase|credentials?|bearer|requirepass|masterauth)"
-            r"(?:=|\s+)[\"']?([^\s\"']+)"
-        ),
-        1,
-    ),
-    TextRule(
-        "mysql_p",
-        _r(r"(?<![\w-])-p([^\s-][^\s]*)"),
-        1,
-        context=("mysql", "mariadb", "mysqldump", "mysqladmin"),
-    ),
-    TextRule("sshpass", _r(r"(?<![\w-])-p\s+([^\s]+)"), 1, context=("sshpass",)),
-    TextRule("redis_cli", _r(r"(?<![\w-])-a\s+([^\s\"']+)"), 1, context=("redis-cli",)),
-    TextRule(
-        "redis_auth",
-        _r(r"(?i)\b(?:requirepass|masterauth|AUTH)\s+([^\s\"']+)"),
-        1,
-        context=("redis",),
-    ),
     # --- query strings and assignments --------------------------------------------
     TextRule(
         "query",
@@ -134,6 +109,32 @@ TEXT_RULES: Final[tuple[TextRule, ...]] = (
         ),
         2,
         key_group=1,
+    ),
+    # --- command lines ------------------------------------------------------------
+    TextRule(
+        "cli_flag",
+        _r(
+            r"(?i)(?<![\w-])--?(?:password|passwd|pass|pwd|token|secret|api[-_]?key|apikey|"
+            r"auth[-_]?token|access[-_]?key|secret[-_]?key|client[-_]?secret|private[-_]?key|"
+            r"psk|passphrase|credentials?|bearer|requirepass|masterauth)"
+            # A value never starts with "-": `-PASSWORD --token X` must not eat the next flag.
+            r"(?:=|\s+)[\"']?([^\s\"'-][^\s\"']*)"
+        ),
+        1,
+    ),
+    TextRule(
+        "mysql_p",
+        _r(r"(?<![\w-])-p([^\s-][^\s]*)"),
+        1,
+        context=("mysql", "mariadb", "mysqldump", "mysqladmin"),
+    ),
+    TextRule("sshpass", _r(r"(?<![\w-])-p\s+([^\s]+)"), 1, context=("sshpass",)),
+    TextRule("redis_cli", _r(r"(?<![\w-])-a\s+([^\s\"']+)"), 1, context=("redis-cli",)),
+    TextRule(
+        "redis_auth",
+        _r(r"(?i)\b(?:requirepass|masterauth|AUTH)\s+([^\s\"']+)"),
+        1,
+        context=("redis",),
     ),
 )
 
