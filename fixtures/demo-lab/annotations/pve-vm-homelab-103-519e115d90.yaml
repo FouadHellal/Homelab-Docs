@@ -1,0 +1,13 @@
+entity: pve:vm:homelab/103
+owner: ops
+purpose: Public reverse proxy and static sites
+criticality: high
+tags:
+- edge
+- prod
+links:
+- title: Runbook
+  url: https://wiki.lab.example/web01
+notes: 'TLS via Let''s Encrypt (DNS-01).
+
+  Restart nginx after cert renewal.'

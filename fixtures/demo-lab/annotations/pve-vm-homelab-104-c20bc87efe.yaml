@@ -1,0 +1,7 @@
+entity: pve:vm:homelab/104
+owner: ops
+purpose: PostgreSQL 15 for apps
+criticality: critical
+tags:
+- db
+- prod

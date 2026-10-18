@@ -1,0 +1,3 @@
+entity: pve:cluster:homelab
+purpose: Two-node Proxmox cluster
+criticality: critical
