@@ -7,7 +7,10 @@ requires-python = ">=3.12,<3.14"
 license = { text = "Proprietary" }
 authors = [{ name = "Fouad HELLAL" }]
 dependencies = [
+    "asyncssh>=2.21",
+    "httpx>=0.28",
     "pydantic>=2.10",
+    "structlog>=25.1",
     "typer>=0.15",
 ]
 
@@ -21,8 +24,10 @@ dev = [
     "poethepoet>=0.32",
     "pre-commit>=4.0",
     "pytest>=8.3",
+    "pytest-asyncio>=1.2",
     "pytest-cov>=6.0",
     "ruff>=0.17",
+    "trustme>=1.2",
 ]
 
 [build-system]
@@ -57,7 +62,10 @@ select = [
     "E", "W", "F", "I", "N", "UP", "B", "S", "A", "C4", "SIM", "PT", "PTH",
     "RUF", "TID", "ASYNC", "BLE", "T20", "PL", "TRY", "ERA",
 ]
-ignore = ["TRY003", "PLR0913"]
+ignore = ["TRY003", "PLR0913", "PLR0911", "PLR2004", "N818"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["homelab_atlas", "tests"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
@@ -77,12 +85,17 @@ ban-relative-imports = "all"
 
 [tool.ruff.lint.per-file-ignores]
 "src/homelab_atlas/security/**" = ["TID251"]
-"tests/**" = ["S101", "PLR2004", "TID251"]
+"src/homelab_atlas/security/errors.py" = ["S105"]
+"src/homelab_atlas/redact/rules.py" = ["S105"]
+# RUF001: homoglyphs are deliberate attack inputs. S105/S106: fake ATLASFAKE secrets.
+"tests/**" = ["S101", "TID251", "RUF001", "S105", "S106", "PT011"]
 
 # ---------------------------------------------------------------- mypy
 [tool.mypy]
 python_version = "3.12"
 files = ["src", "tests"]
+mypy_path = ["src", "."]
+explicit_package_bases = true
 strict = true
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
@@ -98,6 +111,9 @@ warn_required_dynamic_aliases = true
 minversion = "8.0"
 testpaths = ["tests"]
 addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 xfail_strict = true
 filterwarnings = ["error"]
 markers = [
