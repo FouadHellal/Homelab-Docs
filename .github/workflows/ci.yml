@@ -28,6 +28,8 @@ jobs:
       - run: uv sync
       - run: uv lock --check
       - run: uv run poe lint
+      - name: shellcheck target scripts
+        run: shellcheck -s bash docs/targets/atlas-probe docs/targets/atlas-probe-gate
       - run: uv run poe type
 
   test:
