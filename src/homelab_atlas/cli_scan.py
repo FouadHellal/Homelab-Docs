@@ -325,6 +325,21 @@ def db_upgrade(lab: LabOpt = None, data_dir: DataOpt = None) -> None:
     console.print(f"{ddir / 'atlas.db'}: up to date")
 
 
+@db_app.command("prune")
+def db_prune(
+    days: Annotated[int, typer.Option(min=1, help="Keep snapshots this many days.")] = 90,
+    lab: LabOpt = None,
+    data_dir: DataOpt = None,
+) -> None:
+    """Delete old snapshots (newest per entity/collector is always kept) and orphan blobs."""
+    from homelab_atlas.store.retention import prune  # noqa: PLC0415
+
+    rt = Runtime.open(data_dir or default_data_dir(lab=lab is not None), mode="live")
+    with rt.sessions() as s:
+        res = prune(s, days=days)
+    console.print(f"pruned {res.snapshots} snapshot(s), {res.blobs} blob(s)")
+
+
 def unknown(
     lab: LabOpt = None,
     data_dir: DataOpt = None,

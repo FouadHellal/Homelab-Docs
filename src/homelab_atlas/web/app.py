@@ -26,6 +26,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from homelab_atlas import __version__
 from homelab_atlas.inventory import annotations as ann
+from homelab_atlas.scheduler import Scheduler
 from homelab_atlas.store.tables import Annotation, Entity
 from homelab_atlas.web import auth, queries, topology
 
@@ -44,6 +45,8 @@ class WebConfig:
     allowed_hosts: list[str] = field(default_factory=lambda: ["localhost", "127.0.0.1"])
     hsts: bool = False  # set when served behind a TLS reverse proxy
     lab: bool = False
+    #: Periodic scans + "Scan now"; None = read-only viewer (scans run via `atlas scan`).
+    scheduler: Scheduler | None = None
 
 
 class LoginThrottle:
@@ -99,7 +102,13 @@ def create_app(cfg: WebConfig) -> FastAPI:
             errors = ann.sync(s, cfg.annotations_dir)
             s.commit()
         _app.state.annotation_errors = errors
-        yield
+        if cfg.scheduler is not None:
+            cfg.scheduler.start()
+        try:
+            yield
+        finally:
+            if cfg.scheduler is not None:
+                cfg.scheduler.shutdown()
 
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.annotation_errors = []
@@ -262,7 +271,20 @@ def create_app(cfg: WebConfig) -> FastAPI:
             user,
             d=queries.dashboard(s),
             annotation_errors=app.state.annotation_errors,
+            sched=cfg.scheduler,
         )
+
+    @app.post("/scan", response_class=HTMLResponse)
+    async def scan_now(request: Request, user: Csrf) -> Response:
+        """Manual full scan (same read-only engine as the schedule). Needs CSRF."""
+        if cfg.scheduler is None:
+            raise HTTPException(404, "scheduler disabled (start with atlas serve --schedule)")
+        started = cfg.scheduler.trigger()
+        if not partial(request):
+            return RedirectResponse("/", 303)
+        msg = "Scan started." if started else "A scan is already running."
+        return page(request, "_scan_status.html", user, sched=cfg.scheduler, message=msg,
+                    status=202 if started else 200)  # htmx skips 4xx swaps  # fmt: skip
 
     @app.get("/entities", response_class=HTMLResponse)
     def entity_list(request: Request, s: DB, user: User,

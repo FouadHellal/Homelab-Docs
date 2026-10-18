@@ -36,6 +36,17 @@
   </div>
 </section>
 
+{% if sched %}
+<section class="card">
+  <h2>Schedule
+    <form class="inline" method="post" action="/scan" hx-post="/scan" hx-target="#scan-status" hx-swap="outerHTML">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button type="submit" class="small">Scan now</button>
+    </form></h2>
+  {% set message = None %}{% include "_scan_status.html" %}
+</section>
+{% endif %}
+
 <section class="card">
   <h2>Recent changes <a class="more" href="/changes">all</a></h2>
   <table class="events"><tbody>
