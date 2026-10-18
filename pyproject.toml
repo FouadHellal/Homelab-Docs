@@ -7,9 +7,13 @@ requires-python = ">=3.12,<3.14"
 license = { text = "Proprietary" }
 authors = [{ name = "Fouad HELLAL" }]
 dependencies = [
+    "alembic>=1.14",
     "asyncssh>=2.21",
+    "filelock>=3.16",
     "httpx>=0.28",
     "pydantic>=2.10",
+    "pyyaml>=6.0",
+    "sqlalchemy>=2.0.36",
     "structlog>=25.1",
     "typer>=0.15",
 ]
@@ -28,6 +32,7 @@ dev = [
     "pytest-cov>=6.0",
     "ruff>=0.17",
     "trustme>=1.2",
+    "types-pyyaml>=6.0",
 ]
 
 [build-system]
