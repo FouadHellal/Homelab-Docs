@@ -49,7 +49,7 @@ def _claim(idx: Index, macs: Iterable[Any], key: str) -> None:
             idx.mac_owner.setdefault(mac, key)
 
 
-def build_index(facets: list[Facet], inventory: Inventory, names: dict[str, str]) -> Index:
+def build_index(facets: list[Facet], inventory: Inventory | None, names: dict[str, str]) -> Index:
     idx = Index(names=names)
     by_collector: dict[str, list[Facet]] = {}
     for f in facets:
@@ -77,7 +77,7 @@ def build_index(facets: list[Facet], inventory: Inventory, names: dict[str, str]
         idx.ips.update(ip for a in f.data.get("ips") or [] if (ip := _ip(a.get("address"))))
         if ip := _ip(f.data.get("ip")):
             idx.ips.add(ip)
-    for h in inventory.hosts:
+    for h in inventory.hosts if inventory is not None else ():
         if ip := _ip(h.address):
             idx.ips.add(ip)
         if h.match.mac:
@@ -85,7 +85,7 @@ def build_index(facets: list[Facet], inventory: Inventory, names: dict[str, str]
     return idx
 
 
-def _network_of(idx: Index, ip: str | None) -> tuple[str | None, int | None]:
+def network_of(idx: Index, ip: str | None) -> tuple[str | None, int | None]:
     if ip is None:
         return None, None
     addr = ipaddress.ip_address(ip)
@@ -173,7 +173,7 @@ def reconcile(s: Session, scan_id: int, inventory: Inventory) -> list[EventSpec]
                     )
                 )
             continue
-        net, vlan = _network_of(idx, obs["ip"])
+        net, vlan = network_of(idx, obs["ip"])
         uplink = idx.names.get(f"unifi:dev:{obs['uplink_mac']}") if obs["uplink_mac"] else None
         data = {**obs, "network": net, "vlan": vlan, "uplink": uplink}
         label = obs["name"] or mac
