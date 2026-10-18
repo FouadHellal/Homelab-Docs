@@ -111,3 +111,12 @@ def _register_web_commands() -> None:
 
 
 _register_web_commands()
+
+
+def _register_export_commands() -> None:
+    from homelab_atlas.cli_export import register  # noqa: PLC0415
+
+    register(app)
+
+
+_register_export_commands()
