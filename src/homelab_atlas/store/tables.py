@@ -81,6 +81,8 @@ class Entity(Base):
     last_seen: Mapped[datetime] = mapped_column(default=utcnow)
     status: Mapped[str] = mapped_column(String(16), default="known")
     last_scan_id: Mapped[int | None] = mapped_column(ForeignKey("scans.id"), default=None)
+    #: Topology parent: container -> host, guest -> node, node -> cluster.
+    parent_key: Mapped[str | None] = mapped_column(String(256), default=None, index=True)
 
 
 class Blob(Base):
@@ -110,6 +112,8 @@ class Facet(Base):
     __tablename__ = "facets"
     entity_key: Mapped[str] = mapped_column(ForeignKey("entities.key"), primary_key=True)
     collector: Mapped[str] = mapped_column(String(32), primary_key=True)
+    #: The collector target that reports this entity (host name or API source name).
+    target: Mapped[str] = mapped_column(String(128), default="", server_default="", index=True)
     scan_id: Mapped[int] = mapped_column(ForeignKey("scans.id"))
     data: Mapped[dict[str, Any]] = mapped_column()
 
