@@ -109,6 +109,7 @@ TEXT_RULES: Final[tuple[TextRule, ...]] = (
         context=("mysql", "mariadb", "mysqldump", "mysqladmin"),
     ),
     TextRule("sshpass", _r(r"(?<![\w-])-p\s+([^\s]+)"), 1, context=("sshpass",)),
+    TextRule("redis_cli", _r(r"(?<![\w-])-a\s+([^\s\"']+)"), 1, context=("redis-cli",)),
     TextRule(
         "redis_auth",
         _r(r"(?i)\b(?:requirepass|masterauth|AUTH)\s+([^\s\"']+)"),
