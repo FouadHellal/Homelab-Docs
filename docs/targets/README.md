@@ -2,7 +2,8 @@
 
 Probe version **1.2.0**. Regenerate with `uv run atlas targets render`.
 Do not edit these files: the collector pins the probe's SHA-256 and `atlas doctor`
-reports any mismatch. Step-by-step instructions come in docs/SETUP-TARGETS.md (M7).
+reports any mismatch. Step-by-step instructions:
+[docs/SETUP-TARGETS.md](../SETUP-TARGETS.md).
 
 | File | Install as | Owner / mode |
 |---|---|---|
