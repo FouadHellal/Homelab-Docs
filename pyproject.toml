@@ -8,12 +8,14 @@ license = { text = "Proprietary" }
 authors = [{ name = "Fouad HELLAL" }]
 dependencies = [
     "alembic>=1.14",
+    "apscheduler>=3.11.3,<4",
     "argon2-cffi>=23.1",
     "asyncssh>=2.21",
     "fastapi>=0.115",
     "filelock>=3.16",
     "httpx>=0.28",
     "jinja2>=3.1.4",
+    "mcp>=2.3,<3",
     "pydantic>=2.10",
     "python-multipart>=0.0.18",
     "pyyaml>=6.0",
@@ -107,7 +109,7 @@ ban-relative-imports = "all"
 # FastAPI idiom: Annotated dependency aliases and many injected params per route.
 "src/homelab_atlas/web/app.py" = ["N806", "PLR0917", "TRY301"]
 # RUF001: homoglyphs are deliberate attack inputs. S105/S106: fake ATLASFAKE secrets.
-"tests/**" = ["S101", "TID251", "RUF001", "S105", "S106", "PT011", "S104", "S604"]
+"tests/**" = ["S101", "TID251", "RUF001", "S105", "S106", "PT011", "S104", "S604", "PT018"]
 # Generated-data scripts: long literal rows, fake 0.0.0.0 listeners, prints.
 "fixtures/**" = ["E501", "S104", "RUF028", "T201", "S324"]
 
@@ -121,6 +123,11 @@ strict = true
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# APScheduler 3.x ships no type information (4.x will); used only in scheduler.py.
+module = ["apscheduler.*"]
+ignore_missing_imports = true
 
 [tool.pydantic-mypy]
 init_forbid_extra = true
