@@ -1,0 +1,8 @@
+ATLAS-PROBE 1 storage 0a355bae54994c98de84dcc0
+--0a355bae54994c98de84dcc0 part lsblk
+{"blockdevices": [{"name": "sda", "type": "disk", "size": 34359738368, "fstype": null, "mountpoint": null, "model": "QEMU HARDDISK", "children": [{"name": "sda1", "type": "part", "size": 33285996544, "fstype": "ext4", "mountpoint": "/", "model": null}]}, {"name": "loop0", "type": "loop", "size": 1, "fstype": null, "mountpoint": null, "model": null}]}
+--0a355bae54994c98de84dcc0 rc 0
+--0a355bae54994c98de84dcc0 part findmnt
+{"filesystems": [{"target": "/", "source": "/dev/sda1", "fstype": "ext4", "size": 33285996544, "used": 9123460885, "avail": 24162535659, "children": [{"target": "/proc", "source": "proc", "fstype": "proc", "size": 0, "used": 0, "avail": 0}, {"target": "/run", "source": "tmpfs", "fstype": "tmpfs", "size": 1, "used": 1, "avail": 0}]}]}
+--0a355bae54994c98de84dcc0 rc 0
+--0a355bae54994c98de84dcc0 end

@@ -1,0 +1,31 @@
+ATLAS-PROBE 1 os 9d9be3ce1f2025118a15b694
+--9d9be3ce1f2025118a15b694 part os-release
+PRETTY_NAME="Debian GNU/Linux 12 (bookworm)"
+NAME="Debian"
+VERSION_ID="12"
+VERSION_CODENAME=bookworm
+ID=debian
+
+--9d9be3ce1f2025118a15b694 rc 0
+--9d9be3ce1f2025118a15b694 part kernel
+6.1.0-25-amd64
+--9d9be3ce1f2025118a15b694 rc 0
+--9d9be3ce1f2025118a15b694 part arch
+x86_64
+--9d9be3ce1f2025118a15b694 rc 0
+--9d9be3ce1f2025118a15b694 part hostname
+médiathèque
+--9d9be3ce1f2025118a15b694 rc 0
+--9d9be3ce1f2025118a15b694 part machine-id
+b105a54e554f48de0da2b73a18fd79d7
+--9d9be3ce1f2025118a15b694 rc 0
+--9d9be3ce1f2025118a15b694 part uptime
+950400.42 1234567.89
+--9d9be3ce1f2025118a15b694 rc 0
+--9d9be3ce1f2025118a15b694 part virt
+kvm
+--9d9be3ce1f2025118a15b694 rc 0
+--9d9be3ce1f2025118a15b694 part timezone
+Europe/Paris
+--9d9be3ce1f2025118a15b694 rc 0
+--9d9be3ce1f2025118a15b694 end

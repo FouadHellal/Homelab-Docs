@@ -1,0 +1,21 @@
+ATLAS-PROBE 1 net d27713fb9bb66370f5b20ac9
+--d27713fb9bb66370f5b20ac9 part addr
+[{"ifindex": 1, "ifname": "lo", "mtu": 65536, "operstate": "UNKNOWN", "link_type": "loopback", "address": "00:00:00:00:00:00", "addr_info": [{"family": "inet", "local": "127.0.0.1", "prefixlen": 8, "scope": "host"}, {"family": "inet6", "local": "::1", "prefixlen": 128, "scope": "host"}]}, {"ifindex": 2, "ifname": "eth0", "mtu": 1500, "operstate": "UP", "link_type": "ether", "address": "bc:24:11:7d:a6:cf", "addr_info": [{"family": "inet", "local": "10.0.20.12", "prefixlen": 24, "scope": "global"}, {"family": "inet6", "local": "2001:db8:20::12", "prefixlen": 64, "scope": "global"}]}, {"ifindex": 3, "ifname": "docker0", "mtu": 1500, "operstate": "UP", "link_type": "ether", "address": "bc:24:11:70:06:31", "addr_info": [{"family": "inet", "local": "172.17.0.1", "prefixlen": 16, "scope": "global"}]}, {"ifindex": 4, "ifname": "br-1a2b3c4d5e6f", "mtu": 1500, "operstate": "UP", "link_type": "ether", "address": "bc:24:11:9c:09:d9", "addr_info": [{"family": "inet", "local": "172.18.0.1", "prefixlen": 16, "scope": "global"}]}, {"ifindex": 100, "ifname": "veth2ed94da", "mtu": 1500, "operstate": "UP", "address": "bc:24:11:58:19:28", "addr_info": [], "master": "docker0"}, {"ifindex": 101, "ifname": "veth6eda5cd", "mtu": 1500, "operstate": "UP", "address": "bc:24:11:dd:da:23", "addr_info": [], "master": "docker0"}, {"ifindex": 102, "ifname": "veth5ee4938", "mtu": 1500, "operstate": "UP", "address": "bc:24:11:a6:6d:64", "addr_info": [], "master": "docker0"}, {"ifindex": 103, "ifname": "vethb308a35", "mtu": 1500, "operstate": "UP", "address": "bc:24:11:c0:7c:a5", "addr_info": [], "master": "docker0"}]
+--d27713fb9bb66370f5b20ac9 rc 0
+--d27713fb9bb66370f5b20ac9 part link
+[{"ifname": "lo"}, {"ifname": "eth0"}, {"ifname": "docker0", "linkinfo": {"info_kind": "bridge"}}, {"ifname": "br-1a2b3c4d5e6f", "linkinfo": {"info_kind": "bridge"}}, {"ifname": "veth2ed94da", "linkinfo": {"info_kind": "veth"}}, {"ifname": "veth6eda5cd", "linkinfo": {"info_kind": "veth"}}, {"ifname": "veth5ee4938", "linkinfo": {"info_kind": "veth"}}, {"ifname": "vethb308a35", "linkinfo": {"info_kind": "veth"}}]
+--d27713fb9bb66370f5b20ac9 rc 0
+--d27713fb9bb66370f5b20ac9 part route4
+[{"dst": "default", "gateway": "10.0.20.1", "dev": "eth0", "protocol": "static"}, {"dst": "10.0.20.0/24", "dev": "eth0", "protocol": "kernel"}]
+--d27713fb9bb66370f5b20ac9 rc 0
+--d27713fb9bb66370f5b20ac9 part route6
+[{"dst": "default", "gateway": "fe80::1", "dev": "eth0", "protocol": "ra", "metric": 1024}, {"dst": "2001:db8:20::/64", "dev": "eth0", "protocol": "kernel", "metric": 1024}]
+--d27713fb9bb66370f5b20ac9 rc 0
+--d27713fb9bb66370f5b20ac9 part neigh
+[{"dst": "10.0.20.1", "dev": "eth0", "lladdr": "e4:38:83:00:00:01", "state": ["REACHABLE"]}, {"dst": "10.0.20.99", "dev": "eth0", "lladdr": "aa:bb:cc:00:00:99", "state": ["STALE"]}]
+--d27713fb9bb66370f5b20ac9 rc 0
+--d27713fb9bb66370f5b20ac9 part resolv
+nameserver 10.0.20.1
+search lab.example
+--d27713fb9bb66370f5b20ac9 rc 0
+--d27713fb9bb66370f5b20ac9 end

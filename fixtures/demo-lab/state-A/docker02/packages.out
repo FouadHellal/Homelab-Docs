@@ -1,0 +1,16 @@
+ATLAS-PROBE 1 packages d8c1bc51cdd9f03ec6cc867e
+--d8c1bc51cdd9f03ec6cc867e part dpkg
+bash	5.2.21-2ubuntu4	ii 
+ca-certificates	20240203	ii 
+curl	8.5.0-2ubuntu10.4	ii 
+docker-ce	5:27.3.1-1~ubuntu.24.04~noble	ii 
+less	590-2ubuntu2.1	ii 
+libc6	2.39-0ubuntu8.3	ii 
+openssh-server	1:9.6p1-3ubuntu13.5	ii 
+openssl	3.0.13-0ubuntu3.4	ii 
+sudo	1.9.15p5-3ubuntu5	ii 
+systemd	255.4-1ubuntu8.4	ii 
+tzdata	2024a-3ubuntu1.1	ii 
+unattended-upgrades	2.9.1+nmu4ubuntu1	ii 
+--d8c1bc51cdd9f03ec6cc867e rc 0
+--d8c1bc51cdd9f03ec6cc867e end

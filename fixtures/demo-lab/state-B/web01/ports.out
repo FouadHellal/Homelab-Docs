@@ -1,0 +1,9 @@
+ATLAS-PROBE 1 ports 2d3abb32d067a2c562bce2c9
+--2d3abb32d067a2c562bce2c9 part listen
+tcp   LISTEN 0      4096   0.0.0.0:22   0.0.0.0:*    users:(("sshd",pid=819,fd=3))
+tcp   LISTEN 0      4096   0.0.0.0:80   0.0.0.0:*    users:(("nginx",pid=1207,fd=3))
+tcp   LISTEN 0      4096   0.0.0.0:443   0.0.0.0:*    users:(("nginx",pid=1207,fd=3))
+tcp   LISTEN 0      4096   [::]:443   [::]:*    users:(("nginx",pid=1207,fd=3))
+tcp   LISTEN 0      4096   0.0.0.0:8443   0.0.0.0:*    users:(("nginx",pid=1207,fd=3))
+--2d3abb32d067a2c562bce2c9 rc 0
+--2d3abb32d067a2c562bce2c9 end
