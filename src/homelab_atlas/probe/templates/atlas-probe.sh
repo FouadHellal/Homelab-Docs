@@ -149,8 +149,10 @@ case "$section" in
         part compose docker compose ls --all --format json
         ;;
     pi)
-        echo "atlas-probe: section $section not implemented in $VERSION" >&2
-        exit 3
+        part model cat /proc/device-tree/model
+        part temp vcgencmd measure_temp
+        part throttled vcgencmd get_throttled
+        part thermal cat /sys/class/thermal/thermal_zone0/temp
         ;;
     *)
         echo "atlas-probe: unknown section" >&2

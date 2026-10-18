@@ -133,8 +133,13 @@ def test_probe_rejects_arguments(probe: Path, args: tuple[str, ...]) -> None:
 
 
 @needs_bash
-def test_probe_unimplemented_sections(probe: Path) -> None:
-    assert run(probe, "pi").returncode == 3
+def test_probe_pi_section_frames_cleanly(probe: Path) -> None:
+    """Off a Pi, vcgencmd and the device-tree model are missing: parts fail, frame is valid."""
+    res = run(probe, "pi")
+    assert res.returncode == 0, res.stderr
+    frame = parse_frame(res.stdout, ProbeSection.PI)
+    assert frame.complete
+    assert {"model", "temp", "throttled", "thermal"} <= set(frame.parts)
 
 
 @needs_bash
