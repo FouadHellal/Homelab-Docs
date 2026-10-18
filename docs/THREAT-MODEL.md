@@ -38,6 +38,7 @@ Status: draft for approval (M0a). Method: assets → trust boundaries (ARCHITECT
 | Threat | Example | Controls | Test / check |
 |---|---|---|---|
 | T | POST to `/devices/{id}/actions`, DELETE policy | endpoint registry; GET only (+ registered Classic login/logout POSTs); explicit deny of `/actions`; no method-override headers; redirects off | refusal tests for every method and override header; path-trick fuzz (`..`, `%2e%2e`, `%252e`, `;`, `//`, `\`, unicode full-stop U+FF0E, trailing dot, case variants) |
+| I | Wi-Fi PSKs collected | the parser reads only `securityConfiguration.type`; the SSID details endpoint isn't registered; leak test runs over fixtures with fake PSKs |
 | E | UniFi key inherits full admin | create the key as a view-only local admin; SECURITY.md states the residual risk if UniFi won't allow that | `atlas doctor` reports the key owner's role where the API exposes it |
 | E | PVE token over-privileged | PVEAuditor + privsep; doctor fails on any non-`*.Audit` privilege via `/access/permissions` | doctor unit test against fixture permission sets |
 | S | MITM on self-signed certs | CA/fingerprint pinning, verify never off | test: mismatched fingerprint ⇒ refusal |

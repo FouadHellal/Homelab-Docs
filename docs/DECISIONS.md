@@ -56,12 +56,29 @@ PVEAuditor is confirmed to be the union of every category's `audit` group, and t
 5. `atlas doctor` reads `GET /v1/info` and records the app version. It warns if the version is newer than the tested schema set.
 
 **Rejected.** The cloud Site Manager / connector API (`api.ui.com`, cloud dependency); SSH to the UCG (shell on the gateway, vendor discourages it); SNMP (UCG coverage is thin and gives no clients or firewall data); `aiounifi` / `unifi-controller-api` libraries (they bring write paths, and wrapping our own client keeps the read-only guarantee in our code).
-**Sources.** https://developer.ui.com/network/v10.6.102/updatefirewallzone (version index) · https://developer.ui.com/network/v9.3.43/getdevicedetails · https://github.com/gigabrit/unifi-network-api-reference (v10.3.58, community) · https://github.com/uchkunr/unifi-best-practices (v10.1.68, community: key inherits creator permissions, Classic login/CSRF). **Verify at M4** against the OpenAPI spec of the UCG's installed version. Community sources are secondary.
+**Sources.** https://developer.ui.com/network/v10.6.102/updatefirewallzone (version index) · https://developer.ui.com/network/v9.3.43/getdevicedetails · https://github.com/gigabrit/unifi-network-api-reference (v10.3.58, community) · https://github.com/uchkunr/unifi-best-practices (v10.1.68, community: key inherits creator permissions, Classic login/CSRF). **Verified at M4 (2026-10-18)** against the official OpenAPI spec, Network **v10.6.106** (https://developer.ui.com/network/v10.6.106/openapi.json; version index at https://developer.ui.com/llms.txt):
+- **Server and auth:** server `https://{consoleIP}/proxy/network/integration`, header `X-API-KEY`.
+- **Pagination:** lists are paginated with `offset`/`limit` (max 200), and responses come as `{offset, limit, count, totalCount, data}`.
+- **Fields used:**
+  - device `state` enum: ONLINE, OFFLINE, …, CONNECTION_INTERRUPTED;
+  - device details: `interfaces.ports` / `radios`, `uplink.deviceId`;
+  - clients: wired and wireless, both with `macAddress` and `uplinkDeviceId`;
+  - networks: `vlanId`, `management`, `ipv4Configuration.hostIpAddress` / `prefixLength`;
+  - firewall zones (`networkIds`) and policies (`action.type`, `source/destination.zoneId`, `index`, `loggingEnabled`).
+- **Passphrases:** Wi-Fi security schemas carry `passphrase` inside `securityConfiguration`. The collector reads only `securityConfiguration.type`, and the per-SSID details endpoint is **not registered at all**. `hotspot/vouchers` and `statistics` aren't registered either.
+- **Allowlist:** in `collectors/unifi/endpoints.py`, GET only.
+- **Not verified:** the port-object fields (`idx`, `connector`, `maxSpeedMbps`, `speedMbps`, `poe.enabled`) come from the v9.3.43 docs sample, because that schema wasn't in the parts of the v10.6.106 spec I could read. Port state and speed are volatile anyway.
+- **Classic-API enrichment** (uplink port numbers, LLDP) is **not implemented** in M4. Integration-API `uplink.deviceId` is enough for the gateway → switch → AP tree. It will be added only if per-port topology turns out to be needed.
+- `atlas doctor` checks the Network version (≥ 9.3) and says plainly that key scope cannot be verified.
 
 ## ADR-006 UNAS (UniFi Drive)
 **Facts.** No official public UNAS/Drive API was found. Community integrations read `https://<unas>/proxy/drive/api/...`. With an API key you get storage, pools, disks, SMART and system data. Shares and snapshots need a local account (tested on UniFi OS 5.1.19 / Drive 4.3.6; 401 regressions seen on 5.1.33). Ubiquiti advises against SSH unless support asks, and the UNAS Pro runs its own sshd.
 **Decision.** Best effort, in this order: (1) UniFi Network device record if the UNAS appears there; (2) Drive GET API behind `nas.drive_api: true` (API key only, GET allowlist, schema-tolerant parsing, every field optional); (3) `manual/nas.yaml` fallback merged as a "manual" facet. No SSH.
 **Rejected.** SSH probe (appliance, vendor guidance); SMB/NFS enumeration (wrong layer, needs credentials).
+**Implemented at M4.**
+- `drive_api: true` uses three GET endpoints a Drive API key can read (`/api/system`, `/proxy/drive/api/v2/storage`, `/proxy/drive/api/v2/systems/device-info`), as described in the community docs (`docs/API.md`, UniFi OS 5.1.19 / Drive 4.3.6). Every field is optional.
+- Otherwise the owner writes `<config>/manual/<name>.yaml`, which accepts only the keys model, mac, firmware, pools, disks and shares.
+- The UNAS shows up in UniFi as a client and is matched to the NAS entity by MAC.
 **Sources.** https://github.com/LayerTM/unifi-unas-ha · https://help.ui.com/hc/en-us/articles/204909374-Connecting-to-UniFi-with-Debug-Tools-SSH. Verify at M4.
 
 ## ADR-007 Docker data path
@@ -178,3 +195,16 @@ Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a
 
 **Rejected.** One entity per container with its own snapshot (an event storm on every compose update, and IDs churn). A single merged "host" document across collectors (a failure in one collector would blank the others).
 **Known gap (M4).** The VM↔Linux-host link (by MAC) is not made yet, so `pve2 (PVE node)` and `pve2` (SSH) are separate entities. Both report the kernel upgrade.
+
+## ADR-021 Correlation and unknown devices (M4)
+**Decision.** A passive reconciliation pass runs after every scan (`engine/reconcile.py`).
+- **Correlation.** An SSH host with a NIC MAC equal to a Proxmox guest NIC gets `same_as = pve:vm|lxc:…`. One whose IP equals a PVE node's cluster IP gets `same_as = pve:node:…`. Logical topology: node > VM (≡ host) > containers.
+- **Known identities.** UniFi device MACs and NAS MACs, plus hosts.yaml `address` and `match.mac`.
+- **Unknown devices.** Candidates are UniFi clients (with name, uplink AP or switch, IP) and ARP/NDP neighbours of probed hosts. A candidate is unknown if neither its MAC nor its IP is explained by any facet or hosts.yaml.
+  - It becomes entity `net:mac:<mac>` with status `unknown`.
+  - The VLAN comes from the UniFi network whose subnet contains the IP.
+  - First sight emits `device.unknown_seen` ("new device on VLAN 30 via ap-office"). A later match emits `device.identified`.
+- **Missing.** An inventory host whose last 3 runs all failed gets status `missing`; a success restores it.
+
+**Rejected.** OUI vendor lookup (needs a downloaded database; possible later as a vendored file); active probing of unknowns (ADR-016); auto-adding unknowns to inventory (a human decision).
+**Follow-up (M5).** Acknowledging an unknown device is an annotation (`acknowledged: true`), editable in the UI.
