@@ -8,7 +8,8 @@ against its own fixed list, so a bug here still cannot run arbitrary commands.
 import asyncio
 import re
 import time
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Final, Protocol, cast
 
@@ -77,12 +78,40 @@ class ProbeOutput:
     stderr: bytes = field(repr=False)
 
 
+class SshSession(Protocol):
+    """An open connection to one target. `exec` only ever gets constant probe commands."""
+
+    async def exec(self, command: str) -> ProbeOutput: ...
+
+
 class SshTransport(Protocol):
-    """Executes one already-validated command string. Never called with caller input."""
+    """Opens sessions. Never called with caller input."""
 
     name: str
 
-    async def exec(self, target: SshTarget, command: str, limits: SshLimits) -> ProbeOutput: ...
+    def open(
+        self, target: SshTarget, limits: SshLimits
+    ) -> AbstractAsyncContextManager[SshSession]: ...
+
+
+def _section_of(command: str) -> ProbeSection:
+    return ProbeSection(command.removeprefix("atlas-probe "))
+
+
+def _authorize(target: SshTarget, section: ProbeSection) -> str:
+    if type(target) is not SshTarget:
+        raise SecurityRefusal(RefusalReason.BAD_TYPE, "target must be an SshTarget")
+    # Enum identity, not string equality: StrEnum members compare equal to plain str.
+    if type(section) is not ProbeSection or ProbeSection(section.value) is not section:
+        raise SecurityRefusal(RefusalReason.BAD_TYPE, "section must be a ProbeSection")
+    if section not in target.sections:
+        raise SecurityRefusal(
+            RefusalReason.NOT_ALLOWLISTED, f"{target.name}: {section.value} not enabled"
+        )
+    command = PROBE_COMMANDS[section]
+    if not PROBE_COMMAND_RE.fullmatch(command):  # pragma: no cover - invariant
+        raise SecurityRefusal(RefusalReason.NOT_ALLOWLISTED, "command table corrupted")
+    return command
 
 
 class SshRunner:
@@ -94,44 +123,46 @@ class SshRunner:
         self._limits = limits or SshLimits()
 
     async def run(self, target: SshTarget, section: ProbeSection) -> ProbeOutput:
+        """One-shot: connect, run one section, disconnect."""
         start = time.monotonic()
-        ok_type = isinstance(cast(object, section), ProbeSection)
-        op = f"atlas-probe {section.value}" if ok_type else "<invalid>"
         try:
-            command = self._authorize(target, section)
+            _authorize(target, section)  # refuse before opening a connection
         except SecurityRefusal as exc:
-            self._record(target, op, "refused", start, reason=exc.reason.value, detail=exc.detail)
+            self.record(target, _op(section), "refused", start, reason=exc.reason.value,
+                        detail=exc.detail)  # fmt: skip
             raise
+        async with self.session(target) as session:
+            return await session.run(section)
+
+    @asynccontextmanager
+    async def session(self, target: SshTarget) -> AsyncIterator["RunnerSession"]:
+        """Reuse one connection for several sections; every run is still checked and audited."""
+        start = time.monotonic()
+        if type(target) is not SshTarget:
+            exc = SecurityRefusal(RefusalReason.BAD_TYPE, "target must be an SshTarget")
+            self.record(target, "connect", "refused", start, reason=exc.reason.value)
+            raise exc
+        ctx = self._transport.open(target, self._limits)
         try:
-            out = await self._transport.exec(target, command, self._limits)
+            session = await ctx.__aenter__()
         except SecurityRefusal as exc:
-            self._record(target, op, "refused", start, reason=exc.reason.value, detail=exc.detail)
+            self.record(target, "connect", "refused", start, reason=exc.reason.value,
+                        detail=exc.detail)  # fmt: skip
             raise
         except TransportError as exc:
-            self._record(target, op, "error", start, reason=type(exc).__name__)
+            self.record(target, "connect", "error", start, reason=type(exc).__name__)
             raise
-        self._record(target, op, "ok", start, status=out.exit_status, nbytes=len(out.stdout))
-        return out
+        try:
+            yield RunnerSession(self, target, session)
+        except BaseException as exc:
+            if not await ctx.__aexit__(type(exc), exc, exc.__traceback__):
+                raise
+        else:
+            await ctx.__aexit__(None, None, None)
 
-    @staticmethod
-    def _authorize(target: SshTarget, section: ProbeSection) -> str:
-        if type(target) is not SshTarget:
-            raise SecurityRefusal(RefusalReason.BAD_TYPE, "target must be an SshTarget")
-        # Enum identity, not string equality: StrEnum members compare equal to plain str.
-        if type(section) is not ProbeSection or ProbeSection(section.value) is not section:
-            raise SecurityRefusal(RefusalReason.BAD_TYPE, "section must be a ProbeSection")
-        if section not in target.sections:
-            raise SecurityRefusal(
-                RefusalReason.NOT_ALLOWLISTED, f"{target.name}: {section.value} not enabled"
-            )
-        command = PROBE_COMMANDS[section]
-        if not PROBE_COMMAND_RE.fullmatch(command):  # pragma: no cover - invariant
-            raise SecurityRefusal(RefusalReason.NOT_ALLOWLISTED, "command table corrupted")
-        return command
-
-    def _record(
+    def record(
         self,
-        target: SshTarget,
+        target: object,
         op: str,
         outcome: Outcome,
         start: float,
@@ -141,7 +172,7 @@ class SshRunner:
         reason: str | None = None,
         detail: str | None = None,
     ) -> None:
-        name = target.name if type(target) is SshTarget else "<invalid>"
+        name = target.name if isinstance(target, SshTarget) else "<invalid>"
         self._audit.record(
             AuditEvent(
                 target=name,
@@ -157,6 +188,39 @@ class SshRunner:
         )
 
 
+def _op(section: object) -> str:
+    if isinstance(section, ProbeSection):
+        return f"atlas-probe {section.value}"
+    return "<invalid>"
+
+
+class RunnerSession:
+    def __init__(self, runner: SshRunner, target: SshTarget, session: SshSession) -> None:
+        self._runner = runner
+        self._target = target
+        self._session = session
+
+    async def run(self, section: ProbeSection) -> ProbeOutput:
+        start = time.monotonic()
+        op = _op(cast(object, section))
+        record = self._runner.record
+        try:
+            command = _authorize(self._target, section)
+        except SecurityRefusal as exc:
+            record(self._target, op, "refused", start, reason=exc.reason.value, detail=exc.detail)
+            raise
+        try:
+            out = await self._session.exec(command)
+        except SecurityRefusal as exc:
+            record(self._target, op, "refused", start, reason=exc.reason.value, detail=exc.detail)
+            raise
+        except TransportError as exc:
+            record(self._target, op, "error", start, reason=type(exc).__name__)
+            raise
+        record(self._target, op, "ok", start, status=out.exit_status, nbytes=len(out.stdout))
+        return out
+
+
 # --------------------------------------------------------------------------- transports
 
 
@@ -169,6 +233,40 @@ async def _read_capped(stream: asyncssh.SSHReader[bytes], cap: int, *, strict: b
                 raise SecurityRefusal(RefusalReason.OUTPUT_TOO_LARGE, f"output over {cap} bytes")
             return bytes(buf[:cap])
     return bytes(buf)
+
+
+class _AsyncSshSession:
+    def __init__(
+        self, target: SshTarget, conn: asyncssh.SSHClientConnection, limits: SshLimits
+    ) -> None:
+        self._target, self._conn, self._limits = target, conn, limits
+
+    async def exec(self, command: str) -> ProbeOutput:
+        limits, name = self._limits, self._target.name
+        try:
+            async with asyncio.timeout(limits.command_s):
+                proc = await self._conn.create_process(
+                    command, stdin=asyncssh.DEVNULL, encoding=None, request_pty=False
+                )
+                try:
+                    stdout, stderr = await asyncio.gather(
+                        _read_capped(proc.stdout, limits.max_stdout, strict=True),
+                        _read_capped(proc.stderr, limits.max_stderr, strict=False),
+                    )
+                    result = await proc.wait(check=False)
+                finally:
+                    proc.close()
+        except TimeoutError:
+            raise TargetTimeout(f"{name}: command timeout") from None
+        except (OSError, asyncssh.Error) as exc:
+            raise TransportError(f"{name}: {type(exc).__name__}") from None
+        return ProbeOutput(
+            target=name,
+            section=_section_of(command),
+            exit_status=result.exit_status if result.exit_status is not None else -1,
+            stdout=stdout,
+            stderr=stderr,
+        )
 
 
 class AsyncSshTransport:
@@ -227,62 +325,56 @@ class AsyncSshTransport:
             keepalive_interval=0,
         )
 
-    async def exec(self, target: SshTarget, command: str, limits: SshLimits) -> ProbeOutput:
+    @asynccontextmanager
+    async def open(self, target: SshTarget, limits: SshLimits) -> AsyncIterator[SshSession]:
         options = self.options(target, limits)
-        section = ProbeSection(command.removeprefix("atlas-probe "))
         try:
-            async with asyncio.timeout(limits.connect_s + limits.command_s):
+            async with asyncio.timeout(limits.connect_s):
                 conn = await asyncssh.connect(
                     target.host, target.port, options=options, config=None
                 )
-                async with conn:
-                    proc = await conn.create_process(
-                        command, stdin=asyncssh.DEVNULL, encoding=None, request_pty=False
-                    )
-                    try:
-                        stdout, stderr = await asyncio.gather(
-                            _read_capped(proc.stdout, limits.max_stdout, strict=True),
-                            _read_capped(proc.stderr, limits.max_stderr, strict=False),
-                        )
-                        result = await proc.wait(check=False)
-                    finally:
-                        proc.close()
         except TimeoutError:
-            raise TargetTimeout(f"{target.name}: timeout") from None
+            raise TargetTimeout(f"{target.name}: connect timeout") from None
         except asyncssh.HostKeyNotVerifiable:
             raise SecurityRefusal(RefusalReason.HOST_KEY, f"{target.name}: host key") from None
         except asyncssh.PermissionDenied:
             raise TransportError(f"{target.name}: authentication refused") from None
         except (OSError, asyncssh.Error) as exc:
             raise TransportError(f"{target.name}: {type(exc).__name__}") from None
-        return ProbeOutput(
-            target=target.name,
-            section=section,
-            exit_status=result.exit_status if result.exit_status is not None else -1,
-            stdout=stdout,
-            stderr=stderr,
-        )
+        async with conn:
+            yield _AsyncSshSession(target, conn, limits)
+
+
+class _ReplaySession:
+    def __init__(self, target: SshTarget, data: Mapping[str, bytes], limits: SshLimits) -> None:
+        self._target, self._data, self._limits = target, data, limits
+
+    async def exec(self, command: str) -> ProbeOutput:
+        try:
+            out = self._data[command]
+        except KeyError:
+            raise TransportError(f"{self._target.name}: no recording") from None
+        if len(out) > self._limits.max_stdout:
+            raise SecurityRefusal(RefusalReason.OUTPUT_TOO_LARGE, "recording over cap")
+        return ProbeOutput(self._target.name, _section_of(command), 0, out, b"")
 
 
 class ReplayTransport:
-    """`demo:` transport: returns recorded outputs. Same runner, same allowlist checks."""
+    """`demo:` transport: returns recorded outputs. Same runner, same allowlist checks.
+
+    A target with no recordings at all behaves as unreachable.
+    """
 
     name = "replay"
 
     def __init__(self, recordings: Mapping[tuple[str, str], bytes]) -> None:
-        self._recordings = dict(recordings)
+        self._by_target: dict[str, dict[str, bytes]] = {}
+        for (target, command), data in recordings.items():
+            self._by_target.setdefault(target, {})[command] = data
 
-    async def exec(self, target: SshTarget, command: str, limits: SshLimits) -> ProbeOutput:
-        try:
-            data = self._recordings[(target.name, command)]
-        except KeyError:
-            raise TransportError(f"{target.name}: no recording") from None
-        if len(data) > limits.max_stdout:
-            raise SecurityRefusal(RefusalReason.OUTPUT_TOO_LARGE, "recording over cap")
-        return ProbeOutput(
-            target=target.name,
-            section=ProbeSection(command.removeprefix("atlas-probe ")),
-            exit_status=0,
-            stdout=data,
-            stderr=b"",
-        )
+    @asynccontextmanager
+    async def open(self, target: SshTarget, limits: SshLimits) -> AsyncIterator[SshSession]:
+        data = self._by_target.get(target.name)
+        if data is None:
+            raise TransportError(f"{target.name}: unreachable (no recordings)")
+        yield _ReplaySession(target, data, limits)

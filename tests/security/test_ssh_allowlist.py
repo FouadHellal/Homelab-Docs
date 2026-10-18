@@ -2,6 +2,8 @@
 
 import asyncio
 import re
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from enum import StrEnum
 
 import pytest
@@ -42,9 +44,14 @@ class SpyTransport:
     def __init__(self) -> None:
         self.commands: list[str] = []
 
-    async def exec(self, target: SshTarget, command: str, limits: SshLimits) -> ProbeOutput:
+    @asynccontextmanager
+    async def open(self, target: SshTarget, limits: SshLimits) -> AsyncIterator["SpyTransport"]:
+        self._target = target
+        yield self
+
+    async def exec(self, command: str) -> ProbeOutput:
         self.commands.append(command)
-        return ProbeOutput(target.name, ProbeSection(command.split()[1]), 0, b"ok", b"")
+        return ProbeOutput(self._target.name, ProbeSection(command.split()[1]), 0, b"ok", b"")
 
 
 def runner(audit: MemoryAudit) -> tuple[SshRunner, SpyTransport]:
@@ -172,3 +179,24 @@ async def test_replay_output_cap(audit: MemoryAudit) -> None:
     with pytest.raises(SecurityRefusal) as exc:
         await r.run(target(), ProbeSection.OS)
     assert exc.value.reason is RefusalReason.OUTPUT_TOO_LARGE
+
+
+async def test_session_checks_every_run(audit: MemoryAudit) -> None:
+    r, spy = runner(audit)
+    async with r.session(target()) as session:
+        await session.run(ProbeSection.OS)
+        await session.run(ProbeSection.DOCKER)
+        with pytest.raises(SecurityRefusal):
+            await session.run(ProbeSection.CRON)
+        with pytest.raises(SecurityRefusal):
+            await session.run("os; id")  # type: ignore[arg-type]
+    assert spy.commands == ["atlas-probe os", "atlas-probe docker"]
+    assert audit.outcomes == ["ok", "ok", "refused", "refused"]
+
+
+async def test_replay_unreachable_target(audit: MemoryAudit) -> None:
+    r = SshRunner(transport=ReplayTransport({}), audit=audit)
+    with pytest.raises(TransportError):
+        await r.run(target(), ProbeSection.OS)
+    assert audit.events[-1].op == "connect"
+    assert audit.outcomes == ["error"]

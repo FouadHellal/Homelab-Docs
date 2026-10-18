@@ -28,6 +28,7 @@ class Seen:
     terms: list[str | None] = field(default_factory=list)
     envs: list[dict[str, str]] = field(default_factory=list)
     users: list[str] = field(default_factory=list)
+    connections: int = 0
 
 
 @dataclass
@@ -61,6 +62,9 @@ async def lab(tmp_path: Path) -> AsyncIterator[Lab]:
     behaviour: dict[str, object] = {"stdout": b"ID=debian\n", "sleep": 0.0, "accept": True}
 
     class Server(asyncssh.SSHServer):
+        def connection_made(self, conn: asyncssh.SSHServerConnection) -> None:
+            seen.connections += 1
+
         def begin_auth(self, username: str) -> bool:
             seen.users.append(username)
             return True
@@ -208,3 +212,13 @@ def test_options_are_locked_down(lab: Lab) -> None:
     assert opts.host_based_auth is False
     assert opts.client_keys is not None
     assert [k.get_algorithm() for k in opts.client_keys] == ["ssh-ed25519"]
+
+
+async def test_session_reuses_one_connection(lab: Lab, audit: MemoryAudit) -> None:
+    runner = _runner(lab, audit)
+    async with runner.session(lab.target()) as session:
+        for section in (ProbeSection.VERSION, ProbeSection.OS, ProbeSection.NET):
+            await session.run(section)
+    assert lab.seen.connections == 1
+    assert lab.seen.commands == ["atlas-probe version", "atlas-probe os", "atlas-probe net"]
+    assert audit.outcomes == ["ok", "ok", "ok"]
