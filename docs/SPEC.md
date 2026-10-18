@@ -111,20 +111,32 @@ Owners can mark an unknown as "acknowledged" (an annotation), which suppresses i
 - Retention: events forever, snapshots 90 days (configurable). The latest snapshot per entity is always kept.
 
 ## 9. Scheduler
-APScheduler in-process. Per-collector interval (defaults: unifi 15 m, proxmox 15 m, linux/docker 60 m, nas 6 h), ±10 % jitter, global and per-target concurrency limits, per-call timeouts, exponential backoff on failure (cap 6 h), single scan lock (DB advisory row + file lock), manual trigger from UI/CLI. Disabled in CLI one-shot mode.
+APScheduler in-process, enabled by `atlas serve --schedule` (ADR-023).
+- **Intervals.** One job per collector. Defaults: unifi 15 m, proxmox 15 m, linux-ssh/docker/pi 60 m, nas 6 h. Override with `ATLAS_INTERVAL_<COLLECTOR>` (seconds; `0` disables).
+- **Timing.** ±10 % jitter, and first runs are staggered.
+- **Limits.** Global concurrency and per-collector timeouts come from the scan engine.
+- **Backoff.** Exponential when every target of a collector failed: interval × 2^n, capped at 6 h. One success resets it.
+- **Locking.** A single scan lock: jobs are serialised in-process, and an OS file lock applies across processes. A scheduled job that finds `atlas scan` running retries in 2 minutes.
+- **Manual trigger.** "Scan now" on the dashboard (`POST /scan`, CSRF) runs a full scan; `atlas scan` is the CLI one-shot.
+- **Retention.** Runs after each scheduled scan; also available as `atlas db prune`.
 
 ## 10. Interfaces
 ### CLI
-`atlas scan [--host H] [--collector C] [--lab demo:A]`, `atlas diff [--since T] [--entity K]`, `atlas export {md,mkdocs,json,csv,mermaid} [--sanitize] [-o DIR]`, `atlas doctor [--host H]`, `atlas unknown`, `atlas targets render` (generate docs/targets/), `atlas audit verify`, `atlas serve`, `atlas mcp [--http]`, `atlas user add|passwd`, `atlas selftest security`.
+`atlas scan [--host H] [--collector C] [--lab demo:A]`, `atlas diff [--since T] [--entity K]`, `atlas export {md,mkdocs,json,csv,mermaid} [--sanitize] [-o DIR]`, `atlas db upgrade|prune`, `atlas doctor [--host H]`, `atlas unknown`, `atlas targets render` (generate docs/targets/), `atlas audit verify`, `atlas serve`, `atlas mcp [--http] [--sanitize]`, `atlas serve [--schedule]`, `atlas user add|passwd`, `atlas selftest security`.
 
 ### Web UI (FastAPI + Jinja2 + HTMX, vendored Cytoscape.js)
 Dashboard (counts, last scan per collector, recent changes, offline/unknown), host page (facets, containers, sockets, annotations, history), global tables (IPs, VLANs, ports/services) with search, topology (physical: gateway → switches → APs/hosts; logical: node → VM/LXC → containers; VLAN membership overlay), changelog timeline, unknown devices, annotation editor, light/dark. Auth: local admin (argon2id); OIDC later. CSRF on all state-changing routes (annotations, manual scan, login). The UI is read-only toward targets.
 
 ### Exports
-Markdown, MkDocs site (mkdocs.yml + pages), JSON (full model, versioned schema), CSV (hosts, IPs, ports, containers, VLANs), Mermaid (physical, logical). `--sanitize`: deterministic per-export pseudonymisation of IPs (mapped into a documentation range while preserving subnet structure), MACs (keep OUI optional, default off), hostnames, SSIDs, domain names; also strips notes and links.
+Markdown, MkDocs site (mkdocs.yml + pages), JSON (full model, versioned schema), CSV (hosts, IPs, ports, containers, VLANs), Mermaid (physical, logical). `--sanitize` applies deterministic keyed pseudonymisation (ADR-023), stable per installation:
+- IPv4 addresses map to `10.X.Y.0/24`, one per real /24, keeping the host octet. IPv6 addresses map into `2001:db8::/32`, with the interface ID hashed.
+- MACs map to `02:…`.
+- Hostnames, SSIDs, clients and domains map to `<kind>-NN`.
+- Machine IDs are hashed.
+- Annotations, notes, links, owners and serials are stripped.
 
 ### MCP (official Python SDK)
-Read-only tools: `list_hosts`, `get_host`, `list_containers`, `search_ip`, `find_service`, `what_changed`, `list_unknown_devices`. Transports: stdio; Streamable HTTP with bearer token (constant-time compare), bound to a private address. Optional `mcp.sanitize: true` returns sanitized data (see THREAT-MODEL T-MCP). No tool triggers scans or writes.
+Read-only tools: `list_hosts`, `get_host`, `list_containers`, `search_ip`, `find_service`, `what_changed`, `list_unknown_devices`. Transports: stdio; Streamable HTTP with bearer token (constant-time compare), bound to a private address. `atlas mcp --sanitize` returns sanitized data (see THREAT-MODEL T-MCP). No tool triggers scans or writes.
 
 ## 11. Non-functional
 - Runs on Windows (dev) and Linux (prod). CI matrix ubuntu + windows.

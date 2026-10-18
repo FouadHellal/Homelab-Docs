@@ -229,3 +229,45 @@ Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a
 - **Locations:** live mode uses `$ATLAS_CONFIG_DIR/annotations` (your private config repo). The demo lab copies `fixtures/demo-lab/annotations` to `data/demo-lab/annotations` on first `serve`, so UI edits never touch committed fixtures.
 
 **Rejected.** DB as the source of truth (not git-friendly); one big YAML file (merge conflicts); free-form file names from the UI (path traversal).
+
+## ADR-023 Scheduler, exports, sanitize and MCP as built (M6)
+**Facts (checked 2026-10-18).**
+- `uv add` resolved `apscheduler` 3.11.3 as the newest release under `<4` and `mcp` 2.3.0 from PyPI. APScheduler 3.x ships no type information, so mypy has a scoped `ignore_missing_imports` override for `apscheduler.*`.
+- In `mcp` 2.x the high-level server is `mcp.server.mcpserver.MCPServer` (1.x called it `FastMCP`). `ToolAnnotations` takes snake_case fields (`read_only_hint`, ...), serialised as the spec's camelCase hints.
+- The SDK's built-in HTTP auth is the OAuth resource-server flow. `streamable_http_app()` accepts `TransportSecuritySettings` for DNS-rebinding protection (Host/Origin allowlists).
+
+**Decisions.**
+- **Scheduler** (`homelab_atlas/scheduler.py`):
+  - One APScheduler job per collector: `max_instances=1`, `coalesce=True`, ±10 % jitter, first runs staggered 5–60 s after start.
+  - Intervals follow SPEC §9 and can be overridden with `ATLAS_INTERVAL_<COLLECTOR>` (`0` disables a collector, the minimum is 60 s).
+  - Jobs are serialised in-process by an asyncio lock. Across processes, the engine's file lock applies: when `atlas scan` holds it, the job is retried in 120 s and does not count as a failure.
+  - Backoff applies only when **every** target of a collector failed: the delay is interval × 2^n, capped at 6 h. One success resets it. A partial failure does not back off, because the healthy targets still need scanning.
+  - Retention runs after each scheduled scan.
+  - The scheduler starts only with `atlas serve --schedule`. A plain `serve` is a read-only viewer and `/scan` returns 404.
+  - The dashboard "Scan now" is `POST /scan`, which requires login, the CSRF token and a same-origin request. It returns 202, or 200 with "already running" (htmx does not swap 4xx). A manual scan is the full scan, through the same engine and read-only choke points as `atlas scan`.
+- **Retention** (`store/retention.py`, `atlas db prune --days N`, env `ATLAS_SNAPSHOT_DAYS`, default 90):
+  - Snapshots of scans older than N days are deleted, except the newest per (entity, collector), which is the diff baseline.
+  - Blobs no snapshot references are deleted.
+  - Events are never pruned.
+- **Exports** (`atlas export {json,csv,md,mkdocs,mermaid} [--sanitize] [-o DIR]`):
+  - One JSON-able document (schema `atlas-export/1`) is built from the DB and rendered per format. Sanitising happens on that document before rendering, so every format gets identical treatment.
+  - CSV cells starting with `= + - @`, tab or CR are prefixed with `'` (OWASP CSV injection).
+  - Markdown and MkDocs output escapes all target data: HTML is escaped, Markdown metacharacters get backslashes, and newlines are folded. MkDocs renders raw HTML, so a container label like `<script>` or `[x](javascript:…)` must not reach a published site as markup. Mermaid and YAML nav labels go through their own character filter.
+  - The MkDocs site is plain: `mkdocs-material` with mermaid via `pymdownx.superfences`.
+- **Sanitize, deviating from SPEC §10's "documentation range" for IPv4.** The three IPv4 documentation /24s cannot hold a real lab's subnets, so each real /24 maps to a distinct keyed `10.X.Y.0/24` and the host octet is kept. Subnet membership and "same network" survive. For IPv6, each /64 maps into `2001:db8::/32` and the interface ID is hashed, because EUI-64 IIDs embed the MAC.
+  - MACs become `02:` + keyed hash (locally administered). OUIs are not kept.
+  - Names (entities, hostnames, SSIDs, clients, search domains) become `<kind>-NN`, numbered in sorted order.
+  - Machine IDs and other 32-hex IDs are hashed.
+  - Owner, purpose, notes, links, description, serial, comments and GECOS are dropped, and annotations are nulled.
+  - A final regex pass rewrites any address or known name left inside free text.
+  - The key is HMAC(installation redaction key, `atlas-sanitize/1`). Pseudonyms are therefore stable across exports (sanitised exports can be diffed) but not reversible without the key, and differ between installations.
+  - Tests assert that no MAC, private or public IPv4, IPv6 or entity name from the real export appears in any sanitised format or MCP answer. Vendor model strings such as "UCG-Ultra" are allowed.
+- **MCP** (`homelab_atlas/mcp_server.py`, `atlas mcp [--http] [--sanitize]`):
+  - Seven tools, all annotated `readOnly`, `!destructive`, `idempotent`, `!openWorld`. Every tool returns one structured object. Lists are wrapped as `{count, items}` and capped at 500 rows and 200 kB (items trimmed, then facets elided, with `truncated: true`).
+  - There is no scan, write or raw-SQL tool.
+  - stdio is the default.
+  - **Amends ADR-015:** HTTP runs as its own process (`atlas mcp --http`, the same image as a separate compose service) instead of a sub-app of the UI. This gives separate auth domains (bearer vs session cookie), the UI's CSP/TrustedHost/session middleware does not wrap JSON-RPC, and either can be left off.
+  - The HTTP guard is a small ASGI wrapper: exact `Authorization: Bearer <token>`, `hmac.compare_digest`, a token of at least 32 chars, 401 with `WWW-Authenticate: Bearer`, and the token is never logged. The token comes from secret `mcp_token`. The demo lab writes a random one to `data/demo-lab/mcp-token.txt` (0600).
+  - The SDK's DNS-rebinding protection is on, with a Host allowlist (`--allowed-host`) and no Origins. The default bind is 127.0.0.1.
+
+**Rejected.** The SDK's OAuth server for a single-owner LAN tool (moving parts without benefit); a DB advisory-lock row in addition to the file lock (single host; revisit with remote workers); backoff on partial failure; pseudonyms per export (they break diffs between sanitised exports).
