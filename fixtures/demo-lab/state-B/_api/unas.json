@@ -1,0 +1,109 @@
+{
+ "/api/system": {
+  "body": {
+   "deviceState": "connected",
+   "hardware": {
+    "shortname": "UNASPRO"
+   },
+   "mac": "e4:38:83:00:00:10",
+   "name": "unas"
+  },
+  "status": 200
+ },
+ "/proxy/drive/api/v2/storage": {
+  "body": {
+   "disks": [
+    {
+     "badSectorCount": 0,
+     "firmware": "81.00A81",
+     "healthScore": 5,
+     "model": "WD80EFPX-68C4ZN0",
+     "poolId": "1",
+     "powerOnHours": 9001,
+     "rpm": 5400,
+     "serial": "WD-ATLAS0001",
+     "size": 8001563222016,
+     "slotId": 1,
+     "state": "optimal",
+     "temperature": 35,
+     "type": "HDD",
+     "uncorrectableSectorCount": 0
+    },
+    {
+     "badSectorCount": 0,
+     "firmware": "81.00A81",
+     "healthScore": 5,
+     "model": "WD80EFPX-68C4ZN0",
+     "poolId": "1",
+     "powerOnHours": 9002,
+     "rpm": 5400,
+     "serial": "WD-ATLAS0002",
+     "size": 8001563222016,
+     "slotId": 2,
+     "state": "optimal",
+     "temperature": 36,
+     "type": "HDD",
+     "uncorrectableSectorCount": 0
+    },
+    {
+     "badSectorCount": 12,
+     "firmware": "81.00A81",
+     "healthScore": 3,
+     "model": "WD80EFPX-68C4ZN0",
+     "poolId": "1",
+     "powerOnHours": 9003,
+     "rpm": 5400,
+     "serial": "WD-ATLAS0003",
+     "size": 8001563222016,
+     "slotId": 3,
+     "state": "degraded",
+     "temperature": 41,
+     "type": "HDD",
+     "uncorrectableSectorCount": 0
+    },
+    {
+     "badSectorCount": 0,
+     "firmware": "81.00A81",
+     "healthScore": 5,
+     "model": "WD80EFPX-68C4ZN0",
+     "poolId": "1",
+     "powerOnHours": 9004,
+     "rpm": 5400,
+     "serial": "WD-ATLAS0004",
+     "size": 8001563222016,
+     "slotId": 4,
+     "state": "optimal",
+     "temperature": 38,
+     "type": "HDD",
+     "uncorrectableSectorCount": 0
+    }
+   ],
+   "pools": [
+    {
+     "capacity": 23998206115840,
+     "id": "1",
+     "number": 1,
+     "raidGroups": [
+      {
+       "configLevel": "raid5",
+       "currentLevel": "raid5"
+      }
+     ],
+     "status": "degraded",
+     "type": "raid",
+     "usage": 9300000000000
+    }
+   ]
+  },
+  "status": 200
+ },
+ "/proxy/drive/api/v2/systems/device-info": {
+  "body": {
+   "firmwareVersion": "5.1.19",
+   "model": "UNAS Pro",
+   "status": "ok",
+   "version": "4.3.6"
+  },
+  "status": 200
+ }
+}

@@ -21,7 +21,7 @@ def test_acceptance_scan_a_b_diff(tmp_path: Path) -> None:
     d = str(tmp_path / "data")
     a = runner.invoke(app, ["scan", "--lab", "demo:A", "--data-dir", d])
     assert a.exit_code == 0, a.output
-    assert "29 events" in a.output
+    assert "38 events" in a.output
     b = runner.invoke(app, ["scan", "--lab", "demo:B", "--data-dir", d])
     assert b.exit_code == 0, b.output
     out = runner.invoke(app, ["diff", "--lab", "demo", "--data-dir", d, "--json"])

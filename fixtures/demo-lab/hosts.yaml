@@ -8,6 +8,17 @@ sources:
       url: "https://pve1.lab.example:8006/api2/json"
       credential: proxmox_auditor
       tls: { ca_file: pve-root-ca.pem }
+  unifi:
+    - name: ucg
+      url: "https://ucg.lab.example/proxy/network/integration"
+      credential: unifi_api_key
+      tls: { ca_file: ucg.pem, check_hostname: false }
+  unas:
+    - name: unas
+      url: "https://unas.lab.example"
+      credential: unas_api_key
+      drive_api: true
+      tls: { ca_file: unas.pem }
 hosts:
   - name: pve1
     address: "10.0.10.11"
@@ -60,7 +71,7 @@ hosts:
   - name: pi-garage
     address: "10.0.20.60"
     type: pi
-    collectors: [linux-ssh]
+    collectors: [linux-ssh, pi]
     ssh:
       host_keys: ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIClo+cmv+fxckB3mpt4ztdwCHxq6IAYnrmPtcxfP0TAn pi-garage"]
   - name: media01
