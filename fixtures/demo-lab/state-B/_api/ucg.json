@@ -1,0 +1,1589 @@
+{
+ "/proxy/network/integration/v1/info": {
+  "body": {
+   "applicationVersion": "10.6.106"
+  },
+  "status": 200
+ },
+ "/proxy/network/integration/v1/sites/8c49eefd-462e-59dc-aae1-d1b7b1b66fde/acl-rules?offset=0&limit=200": {
+  "body": {
+   "count": 0,
+   "data": [],
+   "limit": 200,
+   "offset": 0,
+   "totalCount": 0
+  },
+  "status": 200
+ },
+ "/proxy/network/integration/v1/sites/8c49eefd-462e-59dc-aae1-d1b7b1b66fde/clients?offset=0&limit=200": {
+  "body": {
+   "count": 17,
+   "data": [
+    {
+     "access": {
+      "type": "DEFAULT"
+     },
+     "connectedAt": "2026-10-17T06:00:00Z",
+     "id": "843c8309-c10d-599b-b2f8-3d75e3eedca6",
+     "ipAddress": "10.0.20.11",
+     "macAddress": "bc:24:11:46:66:ca",
+     "name": "docker01",
+     "type": "WIRED",
+     "uplinkDeviceId": "195ddb4b-8e9a-5ad3-afd2-db17da820a45"
+    },
+    {
+     "access": {
+      "type": "DEFAULT"
+     },
+     "connectedAt": "2026-10-17T06:00:00Z",
+     "id": "347da0a6-ab0e-5d33-98ba-774955fec03c",
+     "ipAddress": "10.0.20.12",
+     "macAddress": "bc:24:11:7d:a6:cf",
+     "name": "docker02",
+     "type": "WIRED",
+     "uplinkDeviceId": "195ddb4b-8e9a-5ad3-afd2-db17da820a45"
+    },
+    {
+     "access": {
+      "type": "DEFAULT"
+     },
+     "connectedAt": "2026-10-17T06:00:00Z",
+     "id": "850bdb91-09cb-58db-b2bf-aba4ec359277",
+     "ipAddress": "10.0.20.21",
+     "macAddress": "bc:24:11:3b:46:9e",
+     "name": "web01",
+     "type": "WIRED",
+     "uplinkDeviceId": "195ddb4b-8e9a-5ad3-afd2-db17da820a45"
+    },
+    {
+     "access": {
+      "type": "DEFAULT"
+     },
+     "connectedAt": "2026-10-17T06:00:00Z",
+     "id": "d596f426-e9a8-5b4b-8ad7-bfd949c67948",
+     "ipAddress": "10.0.20.31",
+     "macAddress": "bc:24:11:57:01:46",
+     "name": "db01",
+     "type": "WIRED",
+     "uplinkDeviceId": "195ddb4b-8e9a-5ad3-afd2-db17da820a45"
+    },
+    {
+     "access": {
+      "type": "DEFAULT"
+     },
+     "connectedAt": "2026-10-17T06:00:00Z",
+     "id": "530005f6-3920-5d99-89d7-01ddc1c8e2de",
+     "ipAddress": "10.0.20.50",
+     "macAddress": "bc:24:11:53:82:ae",
+     "name": "mediatheque",
+     "type": "WIRED",
+     "uplinkDeviceId": "195ddb4b-8e9a-5ad3-afd2-db17da820a45"
+    },
+    {
+     "access": {
+      "type": "DEFAULT"
+     },
+     "connectedAt": "2026-10-17T06:00:00Z",
+     "id": "e156dbbe-78d3-5b83-9b96-2477c80886c8",
+     "ipAddress": "10.0.20.40",
+     "macAddress": "bc:24:11:19:ed:28",
+     "name": "backup01",
+     "type": "WIRED",
+     "uplinkDeviceId": "195ddb4b-8e9a-5ad3-afd2-db17da820a45"
+    },
+    {
+     "access": {
+      "type": "DEFAULT"
+     },
+     "connectedAt": "2026-10-17T06:00:00Z",
+     "id": "0106fb83-754b-5954-8216-267e6aa810d7",
+     "ipAddress": "10.0.20.55",
+     "macAddress": "bc:24:11:6d:a4:eb",
+     "name": "media01",
+     "type": "WIRED",
+     "uplinkDeviceId": "195ddb4b-8e9a-5ad3-afd2-db17da820a45"
+    },
+    {
+     "access": {
+      "type": "DEFAULT"
+     },
+     "connectedAt": "2026-10-17T06:00:00Z",
+     "id": "749c8b28-dd5a-5a83-be85-ebff694f5303",
+     "ipAddress": "10.0.20.53",
+     "macAddress": "bc:24:11:60:3f:12",
+     "name": "adguard",
+     "type": "WIRED",
+     "uplinkDeviceId": "195ddb4b-8e9a-5ad3-afd2-db17da820a45"
+    },
+    {
+     "access": {
+      "type": "DEFAULT"
+     },
+     "connectedAt": "2026-10-17T06:00:00Z",
+     "id": "c95bd794-563a-54ef-8922-79b05b86dd89",
+     "ipAddress": "10.0.10.11",
+     "macAddress": "bc:24:11:bb:e8:d2",
+     "name": "pve1",
+     "type": "WIRED",
+     "uplinkDeviceId": "95f4e140-f04b-572b-b821-588a815c0538"
+    },
+    {
+     "access": {
+      "type": "DEFAULT"
+     },
+     "connectedAt": "2026-10-17T06:00:00Z",
+     "id": "f6971e2c-e853-597a-b790-bcfff6df06b5",
+     "ipAddress": "10.0.10.12",
+     "macAddress": "bc:24:11:5f:56:46",
+     "name": "pve2",
+     "type": "WIRED",
+     "uplinkDeviceId": "95f4e140-f04b-572b-b821-588a815c0538"
+    },
+    {
+     "access": {
+      "type": "DEFAULT"
+     },
+     "connectedAt": "2026-10-17T06:00:00Z",
+     "id": "7c3b2beb-3669-5e9e-a0c6-a489c8899f1a",
+     "ipAddress": "2001:db8:20::80",
+     "macAddress": "bc:24:11:9e:71:84",
+     "name": "ipv6only01",
+     "type": "WIRED",
+     "uplinkDeviceId": "195ddb4b-8e9a-5ad3-afd2-db17da820a45"
+    },
+    {
+     "access": {
+      "type": "DEFAULT"
+     },
+     "connectedAt": "2026-10-17T06:00:00Z",
+     "id": "1d3a3d56-b65e-518c-af1d-0bb2000e6e85",
+     "ipAddress": "10.0.30.20",
+     "macAddress": "bc:24:11:6c:fc:fe",
+     "name": "homeassistant",
+     "type": "WIRED",
+     "uplinkDeviceId": "195ddb4b-8e9a-5ad3-afd2-db17da820a45"
+    },
+    {
+     "access": {
+      "type": "DEFAULT"
+     },
+     "connectedAt": "2026-10-17T06:00:00Z",
+     "id": "02dff10a-43c2-5226-80d2-871d771fdf5c",
+     "ipAddress": "10.0.10.20",
+     "macAddress": "e4:38:83:00:00:10",
+     "name": "unas",
+     "type": "WIRED",
+     "uplinkDeviceId": "95f4e140-f04b-572b-b821-588a815c0538"
+    },
+    {
+     "access": {
+      "type": "DEFAULT"
+     },
+     "connectedAt": "2026-10-17T06:00:00Z",
+     "id": "9ab3729f-4aae-58c7-993a-35e0402d02dd",
+     "ipAddress": "10.0.20.60",
+     "macAddress": "bc:24:11:8d:ee:92",
+     "name": "pi-garage",
+     "type": "WIRELESS",
+     "uplinkDeviceId": "ed6b11b3-6003-5d90-b42d-bd73cd00e51e"
+    },
+    {
+     "access": {
+      "type": "DEFAULT"
+     },
+     "connectedAt": "2026-10-17T06:00:00Z",
+     "id": "f74e83d6-3d76-59d1-8684-7de4c284953b",
+     "ipAddress": "10.0.1.57",
+     "macAddress": "a2:11:22:33:44:55",
+     "name": "android-7f3a",
+     "type": "WIRELESS",
+     "uplinkDeviceId": "ed6b11b3-6003-5d90-b42d-bd73cd00e51e"
+    },
+    {
+     "access": {
+      "type": "DEFAULT"
+     },
+     "connectedAt": "2026-10-17T06:00:00Z",
+     "id": "d4ffbde8-0e19-5e67-8120-de6550bc6a6c",
+     "ipAddress": "10.0.30.41",
+     "macAddress": "84:f7:03:5f:2a:01",
+     "name": "esp32-c3-5f2a",
+     "type": "WIRELESS",
+     "uplinkDeviceId": "7d6123a8-bbf6-560e-b13a-8361a9bc5059"
+    },
+    {
+     "access": {
+      "type": "DEFAULT"
+     },
+     "connectedAt": "2026-10-17T06:00:00Z",
+     "id": "57bb63d1-72da-54e2-9cf3-8a56da598c1b",
+     "ipAddress": "10.0.20.110",
+     "macAddress": "bc:24:11:ab:93:44",
+     "name": "win11",
+     "type": "WIRED",
+     "uplinkDeviceId": "195ddb4b-8e9a-5ad3-afd2-db17da820a45"
+    }
+   ],
+   "limit": 200,
+   "offset": 0,
+   "totalCount": 17
+  },
+  "status": 200
+ },
+ "/proxy/network/integration/v1/sites/8c49eefd-462e-59dc-aae1-d1b7b1b66fde/devices/195ddb4b-8e9a-5ad3-afd2-db17da820a45": {
+  "body": {
+   "adoptedAt": "2025-03-01T10:00:00Z",
+   "configurationId": "579e433e-4c31-5cdd-925d-34d281d03389",
+   "features": [
+    "switching"
+   ],
+   "firmwareUpdatable": false,
+   "firmwareVersion": "7.1.26",
+   "id": "195ddb4b-8e9a-5ad3-afd2-db17da820a45",
+   "interfaces": {
+    "ports": [
+     {
+      "connector": "RJ45",
+      "idx": 1,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": 1000,
+      "state": "UP"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 2,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": 1000,
+      "state": "UP"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 3,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": 1000,
+      "state": "UP"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 4,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 5,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 6,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 7,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 8,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     }
+    ],
+    "radios": []
+   },
+   "ipAddress": "10.0.10.3",
+   "macAddress": "e4:38:83:00:00:03",
+   "model": "USW-Lite-8-PoE",
+   "name": "sw-rack",
+   "provisionedAt": "2026-10-01T10:00:00Z",
+   "state": "ONLINE",
+   "supported": true,
+   "uplink": {
+    "deviceId": "95f4e140-f04b-572b-b821-588a815c0538"
+   }
+  },
+  "status": 200
+ },
+ "/proxy/network/integration/v1/sites/8c49eefd-462e-59dc-aae1-d1b7b1b66fde/devices/4587de12-552a-5361-8013-72c551c91087": {
+  "body": {
+   "adoptedAt": "2025-03-01T10:00:00Z",
+   "configurationId": "e3383ec1-69f1-5e31-88b8-dafd51f88112",
+   "features": [
+    "accessPoint"
+   ],
+   "firmwareUpdatable": false,
+   "firmwareVersion": "6.6.77",
+   "id": "4587de12-552a-5361-8013-72c551c91087",
+   "interfaces": {
+    "ports": [
+     {
+      "connector": "RJ45",
+      "idx": 1,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": false,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": 1000,
+      "state": "UP"
+     }
+    ],
+    "radios": [
+     {
+      "channel": 6,
+      "channelWidthMHz": 20,
+      "frequencyGHz": 2.4,
+      "wlanStandard": "802.11ax"
+     },
+     {
+      "channel": 36,
+      "channelWidthMHz": 80,
+      "frequencyGHz": 5,
+      "wlanStandard": "802.11ax"
+     }
+    ]
+   },
+   "ipAddress": "10.0.10.6",
+   "macAddress": "e4:38:83:00:00:06",
+   "model": "U6-Mesh",
+   "name": "ap-garden",
+   "provisionedAt": "2026-10-01T10:00:00Z",
+   "state": "OFFLINE",
+   "supported": true,
+   "uplink": {
+    "deviceId": "ed6b11b3-6003-5d90-b42d-bd73cd00e51e"
+   }
+  },
+  "status": 200
+ },
+ "/proxy/network/integration/v1/sites/8c49eefd-462e-59dc-aae1-d1b7b1b66fde/devices/7d6123a8-bbf6-560e-b13a-8361a9bc5059": {
+  "body": {
+   "adoptedAt": "2025-03-01T10:00:00Z",
+   "configurationId": "b584c9b5-30c1-5563-a96c-d65d40916108",
+   "features": [
+    "accessPoint"
+   ],
+   "firmwareUpdatable": true,
+   "firmwareVersion": "8.0.19",
+   "id": "7d6123a8-bbf6-560e-b13a-8361a9bc5059",
+   "interfaces": {
+    "ports": [
+     {
+      "connector": "RJ45",
+      "idx": 1,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": false,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": 1000,
+      "state": "UP"
+     }
+    ],
+    "radios": [
+     {
+      "channel": 6,
+      "channelWidthMHz": 20,
+      "frequencyGHz": 2.4,
+      "wlanStandard": "802.11be"
+     },
+     {
+      "channel": 36,
+      "channelWidthMHz": 80,
+      "frequencyGHz": 5,
+      "wlanStandard": "802.11be"
+     },
+     {
+      "channel": 36,
+      "channelWidthMHz": 80,
+      "frequencyGHz": 6,
+      "wlanStandard": "802.11be"
+     }
+    ]
+   },
+   "ipAddress": "10.0.10.5",
+   "macAddress": "e4:38:83:00:00:05",
+   "model": "U7-Pro",
+   "name": "ap-office",
+   "provisionedAt": "2026-10-01T10:00:00Z",
+   "state": "ONLINE",
+   "supported": true,
+   "uplink": {
+    "deviceId": "95f4e140-f04b-572b-b821-588a815c0538"
+   }
+  },
+  "status": 200
+ },
+ "/proxy/network/integration/v1/sites/8c49eefd-462e-59dc-aae1-d1b7b1b66fde/devices/854a1ed0-3e0b-50b1-94c8-65314c300f52": {
+  "body": {
+   "adoptedAt": "2025-03-01T10:00:00Z",
+   "configurationId": "c54757bb-f965-5522-ac68-301c490a3767",
+   "features": [
+    "gateway",
+    "switching"
+   ],
+   "firmwareUpdatable": false,
+   "firmwareVersion": "4.3.9",
+   "id": "854a1ed0-3e0b-50b1-94c8-65314c300f52",
+   "interfaces": {
+    "ports": [
+     {
+      "connector": "RJ45",
+      "idx": 1,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": false,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": 1000,
+      "state": "UP"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 2,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": false,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": 1000,
+      "state": "UP"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 3,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": false,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": 1000,
+      "state": "UP"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 4,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": false,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 5,
+      "maxSpeedMbps": 2500,
+      "poe": {
+       "enabled": false,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     }
+    ],
+    "radios": []
+   },
+   "ipAddress": "10.0.10.1",
+   "macAddress": "e4:38:83:00:00:01",
+   "model": "UCG-Ultra",
+   "name": "ucg-ultra",
+   "provisionedAt": "2026-10-01T10:00:00Z",
+   "state": "ONLINE",
+   "supported": true,
+   "uplink": null
+  },
+  "status": 200
+ },
+ "/proxy/network/integration/v1/sites/8c49eefd-462e-59dc-aae1-d1b7b1b66fde/devices/95f4e140-f04b-572b-b821-588a815c0538": {
+  "body": {
+   "adoptedAt": "2025-03-01T10:00:00Z",
+   "configurationId": "1c8a52c2-0dc7-50e2-8477-897519d11c34",
+   "features": [
+    "switching"
+   ],
+   "firmwareUpdatable": false,
+   "firmwareVersion": "7.1.26",
+   "id": "95f4e140-f04b-572b-b821-588a815c0538",
+   "interfaces": {
+    "ports": [
+     {
+      "connector": "RJ45",
+      "idx": 1,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": 1000,
+      "state": "UP"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 2,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": 1000,
+      "state": "UP"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 3,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": 1000,
+      "state": "UP"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 4,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 5,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 6,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 7,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 8,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 9,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 10,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 11,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 12,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 13,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 14,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 15,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 16,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 17,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 18,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 19,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 20,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 21,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 22,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 23,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 24,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "SFPPLUS",
+      "idx": 25,
+      "maxSpeedMbps": 10000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "SFPPLUS",
+      "idx": 26,
+      "maxSpeedMbps": 10000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     }
+    ],
+    "radios": []
+   },
+   "ipAddress": "10.0.10.2",
+   "macAddress": "e4:38:83:00:00:02",
+   "model": "USW-Pro-24-PoE",
+   "name": "sw-core",
+   "provisionedAt": "2026-10-01T10:00:00Z",
+   "state": "ONLINE",
+   "supported": true,
+   "uplink": {
+    "deviceId": "854a1ed0-3e0b-50b1-94c8-65314c300f52"
+   }
+  },
+  "status": 200
+ },
+ "/proxy/network/integration/v1/sites/8c49eefd-462e-59dc-aae1-d1b7b1b66fde/devices/ed6b11b3-6003-5d90-b42d-bd73cd00e51e": {
+  "body": {
+   "adoptedAt": "2025-03-01T10:00:00Z",
+   "configurationId": "f2b7d816-1722-5108-ae50-b69313a05795",
+   "features": [
+    "accessPoint"
+   ],
+   "firmwareUpdatable": false,
+   "firmwareVersion": "8.0.26",
+   "id": "ed6b11b3-6003-5d90-b42d-bd73cd00e51e",
+   "interfaces": {
+    "ports": [
+     {
+      "connector": "RJ45",
+      "idx": 1,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": false,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": 1000,
+      "state": "UP"
+     }
+    ],
+    "radios": [
+     {
+      "channel": 6,
+      "channelWidthMHz": 20,
+      "frequencyGHz": 2.4,
+      "wlanStandard": "802.11be"
+     },
+     {
+      "channel": 36,
+      "channelWidthMHz": 80,
+      "frequencyGHz": 5,
+      "wlanStandard": "802.11be"
+     },
+     {
+      "channel": 36,
+      "channelWidthMHz": 80,
+      "frequencyGHz": 6,
+      "wlanStandard": "802.11be"
+     }
+    ]
+   },
+   "ipAddress": "10.0.10.4",
+   "macAddress": "e4:38:83:00:00:04",
+   "model": "U7-Pro",
+   "name": "ap-living",
+   "provisionedAt": "2026-10-01T10:00:00Z",
+   "state": "ONLINE",
+   "supported": true,
+   "uplink": {
+    "deviceId": "95f4e140-f04b-572b-b821-588a815c0538"
+   }
+  },
+  "status": 200
+ },
+ "/proxy/network/integration/v1/sites/8c49eefd-462e-59dc-aae1-d1b7b1b66fde/devices?offset=0&limit=200": {
+  "body": {
+   "count": 6,
+   "data": [
+    {
+     "features": [
+      "gateway",
+      "switching"
+     ],
+     "firmwareUpdatable": false,
+     "firmwareVersion": "4.3.9",
+     "id": "854a1ed0-3e0b-50b1-94c8-65314c300f52",
+     "interfaces": [
+      "ports"
+     ],
+     "ipAddress": "10.0.10.1",
+     "macAddress": "e4:38:83:00:00:01",
+     "model": "UCG-Ultra",
+     "name": "ucg-ultra",
+     "state": "ONLINE",
+     "supported": true
+    },
+    {
+     "features": [
+      "switching"
+     ],
+     "firmwareUpdatable": false,
+     "firmwareVersion": "7.1.26",
+     "id": "95f4e140-f04b-572b-b821-588a815c0538",
+     "interfaces": [
+      "ports"
+     ],
+     "ipAddress": "10.0.10.2",
+     "macAddress": "e4:38:83:00:00:02",
+     "model": "USW-Pro-24-PoE",
+     "name": "sw-core",
+     "state": "ONLINE",
+     "supported": true
+    },
+    {
+     "features": [
+      "switching"
+     ],
+     "firmwareUpdatable": false,
+     "firmwareVersion": "7.1.26",
+     "id": "195ddb4b-8e9a-5ad3-afd2-db17da820a45",
+     "interfaces": [
+      "ports"
+     ],
+     "ipAddress": "10.0.10.3",
+     "macAddress": "e4:38:83:00:00:03",
+     "model": "USW-Lite-8-PoE",
+     "name": "sw-rack",
+     "state": "ONLINE",
+     "supported": true
+    },
+    {
+     "features": [
+      "accessPoint"
+     ],
+     "firmwareUpdatable": false,
+     "firmwareVersion": "8.0.26",
+     "id": "ed6b11b3-6003-5d90-b42d-bd73cd00e51e",
+     "interfaces": [
+      "ports",
+      "radios"
+     ],
+     "ipAddress": "10.0.10.4",
+     "macAddress": "e4:38:83:00:00:04",
+     "model": "U7-Pro",
+     "name": "ap-living",
+     "state": "ONLINE",
+     "supported": true
+    },
+    {
+     "features": [
+      "accessPoint"
+     ],
+     "firmwareUpdatable": true,
+     "firmwareVersion": "8.0.19",
+     "id": "7d6123a8-bbf6-560e-b13a-8361a9bc5059",
+     "interfaces": [
+      "ports",
+      "radios"
+     ],
+     "ipAddress": "10.0.10.5",
+     "macAddress": "e4:38:83:00:00:05",
+     "model": "U7-Pro",
+     "name": "ap-office",
+     "state": "ONLINE",
+     "supported": true
+    },
+    {
+     "features": [
+      "accessPoint"
+     ],
+     "firmwareUpdatable": false,
+     "firmwareVersion": "6.6.77",
+     "id": "4587de12-552a-5361-8013-72c551c91087",
+     "interfaces": [
+      "ports",
+      "radios"
+     ],
+     "ipAddress": "10.0.10.6",
+     "macAddress": "e4:38:83:00:00:06",
+     "model": "U6-Mesh",
+     "name": "ap-garden",
+     "state": "OFFLINE",
+     "supported": true
+    }
+   ],
+   "limit": 200,
+   "offset": 0,
+   "totalCount": 6
+  },
+  "status": 200
+ },
+ "/proxy/network/integration/v1/sites/8c49eefd-462e-59dc-aae1-d1b7b1b66fde/firewall/policies?offset=0&limit=200": {
+  "body": {
+   "count": 3,
+   "data": [
+    {
+     "action": {
+      "type": "BLOCK"
+     },
+     "destination": {
+      "zoneId": "707d52f2-c89e-57c2-9c43-3dcf38d4dc9f"
+     },
+     "enabled": false,
+     "id": "1af4a912-d689-5c55-9f0b-4017fdde76de",
+     "index": 10000,
+     "ipProtocolScope": {
+      "ipVersion": "IPV4_AND_IPV6"
+     },
+     "loggingEnabled": false,
+     "metadata": {
+      "origin": "USER_DEFINED"
+     },
+     "name": "Block IoT to Internal",
+     "source": {
+      "zoneId": "fc2ff326-0f37-5c33-b4e4-3c3064bacbe5"
+     }
+    },
+    {
+     "action": {
+      "allowReturnTraffic": true,
+      "type": "ALLOW"
+     },
+     "destination": {
+      "zoneId": "fc2ff326-0f37-5c33-b4e4-3c3064bacbe5"
+     },
+     "enabled": true,
+     "id": "ae35f5a3-6835-5601-a85f-f64cbf0e3de7",
+     "index": 10001,
+     "ipProtocolScope": {
+      "ipVersion": "IPV4_AND_IPV6"
+     },
+     "loggingEnabled": false,
+     "metadata": {
+      "origin": "USER_DEFINED"
+     },
+     "name": "Allow Internal to IoT",
+     "source": {
+      "zoneId": "707d52f2-c89e-57c2-9c43-3dcf38d4dc9f"
+     }
+    },
+    {
+     "action": {
+      "allowReturnTraffic": true,
+      "type": "ALLOW"
+     },
+     "destination": {
+      "zoneId": "707d52f2-c89e-57c2-9c43-3dcf38d4dc9f"
+     },
+     "enabled": true,
+     "id": "f625c02e-6707-55cb-9a1e-9c9957b8bb27",
+     "index": 10002,
+     "ipProtocolScope": {
+      "ipVersion": "IPV4_AND_IPV6"
+     },
+     "loggingEnabled": false,
+     "metadata": {
+      "origin": "USER_DEFINED"
+     },
+     "name": "Allow IoT DNS to adguard",
+     "source": {
+      "zoneId": "fc2ff326-0f37-5c33-b4e4-3c3064bacbe5"
+     }
+    }
+   ],
+   "limit": 200,
+   "offset": 0,
+   "totalCount": 3
+  },
+  "status": 200
+ },
+ "/proxy/network/integration/v1/sites/8c49eefd-462e-59dc-aae1-d1b7b1b66fde/firewall/zones?offset=0&limit=200": {
+  "body": {
+   "count": 6,
+   "data": [
+    {
+     "id": "707d52f2-c89e-57c2-9c43-3dcf38d4dc9f",
+     "metadata": {
+      "origin": "SYSTEM_DEFINED"
+     },
+     "name": "Internal",
+     "networkIds": [
+      "0ac069fc-d2b7-55aa-ae3a-33afa9b5e85e",
+      "8bf2ff46-f768-5d44-ac85-09f8c91f742f",
+      "57131a91-e615-5d93-bd14-95a3eb9ed5bb"
+     ]
+    },
+    {
+     "id": "a960919c-6506-5277-9a09-2cc43a0fa113",
+     "metadata": {
+      "origin": "SYSTEM_DEFINED"
+     },
+     "name": "External",
+     "networkIds": []
+    },
+    {
+     "id": "bea9dfa0-3a0f-55f6-ad38-d9d3d3f1fd31",
+     "metadata": {
+      "origin": "SYSTEM_DEFINED"
+     },
+     "name": "Gateway",
+     "networkIds": []
+    },
+    {
+     "id": "fc2ff326-0f37-5c33-b4e4-3c3064bacbe5",
+     "metadata": {
+      "origin": "USER_DEFINED"
+     },
+     "name": "IoT",
+     "networkIds": [
+      "467893d1-cff9-5635-a98a-d6beb2a21746"
+     ]
+    },
+    {
+     "id": "f6a073a9-4900-5177-ba8c-38a6809c160f",
+     "metadata": {
+      "origin": "SYSTEM_DEFINED"
+     },
+     "name": "Hotspot",
+     "networkIds": []
+    },
+    {
+     "id": "b33c7114-c4a4-5b02-8f36-847b03b98b5e",
+     "metadata": {
+      "origin": "SYSTEM_DEFINED"
+     },
+     "name": "DMZ",
+     "networkIds": []
+    }
+   ],
+   "limit": 200,
+   "offset": 0,
+   "totalCount": 6
+  },
+  "status": 200
+ },
+ "/proxy/network/integration/v1/sites/8c49eefd-462e-59dc-aae1-d1b7b1b66fde/networks/0ac069fc-d2b7-55aa-ae3a-33afa9b5e85e": {
+  "body": {
+   "default": true,
+   "enabled": true,
+   "id": "0ac069fc-d2b7-55aa-ae3a-33afa9b5e85e",
+   "internetAccessEnabled": true,
+   "ipv4Configuration": {
+    "autoScaleEnabled": false,
+    "dhcpConfiguration": {
+     "ipAddressRange": {
+      "start": "10.0.1.100",
+      "stop": "10.0.1.254"
+     },
+     "leaseTimeSeconds": 86400,
+     "mode": "SERVER"
+    },
+    "hostIpAddress": "10.0.1.1",
+    "prefixLength": 24
+   },
+   "isolationEnabled": false,
+   "management": "GATEWAY",
+   "mdnsForwardingEnabled": false,
+   "metadata": {
+    "origin": "USER_DEFINED"
+   },
+   "name": "Default",
+   "vlanId": 1,
+   "zoneId": "707d52f2-c89e-57c2-9c43-3dcf38d4dc9f"
+  },
+  "status": 200
+ },
+ "/proxy/network/integration/v1/sites/8c49eefd-462e-59dc-aae1-d1b7b1b66fde/networks/467893d1-cff9-5635-a98a-d6beb2a21746": {
+  "body": {
+   "default": false,
+   "enabled": true,
+   "id": "467893d1-cff9-5635-a98a-d6beb2a21746",
+   "internetAccessEnabled": true,
+   "ipv4Configuration": {
+    "autoScaleEnabled": false,
+    "dhcpConfiguration": {
+     "ipAddressRange": {
+      "start": "10.0.30.100",
+      "stop": "10.0.30.254"
+     },
+     "leaseTimeSeconds": 86400,
+     "mode": "SERVER"
+    },
+    "hostIpAddress": "10.0.30.1",
+    "prefixLength": 24
+   },
+   "isolationEnabled": true,
+   "management": "GATEWAY",
+   "mdnsForwardingEnabled": true,
+   "metadata": {
+    "origin": "USER_DEFINED"
+   },
+   "name": "IoT",
+   "vlanId": 30,
+   "zoneId": "fc2ff326-0f37-5c33-b4e4-3c3064bacbe5"
+  },
+  "status": 200
+ },
+ "/proxy/network/integration/v1/sites/8c49eefd-462e-59dc-aae1-d1b7b1b66fde/networks/57131a91-e615-5d93-bd14-95a3eb9ed5bb": {
+  "body": {
+   "default": false,
+   "enabled": true,
+   "id": "57131a91-e615-5d93-bd14-95a3eb9ed5bb",
+   "internetAccessEnabled": true,
+   "ipv4Configuration": {
+    "autoScaleEnabled": false,
+    "dhcpConfiguration": {
+     "ipAddressRange": {
+      "start": "10.0.20.100",
+      "stop": "10.0.20.254"
+     },
+     "leaseTimeSeconds": 86400,
+     "mode": "SERVER"
+    },
+    "hostIpAddress": "10.0.20.1",
+    "prefixLength": 24
+   },
+   "isolationEnabled": false,
+   "management": "GATEWAY",
+   "mdnsForwardingEnabled": false,
+   "metadata": {
+    "origin": "USER_DEFINED"
+   },
+   "name": "Servers",
+   "vlanId": 20,
+   "zoneId": "707d52f2-c89e-57c2-9c43-3dcf38d4dc9f"
+  },
+  "status": 200
+ },
+ "/proxy/network/integration/v1/sites/8c49eefd-462e-59dc-aae1-d1b7b1b66fde/networks/6d03e13e-7121-5dd1-b585-d841eda8a4dd": {
+  "body": {
+   "default": false,
+   "enabled": true,
+   "id": "6d03e13e-7121-5dd1-b585-d841eda8a4dd",
+   "internetAccessEnabled": true,
+   "ipv4Configuration": {
+    "autoScaleEnabled": false,
+    "dhcpConfiguration": {
+     "ipAddressRange": {
+      "start": "10.0.40.100",
+      "stop": "10.0.40.254"
+     },
+     "leaseTimeSeconds": 86400,
+     "mode": "SERVER"
+    },
+    "hostIpAddress": "10.0.40.1",
+    "prefixLength": 24
+   },
+   "isolationEnabled": false,
+   "management": "GATEWAY",
+   "mdnsForwardingEnabled": false,
+   "metadata": {
+    "origin": "USER_DEFINED"
+   },
+   "name": "Lab",
+   "vlanId": 40,
+   "zoneId": "707d52f2-c89e-57c2-9c43-3dcf38d4dc9f"
+  },
+  "status": 200
+ },
+ "/proxy/network/integration/v1/sites/8c49eefd-462e-59dc-aae1-d1b7b1b66fde/networks/8bf2ff46-f768-5d44-ac85-09f8c91f742f": {
+  "body": {
+   "default": false,
+   "enabled": true,
+   "id": "8bf2ff46-f768-5d44-ac85-09f8c91f742f",
+   "internetAccessEnabled": true,
+   "ipv4Configuration": {
+    "autoScaleEnabled": false,
+    "dhcpConfiguration": {
+     "ipAddressRange": {
+      "start": "10.0.10.100",
+      "stop": "10.0.10.254"
+     },
+     "leaseTimeSeconds": 86400,
+     "mode": "SERVER"
+    },
+    "hostIpAddress": "10.0.10.1",
+    "prefixLength": 24
+   },
+   "isolationEnabled": false,
+   "management": "GATEWAY",
+   "mdnsForwardingEnabled": false,
+   "metadata": {
+    "origin": "USER_DEFINED"
+   },
+   "name": "Management",
+   "vlanId": 10,
+   "zoneId": "707d52f2-c89e-57c2-9c43-3dcf38d4dc9f"
+  },
+  "status": 200
+ },
+ "/proxy/network/integration/v1/sites/8c49eefd-462e-59dc-aae1-d1b7b1b66fde/networks?offset=0&limit=200": {
+  "body": {
+   "count": 5,
+   "data": [
+    {
+     "default": true,
+     "enabled": true,
+     "id": "0ac069fc-d2b7-55aa-ae3a-33afa9b5e85e",
+     "management": "GATEWAY",
+     "metadata": {
+      "origin": "USER_DEFINED"
+     },
+     "name": "Default",
+     "vlanId": 1
+    },
+    {
+     "default": false,
+     "enabled": true,
+     "id": "8bf2ff46-f768-5d44-ac85-09f8c91f742f",
+     "management": "GATEWAY",
+     "metadata": {
+      "origin": "USER_DEFINED"
+     },
+     "name": "Management",
+     "vlanId": 10
+    },
+    {
+     "default": false,
+     "enabled": true,
+     "id": "57131a91-e615-5d93-bd14-95a3eb9ed5bb",
+     "management": "GATEWAY",
+     "metadata": {
+      "origin": "USER_DEFINED"
+     },
+     "name": "Servers",
+     "vlanId": 20
+    },
+    {
+     "default": false,
+     "enabled": true,
+     "id": "467893d1-cff9-5635-a98a-d6beb2a21746",
+     "management": "GATEWAY",
+     "metadata": {
+      "origin": "USER_DEFINED"
+     },
+     "name": "IoT",
+     "vlanId": 30
+    },
+    {
+     "default": false,
+     "enabled": true,
+     "id": "6d03e13e-7121-5dd1-b585-d841eda8a4dd",
+     "management": "GATEWAY",
+     "metadata": {
+      "origin": "USER_DEFINED"
+     },
+     "name": "Lab",
+     "vlanId": 40
+    }
+   ],
+   "limit": 200,
+   "offset": 0,
+   "totalCount": 5
+  },
+  "status": 200
+ },
+ "/proxy/network/integration/v1/sites/8c49eefd-462e-59dc-aae1-d1b7b1b66fde/wans?offset=0&limit=200": {
+  "body": {
+   "count": 1,
+   "data": [
+    {
+     "id": "bc8d5b23-d099-5868-bb12-c7fe69ce0a77",
+     "name": "Internet 1"
+    }
+   ],
+   "limit": 200,
+   "offset": 0,
+   "totalCount": 1
+  },
+  "status": 200
+ },
+ "/proxy/network/integration/v1/sites/8c49eefd-462e-59dc-aae1-d1b7b1b66fde/wifi/broadcasts?offset=0&limit=200": {
+  "body": {
+   "count": 3,
+   "data": [
+    {
+     "broadcastingFrequenciesGHz": [
+      2.4,
+      5
+     ],
+     "clientIsolationEnabled": false,
+     "enabled": true,
+     "hideName": false,
+     "id": "63916fb1-cc14-5d94-80b2-2fa525c49d20",
+     "metadata": {
+      "origin": "USER_DEFINED"
+     },
+     "name": "atlas-home",
+     "network": {
+      "networkId": "0ac069fc-d2b7-55aa-ae3a-33afa9b5e85e",
+      "type": "SPECIFIC"
+     },
+     "securityConfiguration": {
+      "passphrase": "home-ATLASFAKE-psk",
+      "type": "WPA2_WPA3_PERSONAL"
+     },
+     "type": "STANDARD"
+    },
+    {
+     "broadcastingFrequenciesGHz": [
+      2.4,
+      5
+     ],
+     "clientIsolationEnabled": true,
+     "enabled": true,
+     "hideName": false,
+     "id": "ef1d5602-1e8a-5fe3-809f-7291a5be838f",
+     "metadata": {
+      "origin": "USER_DEFINED"
+     },
+     "name": "atlas-iot",
+     "network": {
+      "networkId": "467893d1-cff9-5635-a98a-d6beb2a21746",
+      "type": "SPECIFIC"
+     },
+     "securityConfiguration": {
+      "passphrase": "iot-ATLASFAKE-psk",
+      "type": "WPA2_PERSONAL"
+     },
+     "type": "STANDARD"
+    },
+    {
+     "broadcastingFrequenciesGHz": [
+      2.4,
+      5
+     ],
+     "clientIsolationEnabled": false,
+     "enabled": true,
+     "hideName": false,
+     "id": "6fb9ef8f-e1bb-59ce-aad1-56baa228c74b",
+     "metadata": {
+      "origin": "USER_DEFINED"
+     },
+     "name": "atlas-guest",
+     "network": {
+      "networkId": "0ac069fc-d2b7-55aa-ae3a-33afa9b5e85e",
+      "type": "SPECIFIC"
+     },
+     "securityConfiguration": {
+      "type": "OPEN"
+     },
+     "type": "STANDARD"
+    }
+   ],
+   "limit": 200,
+   "offset": 0,
+   "totalCount": 3
+  },
+  "status": 200
+ },
+ "/proxy/network/integration/v1/sites?offset=0&limit=200": {
+  "body": {
+   "count": 1,
+   "data": [
+    {
+     "id": "8c49eefd-462e-59dc-aae1-d1b7b1b66fde",
+     "internalReference": "default",
+     "name": "Default"
+    }
+   ],
+   "limit": 200,
+   "offset": 0,
+   "totalCount": 1
+  },
+  "status": 200
+ }
+}

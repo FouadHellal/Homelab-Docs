@@ -34,9 +34,10 @@ async def scan(rt: Runtime, state: str) -> ScanSummary:
 
 async def test_a_then_b_matches_golden(rt: Runtime) -> None:
     first = await scan(rt, "A")
-    assert {e.type for e in first.events} == {"entity.added"}
-    assert len(first.events) == 29  # 12 SSH hosts + cluster + 2 nodes + 14 guests
-    assert first.counts == {"ok": 15, "partial": 1, "failed": 1}
+    assert {e.type for e in first.events} == {"entity.added", "device.unknown_seen"}
+    # 12 SSH hosts + cluster + 2 nodes + 14 guests + UniFi site + 6 devices + NAS, 1 unknown
+    assert len(first.events) == 38
+    assert first.counts == {"ok": 18, "partial": 1, "failed": 1}
 
     second = await scan(rt, "B")
     got = sorted((e.type, e.summary) for e in second.events)
@@ -56,8 +57,8 @@ async def test_rescan_same_state_is_quiet_and_deduplicated(rt: Runtime) -> None:
     with rt.sessions() as s:
         blobs = s.scalar(select(func.count()).select_from(Blob))
         snaps = s.scalar(select(func.count()).select_from(Snapshot))
-    assert blobs == 32  # 12 linux + 3 docker + 1 cluster + 2 nodes + 14 guests
-    assert snaps == 64
+    assert blobs == 41  # 12 linux + 3 docker + pi + cluster + 2 nodes + 14 guests + site + 6 + nas
+    assert snaps == 82
 
 
 async def test_no_secret_reaches_storage_or_audit(rt: Runtime) -> None:
@@ -130,5 +131,5 @@ async def test_host_and_collector_filters(rt: Runtime) -> None:
     assert sorted(r.target for r in summary.runs) == ["db01", "web01"]
     docker = await engine(rt, "A").run(collectors=["docker"])
     assert sorted(r.target for r in docker.runs) == ["docker01", "docker02", "media01"]
-    none = await engine(rt, "A").run(collectors=["nas"])
+    none = await engine(rt, "A").run(collectors=["windows"])
     assert none.runs == []
