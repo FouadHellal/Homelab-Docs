@@ -1,6 +1,7 @@
 # Vendored front-end libraries
 
-Served from `/static/vendor/`; no CDN at runtime. `tests/web/test_static.py` pins the SHA-256s.
+Served from `/static/vendor/`; no CDN at runtime. `tests/web/test_web.py::test_vendored_js_pinned` pins the SHA-256s; the files are
+excluded from the whitespace hooks and marked `-text` in `.gitattributes` so nothing rewrites them.
 
 | File | Package | Version | License | Source tarball (sha512 integrity verified against registry.npmjs.org, 2026-10-18) | SHA-256 of file |
 |---|---|---|---|---|---|
