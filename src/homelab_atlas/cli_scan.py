@@ -10,12 +10,16 @@ from rich.console import Console
 from rich.table import Table
 from sqlalchemy import select
 
-from homelab_atlas.collectors.base import HttpFactory
+from homelab_atlas.collectors import nas as nas_mod
+from homelab_atlas.collectors.base import ApiSource, HttpFactory
 from homelab_atlas.collectors.linux_ssh.collector import EXIT_HINTS
 from homelab_atlas.collectors.linux_ssh.frame import FrameError, parse_frame
 from homelab_atlas.collectors.linux_ssh.parse import parse_version
 from homelab_atlas.collectors.proxmox import endpoints as pve_ep
 from homelab_atlas.collectors.proxmox.collector import ProxmoxCollector
+from homelab_atlas.collectors.unifi import endpoints as unifi_ep
+from homelab_atlas.collectors.unifi import parse as unifi_parse
+from homelab_atlas.collectors.unifi.collector import UnifiCollector
 from homelab_atlas.engine.scan import ScanLockedError
 from homelab_atlas.inventory.hosts import Inventory, InventoryError
 from homelab_atlas.lab import LabError, parse_spec
@@ -32,7 +36,7 @@ from homelab_atlas.security.allowlist import ProbeSection
 from homelab_atlas.security.errors import HttpStatusError, SecurityRefusal, TransportError
 from homelab_atlas.security.ssh import SshRunner
 from homelab_atlas.store.db import make_engine, migrate
-from homelab_atlas.store.tables import Event, Scan
+from homelab_atlas.store.tables import Entity, Event, Facet, Scan
 
 console = Console()
 targets_app = typer.Typer(help="Target-side setup artifacts.", no_args_is_help=True)
@@ -178,6 +182,42 @@ async def _doctor_proxmox(
     return True, f"PVE {version}: token read-only (audit privileges only)"
 
 
+async def _doctor_unifi(factory: HttpFactory, inventory: Inventory, name: str) -> tuple[bool, str]:
+    """Version gate only: an API key cannot be checked for write rights without writing."""
+    try:
+        async with factory(UnifiCollector.source(inventory, name), unifi_ep.DOCTOR) as client:
+            info = (await client.get(unifi_ep.INFO)).json()
+            sites = (await client.get(unifi_ep.SITES, query={"offset": 0, "limit": 200})).json()
+    except SecurityRefusal as exc:
+        return False, f"refused: {exc.reason.value} ({exc.detail})"
+    except (TransportError, HttpStatusError) as exc:
+        return False, f"unreachable: {exc}"
+    version = info.get("applicationVersion") if isinstance(info, dict) else None
+    if unifi_parse.version_tuple(version) < unifi_ep.MIN_VERSION:
+        return False, f"Network {version}: Integration API needs >= 9.3"
+    n = sites.get("totalCount") if isinstance(sites, dict) else "?"
+    return True, (
+        f"Network {version}, {n} site(s). Key scope is not verifiable: create it as a "
+        "view-only admin (SECURITY.md)"
+    )
+
+
+async def _doctor_unas(factory: HttpFactory, inventory: Inventory, name: str) -> tuple[bool, str]:
+    src = next(s for s in inventory.sources.unas if s.name == name)
+    if src.url is None or src.credential is None:
+        return False, "drive_api needs url and credential"
+    api = ApiSource(src.name, src.url, src.credential, src.tls, "x-api-key")
+    try:
+        async with factory(api, nas_mod.ENDPOINTS) as client:
+            system = (await client.get(nas_mod.SYSTEM)).json()
+    except SecurityRefusal as exc:
+        return False, f"refused: {exc.reason.value} ({exc.detail})"
+    except (TransportError, HttpStatusError) as exc:
+        return False, f"unreachable: {exc}"
+    model = (system.get("hardware") or {}).get("shortname") if isinstance(system, dict) else None
+    return True, f"UNAS {model}: Drive API answering (undocumented API, best effort)"
+
+
 async def _doctor_host(runner: SshRunner, inventory: Inventory, name: str) -> tuple[bool, str]:
     host = inventory.host(name)
     target = inventory.ssh_target(host, frozenset({ProbeSection.VERSION}))
@@ -223,16 +263,21 @@ def doctor(
         for h in inventory.hosts
         if ssh_collectors & set(h.collectors) and (not host or h.name in host)
     ]
-    sources = [s.name for s in inventory.sources.proxmox if not host or s.name in host]
+    pick = [s.name for s in inventory.sources.proxmox if not host or s.name in host]
+    unifi = [s.name for s in inventory.sources.unifi if not host or s.name in host]
+    unas = [s.name for s in inventory.sources.unas if s.drive_api and (not host or s.name in host)]
+    sources = pick + unifi + unas
     console.print(
         f"inventory OK: {len(inventory.hosts)} hosts ({len(names)} over SSH), "
-        f"{len(sources)} Proxmox source(s)"
+        f"{len(pick)} Proxmox, {len(unifi)} UniFi, {len(unas)} UNAS source(s)"
     )
     factory = inputs.http(rt.audit)
 
     async def run_all() -> list[tuple[bool, str]]:
         checks = [_doctor_host(runner, inventory, n) for n in names]
-        checks += [_doctor_proxmox(factory, inventory, s) for s in sources]
+        checks += [_doctor_proxmox(factory, inventory, s) for s in pick]
+        checks += [_doctor_unifi(factory, inventory, s) for s in unifi]
+        checks += [_doctor_unas(factory, inventory, s) for s in unas]
         return list(await asyncio.gather(*checks))
 
     table = Table(title="atlas doctor")
@@ -280,8 +325,53 @@ def db_upgrade(lab: LabOpt = None, data_dir: DataOpt = None) -> None:
     console.print(f"{ddir / 'atlas.db'}: up to date")
 
 
+def unknown(
+    lab: LabOpt = None,
+    data_dir: DataOpt = None,
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Devices seen on the network (UniFi clients, ARP) that nothing in the inventory explains."""
+    rt = Runtime.open(
+        data_dir or default_data_dir(lab=lab is not None), mode="demo" if lab else "live"
+    )
+    with rt.sessions() as s:
+        rows = s.execute(
+            select(Entity, Facet)
+            .join(Facet, Facet.entity_key == Entity.key)
+            .where(Entity.kind == "unknown-device", Entity.status == "unknown")
+            .order_by(Entity.first_seen)
+        ).all()
+    items = [
+        {
+            "name": e.display_name,
+            "first_seen": e.first_seen.isoformat(),
+            "last_seen": e.last_seen.isoformat(),
+            **f.data,
+        }
+        for e, f in rows
+    ]
+    if as_json:
+        typer.echo(json.dumps(items, indent=1, ensure_ascii=False))
+        return
+    table = Table(title=f"{len(items)} unknown device(s)")
+    for col in ("name", "mac", "ip", "network", "vlan", "seen via", "last seen"):
+        table.add_column(col)
+    for i in items:
+        table.add_row(
+            i["name"],
+            i["mac"],
+            i.get("ip") or "",
+            i.get("network") or "",
+            str(i.get("vlan") or ""),
+            i.get("uplink") or i.get("seen_via") or "",
+            i["last_seen"][:16],
+        )
+    console.print(table)
+
+
 def register(app: typer.Typer) -> None:
     app.command("scan")(scan)
+    app.command("unknown")(unknown)
     app.command("diff")(diff)
     app.command("doctor")(doctor)
     app.add_typer(targets_app, name="targets")
