@@ -1,0 +1,47 @@
+# Secrets and real lab data: never commit
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+id_rsa*
+id_ecdsa*
+id_ed25519*
+id_dsa*
+known_hosts.real
+/data/
+/exports/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.log
+# Real config lives outside the repo (ATLAS_CONFIG_DIR) or stays local
+/atlas.toml
+/hosts.yaml
+/annotations/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Tooling / OS / IDE
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+node_modules/
+.claude/settings.local.json

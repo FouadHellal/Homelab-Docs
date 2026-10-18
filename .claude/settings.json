@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)",
+      "Read(~/.ssh/**)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Edit(./.env)",
+      "Edit(./.env.*)",
+      "Edit(./secrets/**)",
+      "Bash(git push:*)",
+      "Bash(git -C:*)",
+      "Bash(cat .env:*)",
+      "Bash(cat ./.env:*)",
+      "Bash(cat secrets/:*)",
+      "Bash(cat ./secrets/:*)",
+      "Bash(cat ~/.ssh/:*)",
+      "PowerShell(git push:*)",
+      "PowerShell(git -C:*)",
+      "PowerShell(Get-Content .env:*)",
+      "PowerShell(Get-Content ./.env:*)",
+      "PowerShell(Get-Content secrets:*)",
+      "PowerShell(Get-Content ./secrets:*)",
+      "PowerShell(cat .env:*)",
+      "PowerShell(type .env:*)"
+    ]
+  }
+}
