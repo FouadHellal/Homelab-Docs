@@ -271,3 +271,40 @@ Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a
   - The SDK's DNS-rebinding protection is on, with a Host allowlist (`--allowed-host`) and no Origins. The default bind is 127.0.0.1.
 
 **Rejected.** The SDK's OAuth server for a single-owner LAN tool (moving parts without benefit); a DB advisory-lock row in addition to the file lock (single host; revisit with remote workers); backoff on partial failure; pseudonyms per export (they break diffs between sanitised exports).
+
+## ADR-024 Container image, compose and image CI as built (M7)
+**Facts (resolved 2026-10-18 from the registries and the GitHub API, not from memory).**
+- Base images:
+  - `python:3.12-slim-trixie`, index digest `sha256:a6e34c59…` (Docker Hub, last updated 2026-10-09);
+  - `ghcr.io/astral-sh/uv:0.13.1`, `sha256:4a1f3666…`, matching the local uv 0.13.1.
+- Scanner: `aquasec/trivy:0.76.0`, `sha256:2416d1f7…`.
+- Actions (latest releases, tag → commit):
+  - `docker/setup-buildx-action` v4.4.1 `f87e5991`
+  - `docker/metadata-action` v6.2.0 `dc802804`
+  - `docker/build-push-action` v7.4.0 `c3c9e263`
+  - `docker/login-action` v4.6.0 `dbcb8138`
+
+**Decisions.**
+- **Image.** The Dockerfile follows ADR-017:
+  - A uv builder runs `uv sync --frozen --no-dev --no-editable` into `/opt/atlas`, with bytecode precompiled.
+  - The runtime is `python:3.12-slim-trixie` (same digest) with root-owned code and uid/gid 10001. `/data` is the only writable path (a volume). Config comes from `/config` and secrets from `/run/secrets`.
+  - Packaging was checked by installing the built wheel into a fresh venv and running a lab scan, an export and `selftest security` from outside the repo.
+- **Build context.** `.dockerignore` is an allowlist (`pyproject.toml`, `uv.lock`, `README.md`, `src/`). Fixtures stay out of the image because their `ATLASFAKE` secrets would trip secret scanners and they are dev-only. Data, config, secrets and git history stay out too.
+- **Health.** A new unauthenticated `GET /healthz` returns `ok` and touches no data and no DB. It is used by the Dockerfile `HEALTHCHECK`. `serve` now always accepts `localhost` and `127.0.0.1` as Host in addition to `--allowed-host`, so the in-container probe works behind a custom hostname. Loopback names can't be rebound from a remote browser.
+- **Compose.**
+  - Shared hardening: `read_only`, `cap_drop: [ALL]`, `no-new-privileges`, `tmpfs /tmp` (`noexec,nosuid,nodev`), `pids_limit`, `mem_limit`, `init`, and log rotation.
+  - The UI is published on `127.0.0.1` by default. `--allowed-host`, `--forwarded-allow-ips` and `--hsts` are wired from `.env`.
+  - `config` is mounted read-only, with `config/annotations` read-write on top for the editor.
+  - MCP is an opt-in profile that waits for the UI to be healthy, because the UI runs the migrations.
+  - Secrets are Docker file secrets. Their host files must be owned by uid 10001, since compose ignores `mode`/`uid` for file secrets (see ADR-018).
+- **Image CI** (`.github/workflows/image.yml`), in this order:
+  1. Build with `load`.
+  2. Smoke-test under the production flags: `--read-only`, `--cap-drop ALL`, `no-new-privileges`, uid 10001, `--network none`. The checks are `--version`, `selftest security`, "code not writable" and "container turns healthy".
+  3. Run Trivy (vuln, secret and misconfig; fixable HIGH/CRITICAL fails the build).
+  4. On `main`/`v*` only, log in to GHCR and push with `sbom: true` and `provenance: mode=max`.
+- **CI permissions.** Default `contents: read`, plus `packages: write` on the image job only. Actions are pinned by commit SHA.
+- **Trivy runs from its digest-pinned image** rather than `aquasecurity/trivy-action`. This is the same pattern as gitleaks: one pinned artifact, no composite action that pulls further code at run time.
+- **Platform.** `linux/amd64` only for now: the deployment target is a Proxmox VM. arm64 can be added with QEMU if the collector ever runs on a Pi.
+- **Dependabot** gains the `docker` ecosystem for the base-image digests.
+
+**Rejected.** Distroless (ADR-017); baking the demo lab into the image (fake secrets, dev-only); running MCP-HTTP inside the UI process (ADR-023); signing with cosign keyless (BuildKit provenance and SBOM attestations cover the private-registry use case; revisit if images become public).
