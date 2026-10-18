@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Unknown devices{% endblock %}
+{% block main %}
+<h1>Unknown devices</h1>
+<p class="muted">Seen on the network (UniFi clients, ARP/NDP tables), not explained by any inventory entry or collector.
+  Acknowledging writes <code>acknowledged: true</code> to the device's annotation. Add a <code>match.mac</code> in hosts.yaml to make it known.
+  {% if all %}<a href="/unknown">Hide acknowledged</a>{% else %}<a href="/unknown?all=true">Show acknowledged</a>{% endif %}</p>
+<table class="data"><thead><tr><th>Name</th><th>MAC</th><th>IP</th><th>Network</th><th>VLAN</th><th>Seen via</th><th>First seen</th><th></th></tr></thead><tbody>
+{% for r in rows %}
+<tr id="u-{{ loop.index }}">
+  <td><a href="/entity?key={{ r.entity.key | urlencode }}">{{ r.entity.display_name }}</a></td>
+  <td><code>{{ r.mac }}</code></td><td><code>{{ r.ip or "" }}</code></td><td>{{ r.network or "" }}</td>
+  <td>{{ r.vlan if r.vlan is not none else "" }}</td><td>{{ r.uplink or r.seen_via }}</td>
+  <td class="muted">{{ r.entity.first_seen.strftime("%Y-%m-%d %H:%M") }}</td>
+  <td>{% if r.entity.status == "unknown" %}
+    <form method="post" action="/unknown/ack" hx-post="/unknown/ack" hx-target="#u-{{ loop.index }}" hx-swap="outerHTML">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <input type="hidden" name="key" value="{{ r.entity.key }}">
+      <button type="submit" class="small">Acknowledge</button>
+    </form>{% else %}<span class="pill info">acknowledged</span>{% endif %}</td>
+</tr>
+{% else %}
+<tr><td colspan="8" class="muted">Nothing unexplained on the network.</td></tr>
+{% endfor %}
+</tbody></table>
+{% endblock %}

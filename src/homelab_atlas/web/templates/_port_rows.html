@@ -1,0 +1,9 @@
+{% for r in rows %}
+<tr>
+  <td>{{ r.port }}</td><td>{{ r.proto }}</td><td><code>{{ r.address }}</code></td>
+  <td><a href="/entity?key={{ r.key | urlencode }}">{{ r.name }}</a></td>
+  <td>{{ r.what or "" }}</td><td class="muted">{{ r.source }}</td>
+</tr>
+{% else %}
+<tr><td colspan="6" class="muted">No matches.</td></tr>
+{% endfor %}

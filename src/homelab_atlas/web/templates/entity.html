@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% set e = d.entity %}
+{% block title %}{{ e.display_name }}{% endblock %}
+{% macro kv(rows) %}<dl class="kv">{% for k, v in rows %}{% if v not in (None, "", []) %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endif %}{% endfor %}</dl>{% endmacro %}
+{% block main %}
+<p class="crumbs">
+  {% if d.parent %}<a href="/entity?key={{ d.parent.key | urlencode }}">{{ d.parent.display_name }}</a> › {% endif %}{{ e.kind }}
+</p>
+<h1>{{ e.display_name }} <span class="pill {{ e.status }}">{{ e.status }}</span></h1>
+<p class="muted"><code>{{ e.key }}</code> · first seen {{ e.first_seen.strftime("%Y-%m-%d") }} · last seen {{ e.last_seen.strftime("%Y-%m-%d %H:%M") }}
+  {% if d.same_as %} · same machine as <a href="/entity?key={{ d.same_as.key | urlencode }}">{{ d.same_as.display_name }}</a>{% endif %}
+  {% for t in d.twins %} · seen over SSH as <a href="/entity?key={{ t.key | urlencode }}">{{ t.display_name }}</a>{% endfor %}
+</p>
+
+<section class="card" id="annotation">{% with a = d.annotation, key = e.key %}{% include "_annotation.html" %}{% endwith %}</section>
+
+{% set f = d.facets %}
+{% if "proxmox" in f %}{% set p = f["proxmox"] %}
+<section class="card"><h2>Proxmox</h2>
+  {% if "vmid" in p %}
+  {{ kv([("type", p.type), ("node", p.node), ("status", p.status), ("cores", p.cores), ("memory MiB", p.memory_mb), ("OS (agent)", p.agent_os), ("tags", p.tags | join(", ")), ("on boot", p.onboot), ("HA", p.ha_state), ("backed up", p.backed_up), ("template", p.template)]) }}
+  {% if p.backed_up is false %}<p class="warn">Not covered by any backup job.</p>{% endif %}
+  {% for n in p.notes %}<p class="muted">{{ n }}</p>{% endfor %}
+  <h3>NICs</h3><table class="data"><thead><tr><th>Slot</th><th>Model</th><th>MAC</th><th>Bridge</th><th>VLAN</th><th>Firewall</th></tr></thead><tbody>
+  {% for n in p.nics %}<tr><td>{{ n.slot }}</td><td>{{ n.model }}</td><td><code>{{ n.mac }}</code></td><td>{{ n.bridge }}</td><td>{{ n.vlan_tag }}</td><td>{{ n.firewall }}</td></tr>{% endfor %}</tbody></table>
+  <h3>Disks</h3><table class="data"><thead><tr><th>Slot</th><th>Storage</th><th>Volume</th><th>Size</th><th>Mount</th></tr></thead><tbody>
+  {% for x in p.disks %}<tr><td>{{ x.slot }}</td><td>{{ x.storage }}</td><td>{{ x.volume }}</td><td>{{ x.size }}</td><td>{{ x.mountpoint }}</td></tr>{% endfor %}</tbody></table>
+  {% if p.ips %}<h3>Guest IPs</h3><ul class="plain">{% for i in p.ips %}<li><code>{{ i.address }}</code> {{ i.iface }}</li>{% endfor %}</ul>{% endif %}
+  {% if p.description %}<h3>Description</h3><pre>{{ p.description }}</pre>{% endif %}
+  {% elif "pve_version" in p %}
+  {{ kv([("PVE", p.pve_version), ("kernel", p.kernel), ("IP", p.ip), ("CPU", p.cpu_model), ("cores", p.cpu_cores), ("online", p.online)]) }}
+  <h3>Network</h3><table class="data"><thead><tr><th>Iface</th><th>Type</th><th>CIDR</th><th>Ports</th><th>VLAN</th><th>VLAN-aware</th></tr></thead><tbody>
+  {% for i in p.interfaces %}<tr><td>{{ i.iface }}</td><td>{{ i.type }}</td><td>{{ i.cidr }}</td><td>{{ i.bridge_ports | join(" ") }}</td><td>{{ i.vlan_id }}</td><td>{{ i.vlan_aware }}</td></tr>{% endfor %}</tbody></table>
+  <h3>Storage</h3><table class="data"><thead><tr><th>Name</th><th>Type</th><th>Content</th><th>Shared</th><th>Status</th></tr></thead><tbody>
+  {% for x in p.storages %}<tr><td>{{ x.storage }}</td><td>{{ x.type }}</td><td>{{ x.content | join(", ") }}</td><td>{{ x.shared }}</td><td><span class="pill {{ 'ok' if x.status == 'available' else 'failed' }}">{{ x.status }}</span></td></tr>{% endfor %}</tbody></table>
+  {% else %}
+  {{ kv([("cluster", p.name), ("standalone", p.standalone), ("quorate", p.quorate), ("version", p.version), ("nodes", p.node_names | join(", "))]) }}
+  <h3>Backup jobs</h3><table class="data"><thead><tr><th>Job</th><th>Enabled</th><th>Schedule</th><th>Storage</th><th>Guests</th></tr></thead><tbody>
+  {% for j in p.backup_jobs %}<tr><td>{{ j.id }}</td><td>{{ j.enabled }}</td><td>{{ j.schedule }}</td><td>{{ j.storage }}</td><td>{{ "all" if j.all else j.vmids | join(", ") }}</td></tr>
+  {% else %}<tr><td colspan="5" class="warn">No backup jobs configured.</td></tr>{% endfor %}</tbody></table>
+  {% if p.not_backed_up %}<p class="warn">Not backed up: {{ p.not_backed_up | join(", ") }}</p>{% endif %}
+  {% endif %}
+</section>
+{% endif %}
+
+{% if "linux-ssh" in f %}{% set l = f["linux-ssh"] %}
+<section class="card"><h2>Linux</h2>
+  {% if l.os %}{{ kv([("hostname", l.os.hostname), ("OS", l.os.os_pretty), ("kernel", l.os.kernel), ("arch", l.os.arch), ("virtualisation", l.os.virtualization), ("machine-id", l.os.machine_id), ("probe", l.probe.version if l.probe else None)]) }}{% endif %}
+  {% if l.probe and not l.probe.matches %}<p class="warn">Installed probe does not match this atlas version: reinstall docs/targets/atlas-probe.</p>{% endif %}
+  {% if l.section_errors %}<p class="warn">Partial data: {% for k, v in l.section_errors.items() %}{{ k }}: {{ v | join("; ") }} {% endfor %}</p>{% endif %}
+  <h3>Interfaces</h3><table class="data"><thead><tr><th>Name</th><th>Kind</th><th>MAC</th><th>Addresses</th><th>VLAN</th></tr></thead><tbody>
+  {% for i in l.interfaces %}<tr><td>{{ i.name }}</td><td>{{ i.kind or "" }}</td><td><code>{{ i.mac or "" }}</code></td><td>{% for a in i.addresses %}<code>{{ a.address }}</code> {% endfor %}</td><td>{{ i.vlan_id or "" }}</td></tr>{% endfor %}</tbody></table>
+  <h3>Listening ports</h3><table class="data"><thead><tr><th>Proto</th><th>Address</th><th>Port</th><th>Process</th></tr></thead><tbody>
+  {% for s in l.sockets %}<tr><td>{{ s.proto }}</td><td>{{ s.address }}</td><td>{{ s.port }}</td><td>{{ s.process or "" }}</td></tr>{% endfor %}</tbody></table>
+  <details><summary>Services ({{ l.services | length }})</summary><table class="data"><tbody>
+  {% for s in l.services %}<tr><td>{{ s.unit }}</td><td><span class="pill {{ 'ok' if s.active == 'active' else ('failed' if s.active == 'failed' else 'info') }}">{{ s.active }}</span></td><td>{{ s.enabled or "" }}</td><td class="muted">{{ s.description or "" }}</td></tr>{% endfor %}</tbody></table></details>
+  <details><summary>Mounts ({{ l.mounts | length }})</summary><table class="data"><tbody>
+  {% for m in l.mounts %}<tr><td>{{ m.target }}</td><td>{{ m.source }}</td><td>{{ m.fstype }}</td></tr>{% endfor %}</tbody></table></details>
+  <details><summary>Users ({{ l.users | length }})</summary><table class="data"><tbody>
+  {% for u in l.users %}<tr><td>{{ u.name }}</td><td>{{ u.uid }}</td><td>{{ u.shell }}</td><td>{{ u.groups | join(", ") }}</td></tr>{% endfor %}</tbody></table></details>
+  <details><summary>Cron ({{ l.cron | length }}, secrets redacted)</summary><table class="data"><tbody>
+  {% for c in l.cron %}<tr><td>{{ c.source }}</td><td><code>{{ c.line }}</code></td></tr>{% endfor %}</tbody></table></details>
+  <details><summary>Packages ({{ l.packages | length }})</summary><table class="data"><tbody>
+  {% for p in l.packages %}<tr><td>{{ p.name }}</td><td>{{ p.version }}</td></tr>{% endfor %}</tbody></table></details>
+</section>
+{% endif %}
+
+{% if "docker" in f %}{% set dk = f["docker"] %}
+<section class="card"><h2>Docker {{ dk.engine_version }}</h2>
+  <table class="data"><thead><tr><th>Container</th><th>Image</th><th>Status</th><th>Health</th><th>Ports</th><th>Env names</th><th>Flags</th></tr></thead><tbody>
+  {% for c in dk.containers %}<tr>
+    <td>{{ c.key }}</td><td><code>{{ c.image }}</code></td>
+    <td><span class="pill {{ 'ok' if c.status == 'running' else 'failed' }}">{{ c.status }}</span></td>
+    <td>{{ c.health or "" }}</td>
+    <td>{% for p in c.ports %}<code>{{ p.host_ip }}:{{ p.host_port }}→{{ p.container_port }}/{{ p.proto }}</code> {% endfor %}</td>
+    <td class="muted">{{ c.env_names | join(", ") }}</td>
+    <td>{% if c.privileged %}<span class="pill failed">privileged</span>{% endif %}{% if c.docker_socket %}<span class="pill failed">docker.sock</span>{% endif %}</td>
+  </tr>{% endfor %}</tbody></table>
+  <p class="muted">Compose projects: {% for p in dk.compose_projects %}{{ p.name }} {% endfor %} · networks: {% for n in dk.networks %}{{ n.name }} {% endfor %}</p>
+</section>
+{% endif %}
+
+{% if "pi" in f %}{% set pi = f["pi"] %}
+<section class="card"><h2>Raspberry Pi</h2>
+  {{ kv([("board", pi.model), ("SoC °C", pi.soc_temp_c), ("throttled", pi.throttled_raw)]) }}
+  {% if pi.under_voltage_occurred %}<p class="warn">Under-voltage occurred since boot: check the power supply.</p>{% endif %}
+  {% if pi.throttling_occurred %}<p class="warn">CPU throttling occurred since boot.</p>{% endif %}
+</section>
+{% endif %}
+
+{% if "unifi" in f %}{% set u = f["unifi"] %}
+<section class="card"><h2>UniFi</h2>
+  {% if "mac" in u %}
+  {{ kv([("model", u.model), ("MAC", u.mac), ("IP", u.ip), ("state", u.state), ("firmware", u.firmware), ("features", u.features | join(", "))]) }}
+  {% if u.radios %}<h3>Radios</h3><ul class="plain">{% for r in u.radios %}<li>{{ r.frequency_ghz }} GHz · {{ r.standard }} · {{ r.channel_width_mhz }} MHz</li>{% endfor %}</ul>{% endif %}
+  <details><summary>Ports ({{ u.ports | length }})</summary><table class="data"><tbody>
+  {% for p in u.ports %}<tr><td>{{ p.idx }}</td><td>{{ p.connector }}</td><td>{{ p.state }}</td><td>{{ p.speed_mbps or "" }}</td><td>{{ "PoE" if p.poe else "" }}</td></tr>{% endfor %}</tbody></table></details>
+  {% else %}
+  <p><a href="/vlans">Networks and VLANs</a> · {{ u.ssids | length }} SSIDs · {{ u.policies | length }} firewall policies · {{ u.clients | length }} clients</p>
+  <h3>Firewall policies</h3><table class="data"><thead><tr><th>Name</th><th>Action</th><th>Enabled</th></tr></thead><tbody>
+  {% for p in u.policies %}<tr><td>{{ p.name }}</td><td>{{ p.action }}</td><td><span class="pill {{ 'ok' if p.enabled else 'failed' }}">{{ p.enabled }}</span></td></tr>{% endfor %}</tbody></table>
+  <h3>SSIDs</h3><table class="data"><thead><tr><th>Name</th><th>Security</th><th>Enabled</th></tr></thead><tbody>
+  {% for x in u.ssids %}<tr><td>{{ x.name }}</td><td><span class="pill {{ 'failed' if x.security == 'OPEN' else 'ok' }}">{{ x.security }}</span></td><td>{{ x.enabled }}</td></tr>{% endfor %}</tbody></table>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if "nas" in f %}{% set n = f["nas"] %}
+<section class="card"><h2>NAS ({{ n.source }})</h2>
+  {{ kv([("model", n.model), ("firmware", n.firmware), ("Drive", n.drive_version), ("MAC", n.mac)]) }}
+  <table class="data"><thead><tr><th>Slot</th><th>Model</th><th>Serial</th><th>State</th><th>Health</th><th>Bad sectors</th><th>°C</th></tr></thead><tbody>
+  {% for x in n.disks %}<tr><td>{{ x.slot }}</td><td>{{ x.model }}</td><td>{{ x.serial }}</td><td><span class="pill {{ 'ok' if x.state == 'optimal' else 'failed' }}">{{ x.state }}</span></td><td>{{ x.health_score }}</td><td>{{ x.bad_sectors }}</td><td>{{ x.temperature_c }}</td></tr>{% endfor %}</tbody></table>
+  {% for p in n.pools %}<p>Pool {{ p.id }} · {{ p.raid }} · <span class="pill {{ 'ok' if p.status == 'fullyOperational' else 'failed' }}">{{ p.status }}</span></p>{% endfor %}
+</section>
+{% endif %}
+
+{% if "reconcile" in f %}{% set r = f["reconcile"] %}
+<section class="card"><h2>Seen on the network</h2>
+  {{ kv([("MAC", r.mac), ("IP", r.ip), ("network", r.network), ("VLAN", r.vlan), ("via", r.uplink or r.seen_via)]) }}
+</section>
+{% endif %}
+
+{% if d.children %}
+<section class="card"><h2>Contains</h2><ul class="plain">
+  {% for c in d.children %}<li><a href="/entity?key={{ c.key | urlencode }}">{{ c.display_name }}</a> <span class="muted">{{ c.kind }}</span></li>{% endfor %}
+</ul></section>
+{% endif %}
+
+<section class="card"><h2>History</h2><table class="events"><tbody>
+  {% for ev in d.events %}<tr><td class="muted">{{ ev.created_at.strftime("%Y-%m-%d %H:%M") }}</td><td><span class="sev {{ ev.severity }}">{{ ev.severity }}</span></td><td><code>{{ ev.type }}</code></td><td>{{ ev.summary }}</td></tr>
+  {% else %}<tr><td class="muted">No recorded changes.</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

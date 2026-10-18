@@ -1,0 +1,19 @@
+<div class="annotation">
+  <h2>Annotation
+    <button type="button" class="ghost small" hx-get="/entity/annotation?key={{ key | urlencode }}" hx-target="#annotation">Edit</button>
+  </h2>
+  {% if a %}
+  <dl class="kv">
+    {% if a.owner %}<dt>owner</dt><dd>{{ a.owner }}</dd>{% endif %}
+    {% if a.purpose %}<dt>purpose</dt><dd>{{ a.purpose }}</dd>{% endif %}
+    {% if a.criticality %}<dt>criticality</dt><dd><span class="pill crit-{{ a.criticality }}">{{ a.criticality }}</span></dd>{% endif %}
+    {% if a.tags %}<dt>tags</dt><dd>{% for t in a.tags %}<span class="tag">{{ t }}</span> {% endfor %}</dd>{% endif %}
+    {% if a.links %}<dt>links</dt><dd>{% for l in a.links %}<a href="{{ l.url }}" rel="noopener noreferrer" target="_blank">{{ l.title }}</a> {% endfor %}</dd>{% endif %}
+    {% if a.acknowledged %}<dt>acknowledged</dt><dd>yes</dd>{% endif %}
+  </dl>
+  {% if a.notes %}<pre class="notes">{{ a.notes }}</pre>{% endif %}
+  <p class="muted small">annotations/{{ a.source_file }}</p>
+  {% else %}
+  <p class="muted">No annotation yet. Owner, purpose and criticality survive rescans.</p>
+  {% endif %}
+</div>

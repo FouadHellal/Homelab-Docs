@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Topology{% endblock %}
+{% block head %}<script src="/static/vendor/cytoscape.min.js" nonce="{{ nonce }}" defer></script>{% endblock %}
+{% block main %}
+<h1>Topology</h1>
+<nav class="tabs">
+  {% for v, label in [("physical", "Physical (UniFi)"), ("logical", "Logical (Proxmox / Docker)"), ("vlan", "VLAN membership")] %}
+  <a href="/topology?view={{ v }}"{% if v == view %} aria-current="page"{% endif %}>{{ label }}</a>
+  {% endfor %}
+</nav>
+<div id="cy" class="cy" data-src="/api/topology?view={{ view }}" data-view="{{ view }}" role="img" aria-label="{{ view }} topology graph"></div>
+<p class="muted small">Click a node to open it. Scroll to zoom, drag to pan.</p>
+{% endblock %}
