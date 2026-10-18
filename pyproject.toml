@@ -62,6 +62,9 @@ line-length = 100
 target-version = "py312"
 src = ["src", "tests"]
 
+[tool.ruff.format]
+exclude = ["fixtures/**"]
+
 [tool.ruff.lint]
 select = [
     "E", "W", "F", "I", "N", "UP", "B", "S", "A", "C4", "SIM", "PT", "PTH",
@@ -95,7 +98,9 @@ ban-relative-imports = "all"
 # Deliberate attack inputs and ATLASFAKE secrets.
 "src/homelab_atlas/security/selftest.py" = ["S105", "S106", "RUF001"]
 # RUF001: homoglyphs are deliberate attack inputs. S105/S106: fake ATLASFAKE secrets.
-"tests/**" = ["S101", "TID251", "RUF001", "S105", "S106", "PT011"]
+"tests/**" = ["S101", "TID251", "RUF001", "S105", "S106", "PT011", "S104", "S604"]
+# Generated-data scripts: long literal rows, fake 0.0.0.0 listeners, prints.
+"fixtures/**" = ["E501", "S104", "RUF028", "T201", "S324"]
 
 # ---------------------------------------------------------------- mypy
 [tool.mypy]

@@ -1,0 +1,7 @@
+ATLAS-PROBE 1 ports 03d99692fe62de64fafa0b75
+--03d99692fe62de64fafa0b75 part listen
+tcp   LISTEN 0      4096   [::]:22   [::]:*    users:(("sshd",pid=819,fd=3))
+tcp   LISTEN 0      4096   [::]:443   [::]:*    users:(("caddy",pid=1307,fd=3))
+udp   UNCONN 0      4096   [fe80::be24:11ff:fe00:80%eth0]:546   [::]:*    users:(("systemd-network",pid=407,fd=3))
+--03d99692fe62de64fafa0b75 rc 0
+--03d99692fe62de64fafa0b75 end

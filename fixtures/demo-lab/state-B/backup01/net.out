@@ -1,0 +1,21 @@
+ATLAS-PROBE 1 net 143625d5c930b2ef0d2fc6af
+--143625d5c930b2ef0d2fc6af part addr
+[{"ifindex": 1, "ifname": "lo", "mtu": 65536, "operstate": "UNKNOWN", "link_type": "loopback", "address": "00:00:00:00:00:00", "addr_info": [{"family": "inet", "local": "127.0.0.1", "prefixlen": 8, "scope": "host"}, {"family": "inet6", "local": "::1", "prefixlen": 128, "scope": "host"}]}, {"ifindex": 2, "ifname": "eth0", "mtu": 1500, "operstate": "UP", "link_type": "ether", "address": "bc:24:11:19:ed:28", "addr_info": [{"family": "inet", "local": "10.0.20.40", "prefixlen": 24, "scope": "global"}]}]
+--143625d5c930b2ef0d2fc6af rc 0
+--143625d5c930b2ef0d2fc6af part link
+[{"ifname": "lo"}, {"ifname": "eth0"}]
+--143625d5c930b2ef0d2fc6af rc 0
+--143625d5c930b2ef0d2fc6af part route4
+[{"dst": "default", "gateway": "10.0.20.1", "dev": "eth0", "protocol": "static"}, {"dst": "10.0.20.0/24", "dev": "eth0", "protocol": "kernel"}]
+--143625d5c930b2ef0d2fc6af rc 0
+--143625d5c930b2ef0d2fc6af part route6
+[]
+--143625d5c930b2ef0d2fc6af rc 0
+--143625d5c930b2ef0d2fc6af part neigh
+[{"dst": "10.0.20.1", "dev": "eth0", "lladdr": "e4:38:83:00:00:01", "state": ["REACHABLE"]}, {"dst": "10.0.20.99", "dev": "eth0", "lladdr": "aa:bb:cc:00:00:99", "state": ["STALE"]}]
+--143625d5c930b2ef0d2fc6af rc 0
+--143625d5c930b2ef0d2fc6af part resolv
+nameserver 10.0.20.1
+search lab.example
+--143625d5c930b2ef0d2fc6af rc 0
+--143625d5c930b2ef0d2fc6af end

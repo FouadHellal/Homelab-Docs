@@ -1,0 +1,11 @@
+ATLAS-PROBE 1 services bcb4f2208095c69d1d4e94e7
+--bcb4f2208095c69d1d4e94e7 part units
+[{"unit": "ssh.service", "load": "loaded", "active": "active", "sub": "running", "description": "OpenBSD Secure Shell server"}, {"unit": "cron.service", "load": "loaded", "active": "active", "sub": "running", "description": "Regular background program processing daemon"}, {"unit": "systemd-journald.service", "load": "loaded", "active": "active", "sub": "running", "description": "Journal Service"}, {"unit": "systemd-timesyncd.service", "load": "loaded", "active": "active", "sub": "running", "description": "Network Time Synchronization"}, {"unit": "unattended-upgrades.service", "load": "loaded", "active": "active", "sub": "running", "description": "Unattended Upgrades Shutdown"}]
+--bcb4f2208095c69d1d4e94e7 rc 0
+--bcb4f2208095c69d1d4e94e7 part unit-files
+[{"unit_file": "ssh.service", "state": "enabled", "preset": "enabled"}, {"unit_file": "cron.service", "state": "enabled", "preset": "enabled"}, {"unit_file": "systemd-journald.service", "state": "static", "preset": "enabled"}, {"unit_file": "systemd-timesyncd.service", "state": "enabled", "preset": "enabled"}, {"unit_file": "unattended-upgrades.service", "state": "enabled", "preset": "enabled"}]
+--bcb4f2208095c69d1d4e94e7 rc 0
+--bcb4f2208095c69d1d4e94e7 part timers
+[{"next": 1760850000000000, "left": 3600000000, "last": null, "passed": null, "unit": "apt-daily.timer", "activates": "apt-daily.service"}, {"next": 1760850000000000, "left": 3600000000, "last": null, "passed": null, "unit": "logrotate.timer", "activates": "logrotate.service"}]
+--bcb4f2208095c69d1d4e94e7 rc 0
+--bcb4f2208095c69d1d4e94e7 end

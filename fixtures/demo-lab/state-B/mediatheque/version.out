@@ -1,0 +1,8 @@
+ATLAS-PROBE 1 version bd705b0fbbf0c79f2caebd2e
+--bd705b0fbbf0c79f2caebd2e part version
+1.0.0
+--bd705b0fbbf0c79f2caebd2e rc 0
+--bd705b0fbbf0c79f2caebd2e part sha256
+@@PROBE_SHA256@@  /usr/local/libexec/atlas-probe
+--bd705b0fbbf0c79f2caebd2e rc 0
+--bd705b0fbbf0c79f2caebd2e end

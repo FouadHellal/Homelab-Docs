@@ -1,0 +1,6 @@
+ATLAS-PROBE 1 cron b1880b528bed76e5ee4b2e14
+--b1880b528bed76e5ee4b2e14 part cron:/etc/crontab
+SHELL=/bin/sh
+17 * * * * root cd / && run-parts --report /etc/cron.hourly
+--b1880b528bed76e5ee4b2e14 rc 0
+--b1880b528bed76e5ee4b2e14 end

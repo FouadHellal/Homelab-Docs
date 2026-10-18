@@ -1,0 +1,10 @@
+ATLAS-PROBE 1 cron 973e723704934648791b6bf2
+--973e723704934648791b6bf2 part cron:/etc/cron.d/restic
+RESTIC_PASSWORD=rp-ATLASFAKE-2026a
+0 3 * * * root restic -r s3:https://s3.example/backups backup /srv --password-file /run/secrets/restic
+15 3 * * * root curl -fsS 'https://hc.example/ping/abc?token=hc-ATLASFAKE-0001' >/dev/null
+--973e723704934648791b6bf2 rc 0
+--973e723704934648791b6bf2 part cron:/etc/crontab
+SHELL=/bin/sh
+--973e723704934648791b6bf2 rc 0
+--973e723704934648791b6bf2 end

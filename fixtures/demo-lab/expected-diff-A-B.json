@@ -1,0 +1,19 @@
+[
+ ["cron.changed", "backup01: cron /etc/cron.d/restic: 1 added, 1 removed"],
+ ["dns.changed", "pi-garage: nameservers 10.0.10.53 added"],
+ ["dns.changed", "pi-garage: nameservers 10.0.20.1 removed"],
+ ["host.unreachable", "legacy01: linux-ssh failed: unreachable: legacy01: unreachable (no recordings)"],
+ ["interface.added", "docker02: interface br-1a2b3c4d5e6f added"],
+ ["ip.added", "mediatheque: 2001:db8:20::50/64 added to eth0"],
+ ["kernel.changed", "docker01: kernel 6.1.0-25-amd64 -> 6.1.0-26-amd64"],
+ ["mount.added", "mediatheque: mount /mnt/media added"],
+ ["package.installed", "docker01: linux-image-6.1.0-26-amd64 6.1.112-1 installed"],
+ ["package.upgraded", "backup01: openssh-server 1:9.2p1-2+deb12u3 -> 1:9.2p1-2+deb12u4"],
+ ["package.upgraded", "docker01: linux-image-amd64 6.1.106-3 -> 6.1.112-1"],
+ ["packages.changed", "backup01: 3 other packages changed (3 changed)"],
+ ["port.opened", "web01: port tcp/8443 on 0.0.0.0 (nginx) opened"],
+ ["probe.updated", "db01: probe 0.9.0 -> 1.0.0"],
+ ["service.failed", "db01: service postgresql@15-main.service failed (was active)"],
+ ["user.added", "web01: local user deploy (uid 1001) added"],
+ ["user.groups_changed", "web01: user ops joined group docker"]
+]

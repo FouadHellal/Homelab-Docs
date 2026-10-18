@@ -1,0 +1,31 @@
+ATLAS-PROBE 1 os 01dcfd2f5888d1fb5acef48d
+--01dcfd2f5888d1fb5acef48d part os-release
+PRETTY_NAME="Debian GNU/Linux 12 (bookworm)"
+NAME="Debian"
+VERSION_ID="12"
+VERSION_CODENAME=bookworm
+ID=debian
+
+--01dcfd2f5888d1fb5acef48d rc 0
+--01dcfd2f5888d1fb5acef48d part kernel
+6.6.51+rpt-rpi-v8
+--01dcfd2f5888d1fb5acef48d rc 0
+--01dcfd2f5888d1fb5acef48d part arch
+aarch64
+--01dcfd2f5888d1fb5acef48d rc 0
+--01dcfd2f5888d1fb5acef48d part hostname
+pi-garage
+--01dcfd2f5888d1fb5acef48d rc 0
+--01dcfd2f5888d1fb5acef48d part machine-id
+02081f17b96537b5f3a884404e3c9fb2
+--01dcfd2f5888d1fb5acef48d rc 0
+--01dcfd2f5888d1fb5acef48d part uptime
+950400.42 1234567.89
+--01dcfd2f5888d1fb5acef48d rc 0
+--01dcfd2f5888d1fb5acef48d part virt
+none
+--01dcfd2f5888d1fb5acef48d rc 1
+--01dcfd2f5888d1fb5acef48d part timezone
+Europe/Paris
+--01dcfd2f5888d1fb5acef48d rc 0
+--01dcfd2f5888d1fb5acef48d end

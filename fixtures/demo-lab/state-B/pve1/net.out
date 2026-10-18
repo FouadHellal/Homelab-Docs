@@ -1,0 +1,21 @@
+ATLAS-PROBE 1 net af8efeac2dc06e4f8f148f51
+--af8efeac2dc06e4f8f148f51 part addr
+[{"ifindex": 1, "ifname": "lo", "mtu": 65536, "operstate": "UNKNOWN", "link_type": "loopback", "address": "00:00:00:00:00:00", "addr_info": [{"family": "inet", "local": "127.0.0.1", "prefixlen": 8, "scope": "host"}, {"family": "inet6", "local": "::1", "prefixlen": 128, "scope": "host"}]}, {"ifindex": 2, "ifname": "eno1", "mtu": 1500, "operstate": "UP", "link_type": "ether", "address": "bc:24:11:bb:e8:d2", "addr_info": []}, {"ifindex": 3, "ifname": "vmbr0", "mtu": 1500, "operstate": "UP", "link_type": "ether", "address": "bc:24:11:bb:e8:d2", "addr_info": [{"family": "inet", "local": "10.0.10.11", "prefixlen": 24, "scope": "global"}]}, {"ifindex": 4, "ifname": "vmbr0.20", "mtu": 1500, "operstate": "UP", "link_type": "ether", "address": "bc:24:11:bb:e8:d2", "addr_info": [{"family": "inet", "local": "10.0.20.2", "prefixlen": 24, "scope": "global"}]}, {"ifindex": 5, "ifname": "vmbr0.30", "mtu": 1500, "operstate": "UP", "link_type": "ether", "address": "bc:24:11:bb:e8:d2", "addr_info": []}]
+--af8efeac2dc06e4f8f148f51 rc 0
+--af8efeac2dc06e4f8f148f51 part link
+[{"ifname": "lo"}, {"ifname": "eno1"}, {"ifname": "vmbr0", "linkinfo": {"info_kind": "bridge"}}, {"ifname": "vmbr0.20", "linkinfo": {"info_kind": "vlan", "info_data": {"protocol": "802.1Q", "id": 20}}}, {"ifname": "vmbr0.30", "linkinfo": {"info_kind": "vlan", "info_data": {"protocol": "802.1Q", "id": 30}}}]
+--af8efeac2dc06e4f8f148f51 rc 0
+--af8efeac2dc06e4f8f148f51 part route4
+[{"dst": "default", "gateway": "10.0.10.1", "dev": "vmbr0", "protocol": "static"}, {"dst": "10.0.10.0/24", "dev": "vmbr0", "protocol": "kernel"}]
+--af8efeac2dc06e4f8f148f51 rc 0
+--af8efeac2dc06e4f8f148f51 part route6
+[]
+--af8efeac2dc06e4f8f148f51 rc 0
+--af8efeac2dc06e4f8f148f51 part neigh
+[{"dst": "10.0.20.1", "dev": "eth0", "lladdr": "e4:38:83:00:00:01", "state": ["REACHABLE"]}, {"dst": "10.0.20.99", "dev": "eth0", "lladdr": "aa:bb:cc:00:00:99", "state": ["STALE"]}]
+--af8efeac2dc06e4f8f148f51 rc 0
+--af8efeac2dc06e4f8f148f51 part resolv
+nameserver 10.0.20.1
+search lab.example
+--af8efeac2dc06e4f8f148f51 rc 0
+--af8efeac2dc06e4f8f148f51 end

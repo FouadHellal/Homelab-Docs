@@ -1,0 +1,8 @@
+ATLAS-PROBE 1 storage c7b4934b5a82f78b015c9099
+--c7b4934b5a82f78b015c9099 part lsblk
+{ this is not json
+--c7b4934b5a82f78b015c9099 rc 0
+--c7b4934b5a82f78b015c9099 part findmnt
+{"filesystems": [{"target": "/", "source": "/dev/sda1", "fstype": "ext4", "size": 33285996544, "used": 9123456789, "avail": 24162539755, "children": [{"target": "/proc", "source": "proc", "fstype": "proc", "size": 0, "used": 0, "avail": 0}, {"target": "/run", "source": "tmpfs", "fstype": "tmpfs", "size": 1, "used": 1, "avail": 0}]}]}
+--c7b4934b5a82f78b015c9099 rc 0
+--c7b4934b5a82f78b015c9099 end

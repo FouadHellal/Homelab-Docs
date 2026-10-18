@@ -1,0 +1,31 @@
+ATLAS-PROBE 1 os 5dbdc08c28364c5f6d4eb572
+--5dbdc08c28364c5f6d4eb572 part os-release
+PRETTY_NAME="Ubuntu 24.04.1 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION_CODENAME=noble
+ID=ubuntu
+
+--5dbdc08c28364c5f6d4eb572 rc 0
+--5dbdc08c28364c5f6d4eb572 part kernel
+6.8.0-48-generic
+--5dbdc08c28364c5f6d4eb572 rc 0
+--5dbdc08c28364c5f6d4eb572 part arch
+x86_64
+--5dbdc08c28364c5f6d4eb572 rc 0
+--5dbdc08c28364c5f6d4eb572 part hostname
+web01
+--5dbdc08c28364c5f6d4eb572 rc 0
+--5dbdc08c28364c5f6d4eb572 part machine-id
+2f527604e1deff1329720282d8d3cfa1
+--5dbdc08c28364c5f6d4eb572 rc 0
+--5dbdc08c28364c5f6d4eb572 part uptime
+950400.42 1234567.89
+--5dbdc08c28364c5f6d4eb572 rc 0
+--5dbdc08c28364c5f6d4eb572 part virt
+kvm
+--5dbdc08c28364c5f6d4eb572 rc 0
+--5dbdc08c28364c5f6d4eb572 part timezone
+Europe/Paris
+--5dbdc08c28364c5f6d4eb572 rc 0
+--5dbdc08c28364c5f6d4eb572 end

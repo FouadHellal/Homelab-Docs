@@ -1,0 +1,7 @@
+ATLAS-PROBE 1 ports 96714e40b1d73420c2736417
+--96714e40b1d73420c2736417 part listen
+tcp   LISTEN 0      4096   0.0.0.0:22   0.0.0.0:*    users:(("sshd",pid=812,fd=3))
+tcp   LISTEN 0      4096   [::]:22   [::]:*    users:(("sshd",pid=812,fd=3))
+udp   UNCONN 0      4096   127.0.0.53%lo:53   0.0.0.0:*    users:(("systemd-resolve",pid=600,fd=3))
+--96714e40b1d73420c2736417 rc 0
+--96714e40b1d73420c2736417 end

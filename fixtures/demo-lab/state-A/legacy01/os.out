@@ -1,0 +1,31 @@
+ATLAS-PROBE 1 os 1632047f22ede1c7642db438
+--1632047f22ede1c7642db438 part os-release
+PRETTY_NAME="Ubuntu 22.04.5 LTS"
+NAME="Ubuntu"
+VERSION_ID="22.04"
+VERSION_CODENAME=jammy
+ID=ubuntu
+
+--1632047f22ede1c7642db438 rc 0
+--1632047f22ede1c7642db438 part kernel
+5.15.0-122-generic
+--1632047f22ede1c7642db438 rc 0
+--1632047f22ede1c7642db438 part arch
+x86_64
+--1632047f22ede1c7642db438 rc 0
+--1632047f22ede1c7642db438 part hostname
+legacy01
+--1632047f22ede1c7642db438 rc 0
+--1632047f22ede1c7642db438 part machine-id
+3cd76ab6595de0e0069177032aade2ae
+--1632047f22ede1c7642db438 rc 0
+--1632047f22ede1c7642db438 part uptime
+864000.42 1234567.89
+--1632047f22ede1c7642db438 rc 0
+--1632047f22ede1c7642db438 part virt
+kvm
+--1632047f22ede1c7642db438 rc 0
+--1632047f22ede1c7642db438 part timezone
+Europe/Paris
+--1632047f22ede1c7642db438 rc 0
+--1632047f22ede1c7642db438 end

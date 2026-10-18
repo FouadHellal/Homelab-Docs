@@ -1,0 +1,9 @@
+ATLAS-PROBE 1 cron 02e44c6a95cf9aa79677b90f
+--02e44c6a95cf9aa79677b90f part cron:/etc/crontab
+SHELL=/bin/sh
+--02e44c6a95cf9aa79677b90f rc 0
+--02e44c6a95cf9aa79677b90f part cron:/var/spool/cron/crontabs/postgres
+# m h dom mon dow command
+30 2 * * * PGPASSWORD=pg-ATLASFAKE-backup pg_dumpall -h 127.0.0.1 -U postgres | gzip > /srv/dump.gz
+--02e44c6a95cf9aa79677b90f rc 0
+--02e44c6a95cf9aa79677b90f end
