@@ -1,0 +1,110 @@
+[project]
+name = "homelab-atlas"
+version = "0.0.1"
+description = "Read-only, agentless auto-discovery and documentation of a homelab."
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = { text = "Proprietary" }
+authors = [{ name = "Fouad HELLAL" }]
+dependencies = [
+    "pydantic>=2.10",
+    "typer>=0.15",
+]
+
+[project.scripts]
+atlas = "homelab_atlas.cli:app"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.120",
+    "mypy>=1.14",
+    "poethepoet>=0.32",
+    "pre-commit>=4.0",
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "ruff>=0.17",
+]
+
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/homelab_atlas"]
+
+[tool.uv]
+default-groups = ["dev"]
+
+# ---------------------------------------------------------------- tasks
+[tool.poe.tasks]
+fmt = { shell = "ruff format . && ruff check --fix .", help = "Format and autofix" }
+lint = { shell = "ruff check . && ruff format --check .", help = "Lint and format check" }
+type = { cmd = "mypy", help = "Type-check (strict)" }
+test = { cmd = "pytest", help = "Run the test suite" }
+secrets = { cmd = "pre-commit run gitleaks --all-files", help = "gitleaks over the working tree" }
+audit = { shell = "uv export --quiet --frozen --format requirements-txt --no-emit-project -o .pip-audit-req.txt && uvx pip-audit --strict -r .pip-audit-req.txt", help = "pip-audit the locked deps" }
+hooks = { cmd = "pre-commit run --all-files", help = "Run every pre-commit hook" }
+check = { sequence = ["lint", "type", "test", "secrets"], help = "Everything CI gates on" }
+
+# ---------------------------------------------------------------- ruff
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "N", "UP", "B", "S", "A", "C4", "SIM", "PT", "PTH",
+    "RUF", "TID", "ASYNC", "BLE", "T20", "PL", "TRY", "ERA",
+]
+ignore = ["TRY003", "PLR0913"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+# Outbound I/O is only allowed in homelab_atlas.security (ADR-003/008).
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"httpx".msg = "Use homelab_atlas.security.http.ReadOnlyHttpClient"
+"asyncssh".msg = "Use homelab_atlas.security.ssh.SshRunner"
+"paramiko".msg = "Use homelab_atlas.security.ssh.SshRunner"
+"requests".msg = "Use homelab_atlas.security.http.ReadOnlyHttpClient"
+"urllib.request".msg = "Use homelab_atlas.security.http.ReadOnlyHttpClient"
+"http.client".msg = "Use homelab_atlas.security.http.ReadOnlyHttpClient"
+"socket".msg = "No raw sockets outside homelab_atlas.security"
+"subprocess".msg = "No subprocesses: targets are reached only via SshRunner"
+"os.system".msg = "No shell execution"
+"os.popen".msg = "No shell execution"
+
+[tool.ruff.lint.per-file-ignores]
+"src/homelab_atlas/security/**" = ["TID251"]
+"tests/**" = ["S101", "PLR2004", "TID251"]
+
+# ---------------------------------------------------------------- mypy
+[tool.mypy]
+python_version = "3.12"
+files = ["src", "tests"]
+strict = true
+warn_unreachable = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+# ---------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib"]
+xfail_strict = true
+filterwarnings = ["error"]
+markers = [
+    "security: refusal / bypass / redaction tests",
+    "linux_only: needs a POSIX userland (probe gate tests)",
+]
+
+[tool.coverage.run]
+source = ["homelab_atlas"]
+branch = true
