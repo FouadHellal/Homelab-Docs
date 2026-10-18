@@ -53,7 +53,7 @@ async def collect(transport: ScriptedTransport) -> tuple[object, MemoryAudit]:
     inv = load_inventory(LAB / "hosts.yaml")
     audit = MemoryAudit()
     ctx = CollectContext(inventory=inv, ssh=SshRunner(transport=transport, audit=audit))
-    return await LinuxSshCollector().collect(inv.host("web01"), ctx), audit
+    return await LinuxSshCollector().collect("web01", ctx), audit
 
 
 async def test_section_failures_give_partial_result() -> None:
@@ -77,7 +77,7 @@ async def test_section_failures_give_partial_result() -> None:
     assert "frame: missing or malformed probe header" in errors
     assert "transport: TransportError" in errors
     assert "refused: output_too_large" in errors
-    facts = result.model  # type: ignore[attr-defined]
+    facts = result.facets[0].model  # type: ignore[attr-defined]
     assert facts.os.hostname == "web01"
     assert facts.section_errors["cron"] == ["sudo refused (is /etc/sudoers.d/atlas-ro installed?)"]
 
@@ -86,7 +86,7 @@ async def test_all_sections_fail_means_failed() -> None:
     overrides: dict[str, object] = {s.value: (127, b"") for s in LinuxSshCollector.requires}
     result, _ = await collect(ScriptedTransport(overrides))
     assert result.status == "failed"  # type: ignore[attr-defined]
-    assert result.model is None  # type: ignore[attr-defined]
+    assert result.facets == []  # type: ignore[attr-defined]
 
 
 async def test_host_key_refusal_on_connect() -> None:
@@ -102,4 +102,4 @@ async def test_entity_key_falls_back_to_name_without_machine_id() -> None:
     result, _ = await collect(
         ScriptedTransport({"os": (0, b"ATLAS-PROBE 1 os " + b"0" * 24 + b"\n")})
     )
-    assert result.entity_key == "host:name:web01"  # type: ignore[attr-defined]
+    assert result.primary_key == "host:name:web01"  # type: ignore[attr-defined]
