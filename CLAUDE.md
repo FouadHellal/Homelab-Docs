@@ -5,17 +5,18 @@ Read-only, agentless auto-discovery and documentation of a homelab. Spec: docs/S
 ## Hard rules
 - **Never touch real targets.** Develop against `fixtures/demo-lab/` and mocks only. Target-side artifacts go in `docs/targets/` for the owner to review and install.
 - **Never read, print or store real credentials.** Don't open `.env*`, `secrets/`, `~/.ssh`, `*.pem`, `*.key`. Use `.env.example` and fake fixture values only.
-- **Never `git push`.** Small commits, Conventional Commits (`feat(ssh): …`, `test(redact): …`). The owner pushes.
+- Small commits, Conventional Commits (`feat(ssh): …`, `test(redact): …`). Push to `origin/main` after each milestone (owner instruction, 2026-10-18). Never force-push.
 - All outbound I/O goes through `homelab_atlas.security` (`ReadOnlyHttpClient`, `SshRunner`). No direct `httpx`/`asyncssh`/`subprocess` use anywhere else (enforced by a ruff banned-api rule plus a test).
 - Collector output passes through `Redactor` before it reaches the DB, logs, audit log, exports or MCP. Never persist raw output.
 - Env vars: store NAMES only, never values.
 - New command/endpoint ⇒ declare it in the collector's `requires`, add a refusal test, and regenerate `docs/targets/`.
-- Milestone ends: tests green, ruff + mypy clean, demo command, summary, then STOP for go-ahead.
+- Milestone ends: tests green, ruff + mypy clean, demo command, short summary, commit + push, then continue with the next milestone (owner instruction, 2026-10-18). At decisions, pick the best option and record it in docs/DECISIONS.md.
 
 ## Commands (Windows and Linux; `uv run poe <task>`)
 - `poe check`: ruff, mypy, pytest, gitleaks (everything CI runs)
 - `poe test` / `poe lint` / `poe type` / `poe fmt`
 - `uv run atlas --help`
+- Web UI on the demo lab: `uv run atlas serve --lab demo` (login in `data/demo-lab/demo-login.txt`)
 - Demo lab: `uv run atlas scan --lab demo:A --fresh`, `uv run atlas scan --lab demo:B`, `uv run atlas diff --lab demo`
 - After changing the probe/gate templates or `ProbeSection`: `uv run atlas targets render` (a test fails on drift).
 - After changing `fixtures/demo-lab/generate.py`: rerun it and update `expected-diff-A-B.json` deliberately.
