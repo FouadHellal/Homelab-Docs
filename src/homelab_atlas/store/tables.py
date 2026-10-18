@@ -132,3 +132,42 @@ class Event(Base):
     new: Mapped[Any] = mapped_column(JSON, default=None, nullable=True)
     summary: Mapped[str] = mapped_column(String(512))
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class User(Base):
+    __tablename__ = "users"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(256))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    last_login: Mapped[datetime | None] = mapped_column(default=None)
+    failed_logins: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(default=None)
+
+
+class WebSession(Base):
+    """Server-side session. The cookie holds a random token; only its SHA-256 is stored."""
+
+    __tablename__ = "web_sessions"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    csrf: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    last_seen: Mapped[datetime] = mapped_column(default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column()
+
+
+class Annotation(Base):
+    """Human layer. annotations/*.yaml is the source of truth; this table is its index."""
+
+    __tablename__ = "annotations"
+    entity_key: Mapped[str] = mapped_column(String(256), primary_key=True)
+    owner: Mapped[str | None] = mapped_column(String(128), default=None)
+    purpose: Mapped[str | None] = mapped_column(String(512), default=None)
+    criticality: Mapped[str | None] = mapped_column(String(16), default=None)
+    tags: Mapped[list[Any]] = mapped_column(default=list)
+    links: Mapped[list[Any]] = mapped_column(default=list)
+    notes: Mapped[str | None] = mapped_column(String(8192), default=None)
+    acknowledged: Mapped[bool] = mapped_column(default=False)
+    source_file: Mapped[str] = mapped_column(String(256))
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow)

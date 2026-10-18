@@ -8,14 +8,19 @@ license = { text = "Proprietary" }
 authors = [{ name = "Fouad HELLAL" }]
 dependencies = [
     "alembic>=1.14",
+    "argon2-cffi>=23.1",
     "asyncssh>=2.21",
+    "fastapi>=0.115",
     "filelock>=3.16",
     "httpx>=0.28",
+    "jinja2>=3.1.4",
     "pydantic>=2.10",
+    "python-multipart>=0.0.18",
     "pyyaml>=6.0",
     "sqlalchemy>=2.0.36",
     "structlog>=25.1",
     "typer>=0.15",
+    "uvicorn>=0.32",
 ]
 
 [project.scripts]
@@ -70,7 +75,7 @@ select = [
     "E", "W", "F", "I", "N", "UP", "B", "S", "A", "C4", "SIM", "PT", "PTH",
     "RUF", "TID", "ASYNC", "BLE", "T20", "PL", "TRY", "ERA",
 ]
-ignore = ["TRY003", "TRY004", "PLR0913", "PLR0911", "PLR0912", "PLR0915", "PLR2004", "N818"]
+ignore = ["TRY003", "TRY004", "SIM108", "PLR0913", "PLR0911", "PLR0912", "PLR0915", "PLR2004", "N818"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["homelab_atlas", "tests"]
@@ -99,6 +104,8 @@ ban-relative-imports = "all"
 "src/homelab_atlas/security/selftest.py" = ["S105", "S106", "RUF001"]
 # Typer commands take their options as parameters.
 "src/homelab_atlas/cli*.py" = ["PLR0917"]
+# FastAPI idiom: Annotated dependency aliases and many injected params per route.
+"src/homelab_atlas/web/app.py" = ["N806", "PLR0917", "TRY301"]
 # RUF001: homoglyphs are deliberate attack inputs. S105/S106: fake ATLASFAKE secrets.
 "tests/**" = ["S101", "TID251", "RUF001", "S105", "S106", "PT011", "S104", "S604"]
 # Generated-data scripts: long literal rows, fake 0.0.0.0 listeners, prints.
@@ -129,7 +136,7 @@ pythonpath = ["."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 xfail_strict = true
-filterwarnings = ["error"]
+filterwarnings = ["error", "ignore:Using `httpx` with `starlette.testclient` is deprecated"]
 markers = [
     "security: refusal / bypass / redaction tests",
     "linux_only: needs a POSIX userland (probe gate tests)",
