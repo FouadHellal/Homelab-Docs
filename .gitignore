@@ -45,3 +45,4 @@ build/
 Thumbs.db
 node_modules/
 .claude/settings.local.json
+.pip-audit-req.txt
