@@ -9,4 +9,6 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
-  # docker ecosystem is added with the Dockerfile in M7
+  - package-ecosystem: docker   # base-image digests in the Dockerfile
+    directory: /
+    schedule: { interval: weekly }
