@@ -59,7 +59,7 @@ Status: draft for approval (M0a). Method: assets → trust boundaries (ARCHITECT
 |---|---|---|
 | I | DB copied off the VM | encrypted VM disk, 0600 files, non-root uid, no published DB port, backups encrypted (DEPLOY.md) |
 | I | public screenshot or demo leaks topology | `--sanitize` pseudonymisation (IPs → doc ranges, MAC/host/SSID/domain mapping; notes/links stripped); demo lab is synthetic |
-| I (**T-MCP**) | MCP answers send the network map into an LLM provider's context | accepted by design (owner's goal); secrets never reach the DB so they can't reach MCP; optional `mcp.sanitize: true`; result-size caps; no raw-snapshot tool |
+| I (**T-MCP**) | MCP answers send the network map into an LLM provider's context | accepted by design (owner's goal); secrets never reach the DB so they can't reach MCP; optional `atlas mcp --sanitize`; 500-row / 200 kB result caps; bearer + DNS-rebinding guard on HTTP; no raw-snapshot tool |
 | R | audit log edited | hash chain, head mirrored in DB, optional off-box shipping |
 
 ### Repo and supply chain (T-SUPPLY, T-SELF)
