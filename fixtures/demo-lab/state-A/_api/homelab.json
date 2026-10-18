@@ -1,0 +1,1205 @@
+{
+ "/api2/json/access/permissions": {
+  "body": {
+   "data": {
+    "/": {
+     "Datastore.Audit": 1,
+     "Mapping.Audit": 1,
+     "Pool.Audit": 1,
+     "SDN.Audit": 1,
+     "Sys.Audit": 1,
+     "VM.Audit": 1,
+     "VM.GuestAgent.Audit": 1
+    },
+    "/nodes": {
+     "Datastore.Audit": 1,
+     "Mapping.Audit": 1,
+     "Pool.Audit": 1,
+     "SDN.Audit": 1,
+     "Sys.Audit": 1,
+     "VM.Audit": 1,
+     "VM.GuestAgent.Audit": 1
+    },
+    "/storage": {
+     "Datastore.Audit": 1,
+     "Mapping.Audit": 1,
+     "Pool.Audit": 1,
+     "SDN.Audit": 1,
+     "Sys.Audit": 1,
+     "VM.Audit": 1,
+     "VM.GuestAgent.Audit": 1
+    },
+    "/vms": {
+     "Datastore.Audit": 1,
+     "Mapping.Audit": 1,
+     "Pool.Audit": 1,
+     "SDN.Audit": 1,
+     "Sys.Audit": 1,
+     "VM.Audit": 1,
+     "VM.GuestAgent.Audit": 1
+    }
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/cluster/backup": {
+  "body": {
+   "data": [
+    {
+     "enabled": 1,
+     "id": "backup-daily-critical",
+     "mode": "snapshot",
+     "next-run": 1760841000,
+     "schedule": "02:30",
+     "storage": "nas-nfs",
+     "type": "vzdump",
+     "vmid": "101,103,104,201,202"
+    }
+   ]
+  },
+  "status": 200
+ },
+ "/api2/json/cluster/backup-info/not-backed-up": {
+  "body": {
+   "data": [
+    {
+     "name": "docker02",
+     "type": "qemu",
+     "vmid": 102
+    },
+    {
+     "name": "legacy01",
+     "type": "qemu",
+     "vmid": 105
+    },
+    {
+     "name": "ipv6only01",
+     "type": "qemu",
+     "vmid": 106
+    },
+    {
+     "name": "win11",
+     "type": "qemu",
+     "vmid": 110
+    },
+    {
+     "name": "homeassistant",
+     "type": "qemu",
+     "vmid": 111
+    },
+    {
+     "name": "adguard",
+     "type": "lxc",
+     "vmid": 203
+    },
+    {
+     "name": "media01",
+     "type": "lxc",
+     "vmid": 204
+    },
+    {
+     "name": "scratch",
+     "type": "lxc",
+     "vmid": 205
+    }
+   ]
+  },
+  "status": 200
+ },
+ "/api2/json/cluster/ha/resources": {
+  "body": {
+   "data": []
+  },
+  "status": 200
+ },
+ "/api2/json/cluster/resources": {
+  "body": {
+   "data": [
+    {
+     "cgroup-mode": 2,
+     "cpu": 0.07,
+     "id": "node/pve1",
+     "level": "",
+     "maxcpu": 12,
+     "maxmem": 68719476736,
+     "mem": 21474836480,
+     "node": "pve1",
+     "status": "online",
+     "type": "node",
+     "uptime": 2592000
+    },
+    {
+     "content": "rootdir,images",
+     "disk": 201863462912,
+     "id": "storage/pve1/local-lvm",
+     "maxdisk": 499289948160,
+     "node": "pve1",
+     "plugintype": "lvmthin",
+     "shared": 0,
+     "status": "available",
+     "storage": "local-lvm",
+     "type": "storage"
+    },
+    {
+     "content": "backup,iso,images",
+     "disk": 4000000000000,
+     "id": "storage/pve1/nas-nfs",
+     "maxdisk": 8001563222016,
+     "node": "pve1",
+     "plugintype": "nfs",
+     "shared": 1,
+     "status": "available",
+     "storage": "nas-nfs",
+     "type": "storage"
+    },
+    {
+     "cgroup-mode": 2,
+     "cpu": 0.07,
+     "id": "node/pve2",
+     "level": "",
+     "maxcpu": 12,
+     "maxmem": 68719476736,
+     "mem": 21474836480,
+     "node": "pve2",
+     "status": "online",
+     "type": "node",
+     "uptime": 2592000
+    },
+    {
+     "content": "rootdir,images",
+     "disk": 201863462912,
+     "id": "storage/pve2/local-lvm",
+     "maxdisk": 499289948160,
+     "node": "pve2",
+     "plugintype": "lvmthin",
+     "shared": 0,
+     "status": "available",
+     "storage": "local-lvm",
+     "type": "storage"
+    },
+    {
+     "content": "backup,iso,images",
+     "disk": 4000000000000,
+     "id": "storage/pve2/nas-nfs",
+     "maxdisk": 8001563222016,
+     "node": "pve2",
+     "plugintype": "nfs",
+     "shared": 1,
+     "status": "available",
+     "storage": "nas-nfs",
+     "type": "storage"
+    },
+    {
+     "cpu": 0.03,
+     "id": "qemu/101",
+     "maxcpu": 4,
+     "maxmem": 8589934592,
+     "name": "docker01",
+     "node": "pve1",
+     "status": "running",
+     "tags": "docker;prod",
+     "template": 0,
+     "type": "qemu",
+     "uptime": 86400,
+     "vmid": 101
+    },
+    {
+     "cpu": 0.03,
+     "id": "qemu/102",
+     "maxcpu": 4,
+     "maxmem": 8589934592,
+     "name": "docker02",
+     "node": "pve2",
+     "status": "running",
+     "tags": "docker",
+     "template": 0,
+     "type": "qemu",
+     "uptime": 86400,
+     "vmid": 102
+    },
+    {
+     "cpu": 0.03,
+     "id": "qemu/103",
+     "maxcpu": 2,
+     "maxmem": 2147483648,
+     "name": "web01",
+     "node": "pve1",
+     "status": "running",
+     "tags": "prod;web",
+     "template": 0,
+     "type": "qemu",
+     "uptime": 86400,
+     "vmid": 103
+    },
+    {
+     "cpu": 0.03,
+     "id": "qemu/104",
+     "maxcpu": 2,
+     "maxmem": 4294967296,
+     "name": "db01",
+     "node": "pve2",
+     "status": "running",
+     "tags": "db;prod",
+     "template": 0,
+     "type": "qemu",
+     "uptime": 86400,
+     "vmid": 104
+    },
+    {
+     "cpu": 0.03,
+     "id": "qemu/105",
+     "maxcpu": 1,
+     "maxmem": 1073741824,
+     "name": "legacy01",
+     "node": "pve1",
+     "status": "running",
+     "tags": "legacy",
+     "template": 0,
+     "type": "qemu",
+     "uptime": 86400,
+     "vmid": 105
+    },
+    {
+     "cpu": 0.03,
+     "id": "qemu/106",
+     "maxcpu": 1,
+     "maxmem": 1073741824,
+     "name": "ipv6only01",
+     "node": "pve2",
+     "status": "running",
+     "tags": "",
+     "template": 0,
+     "type": "qemu",
+     "uptime": 86400,
+     "vmid": 106
+    },
+    {
+     "cpu": 0,
+     "id": "qemu/110",
+     "maxcpu": 4,
+     "maxmem": 8589934592,
+     "name": "win11",
+     "node": "pve2",
+     "status": "stopped",
+     "tags": "windows",
+     "template": 0,
+     "type": "qemu",
+     "uptime": 0,
+     "vmid": 110
+    },
+    {
+     "cpu": 0.03,
+     "id": "qemu/111",
+     "maxcpu": 2,
+     "maxmem": 4294967296,
+     "name": "homeassistant",
+     "node": "pve1",
+     "status": "running",
+     "tags": "iot",
+     "template": 0,
+     "type": "qemu",
+     "uptime": 86400,
+     "vmid": 111
+    },
+    {
+     "cpu": 0,
+     "id": "qemu/9000",
+     "maxcpu": 2,
+     "maxmem": 2147483648,
+     "name": "debian-12-template",
+     "node": "pve1",
+     "status": "stopped",
+     "tags": "template",
+     "template": 1,
+     "type": "qemu",
+     "uptime": 0,
+     "vmid": 9000
+    },
+    {
+     "cpu": 0.03,
+     "id": "lxc/201",
+     "maxcpu": 2,
+     "maxmem": 2147483648,
+     "name": "mediatheque",
+     "node": "pve1",
+     "status": "running",
+     "tags": "media",
+     "template": 0,
+     "type": "lxc",
+     "uptime": 86400,
+     "vmid": 201
+    },
+    {
+     "cpu": 0.03,
+     "id": "lxc/202",
+     "maxcpu": 1,
+     "maxmem": 536870912,
+     "name": "backup01",
+     "node": "pve2",
+     "status": "running",
+     "tags": "backup",
+     "template": 0,
+     "type": "lxc",
+     "uptime": 86400,
+     "vmid": 202
+    },
+    {
+     "cpu": 0.03,
+     "id": "lxc/203",
+     "maxcpu": 1,
+     "maxmem": 536870912,
+     "name": "adguard",
+     "node": "pve1",
+     "status": "running",
+     "tags": "dns",
+     "template": 0,
+     "type": "lxc",
+     "uptime": 86400,
+     "vmid": 203
+    },
+    {
+     "cpu": 0.03,
+     "id": "lxc/204",
+     "maxcpu": 4,
+     "maxmem": 4294967296,
+     "name": "media01",
+     "node": "pve2",
+     "status": "running",
+     "tags": "docker;media",
+     "template": 0,
+     "type": "lxc",
+     "uptime": 86400,
+     "vmid": 204
+    },
+    {
+     "cpu": 0,
+     "id": "lxc/205",
+     "maxcpu": 1,
+     "maxmem": 268435456,
+     "name": "scratch",
+     "node": "pve1",
+     "status": "stopped",
+     "tags": "",
+     "template": 0,
+     "type": "lxc",
+     "uptime": 0,
+     "vmid": 205
+    }
+   ]
+  },
+  "status": 200
+ },
+ "/api2/json/cluster/status": {
+  "body": {
+   "data": [
+    {
+     "id": "cluster",
+     "name": "homelab",
+     "nodes": 2,
+     "quorate": 1,
+     "type": "cluster",
+     "version": 4
+    },
+    {
+     "id": "node/pve1",
+     "ip": "10.0.10.11",
+     "level": "",
+     "local": 1,
+     "name": "pve1",
+     "nodeid": 1,
+     "online": 1,
+     "type": "node"
+    },
+    {
+     "id": "node/pve2",
+     "ip": "10.0.10.12",
+     "level": "",
+     "local": 0,
+     "name": "pve2",
+     "nodeid": 2,
+     "online": 1,
+     "type": "node"
+    }
+   ]
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve1/lxc/201/config": {
+  "body": {
+   "data": {
+    "cores": 2,
+    "digest": "7f03f3f2febc46f3fa832d98251b0c98f64bc19b",
+    "hostname": "mediatheque",
+    "memory": 2048,
+    "mp0": "nas-nfs:201/vm-201-disk-1.raw,mp=/mnt/media,size=500G",
+    "net0": "name=eth0,bridge=vmbr0,gw=10.0.20.1,hwaddr=BC:24:11:53:82:AE,ip=10.0.20.50/24,tag=20,type=veth",
+    "onboot": 1,
+    "ostype": "debian",
+    "rootfs": "local-lvm:vm-201-disk-0,size=8G",
+    "swap": 512,
+    "tags": "media",
+    "unprivileged": 1
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve1/lxc/201/interfaces": {
+  "body": {
+   "data": [
+    {
+     "hwaddr": "00:00:00:00:00:00",
+     "inet": "127.0.0.1/8",
+     "inet6": "::1/128",
+     "name": "lo"
+    },
+    {
+     "hwaddr": "bc:24:11:53:82:ae",
+     "inet": "10.0.20.50/24",
+     "inet6": "fe80::be24:11ff:fe00:2/64",
+     "name": "eth0"
+    }
+   ]
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve1/lxc/203/config": {
+  "body": {
+   "data": {
+    "cores": 1,
+    "digest": "a165fbd61c277745f187eaac7182d9c05d0d1171",
+    "hostname": "adguard",
+    "memory": 512,
+    "net0": "name=eth0,bridge=vmbr0,gw=10.0.20.1,hwaddr=BC:24:11:60:3F:12,ip=10.0.20.53/24,tag=20,type=veth",
+    "onboot": 1,
+    "ostype": "debian",
+    "rootfs": "local-lvm:vm-203-disk-0,size=8G",
+    "swap": 512,
+    "tags": "dns",
+    "unprivileged": 1
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve1/lxc/203/interfaces": {
+  "body": {
+   "data": [
+    {
+     "hwaddr": "00:00:00:00:00:00",
+     "inet": "127.0.0.1/8",
+     "inet6": "::1/128",
+     "name": "lo"
+    },
+    {
+     "hwaddr": "bc:24:11:60:3f:12",
+     "inet": "10.0.20.53/24",
+     "inet6": "fe80::be24:11ff:fe00:2/64",
+     "name": "eth0"
+    }
+   ]
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve1/lxc/205/config": {
+  "body": {
+   "data": {
+    "cores": 1,
+    "digest": "5f1cd7c3fb68ae7c679f8c33966610670d32ff1e",
+    "hostname": "scratch",
+    "memory": 256,
+    "net0": "name=eth0,bridge=vmbr0,gw=10.0.20.1,hwaddr=BC:24:11:62:85:DD,ip=dhcp,tag=20,type=veth",
+    "onboot": 0,
+    "ostype": "debian",
+    "rootfs": "local-lvm:vm-205-disk-0,size=8G",
+    "swap": 512,
+    "tags": "",
+    "unprivileged": 1
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve1/network": {
+  "body": {
+   "data": [
+    {
+     "active": 1,
+     "autostart": 1,
+     "iface": "eno1",
+     "method": "manual",
+     "type": "eth"
+    },
+    {
+     "active": 1,
+     "autostart": 1,
+     "bridge_ports": "eno1",
+     "bridge_vlan_aware": 1,
+     "cidr": "10.0.10.11/24",
+     "gateway": "10.0.10.1",
+     "iface": "vmbr0",
+     "method": "static",
+     "type": "bridge"
+    },
+    {
+     "active": 1,
+     "autostart": 1,
+     "comments": "VLAN 20",
+     "iface": "vmbr0.20",
+     "method": "manual",
+     "type": "vlan",
+     "vlan-id": 20,
+     "vlan-raw-device": "vmbr0"
+    },
+    {
+     "active": 1,
+     "autostart": 1,
+     "comments": "VLAN 30",
+     "iface": "vmbr0.30",
+     "method": "manual",
+     "type": "vlan",
+     "vlan-id": 30,
+     "vlan-raw-device": "vmbr0"
+    }
+   ]
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve1/qemu/101/agent/get-osinfo": {
+  "body": {
+   "data": {
+    "result": {
+     "id": "debian",
+     "pretty-name": "Debian GNU/Linux 12 (bookworm)"
+    }
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve1/qemu/101/agent/network-get-interfaces": {
+  "body": {
+   "data": {
+    "result": [
+     {
+      "hardware-address": "00:00:00:00:00:00",
+      "ip-addresses": [
+       {
+        "ip-address": "127.0.0.1",
+        "ip-address-type": "ipv4",
+        "prefix": 8
+       }
+      ],
+      "name": "lo"
+     },
+     {
+      "hardware-address": "bc:24:11:46:66:ca",
+      "ip-addresses": [
+       {
+        "ip-address": "10.0.20.11",
+        "ip-address-type": "ipv4",
+        "prefix": 24
+       },
+       {
+        "ip-address": "fe80::be24:11ff:fe00:1",
+        "ip-address-type": "ipv6",
+        "prefix": 64
+       }
+      ],
+      "name": "eth0"
+     }
+    ]
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve1/qemu/101/config": {
+  "body": {
+   "data": {
+    "agent": "1",
+    "cores": 4,
+    "description": "Docker host. Initial root password=pve-desc-ATLASFAKE (rotate!)",
+    "digest": "53369b1b0e760f0ee4aef48cac8facb0d9e731e3",
+    "ide2": "none,media=cdrom",
+    "memory": "8192",
+    "net0": "virtio=BC:24:11:46:66:CA,bridge=vmbr0,tag=20,firewall=1",
+    "onboot": 1,
+    "ostype": "l26",
+    "scsi0": "local-lvm:vm-101-disk-0,iothread=1,size=64G,ssd=1",
+    "scsihw": "virtio-scsi-single",
+    "sockets": 1,
+    "tags": "docker;prod"
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve1/qemu/103/agent/get-osinfo": {
+  "body": {
+   "data": {
+    "result": {
+     "id": "debian",
+     "pretty-name": "Debian GNU/Linux 12 (bookworm)"
+    }
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve1/qemu/103/agent/network-get-interfaces": {
+  "body": {
+   "data": {
+    "result": [
+     {
+      "hardware-address": "00:00:00:00:00:00",
+      "ip-addresses": [
+       {
+        "ip-address": "127.0.0.1",
+        "ip-address-type": "ipv4",
+        "prefix": 8
+       }
+      ],
+      "name": "lo"
+     },
+     {
+      "hardware-address": "bc:24:11:3b:46:9e",
+      "ip-addresses": [
+       {
+        "ip-address": "10.0.20.21",
+        "ip-address-type": "ipv4",
+        "prefix": 24
+       },
+       {
+        "ip-address": "fe80::be24:11ff:fe00:1",
+        "ip-address-type": "ipv6",
+        "prefix": 64
+       }
+      ],
+      "name": "eth0"
+     }
+    ]
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve1/qemu/103/config": {
+  "body": {
+   "data": {
+    "agent": "1",
+    "cores": 2,
+    "digest": "652285d39026bd461f0770b6ed2877c2928202eb",
+    "ide2": "none,media=cdrom",
+    "memory": "2048",
+    "net0": "virtio=BC:24:11:3B:46:9E,bridge=vmbr0,tag=20,firewall=1",
+    "onboot": 1,
+    "ostype": "l26",
+    "scsi0": "local-lvm:vm-103-disk-0,iothread=1,size=32G,ssd=1",
+    "scsihw": "virtio-scsi-single",
+    "sockets": 1,
+    "tags": "prod;web"
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve1/qemu/105/agent/get-osinfo": {
+  "body": {
+   "data": {
+    "result": {
+     "id": "debian",
+     "pretty-name": "Debian GNU/Linux 12 (bookworm)"
+    }
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve1/qemu/105/agent/network-get-interfaces": {
+  "body": {
+   "data": {
+    "result": [
+     {
+      "hardware-address": "00:00:00:00:00:00",
+      "ip-addresses": [
+       {
+        "ip-address": "127.0.0.1",
+        "ip-address-type": "ipv4",
+        "prefix": 8
+       }
+      ],
+      "name": "lo"
+     },
+     {
+      "hardware-address": "bc:24:11:48:e4:a6",
+      "ip-addresses": [
+       {
+        "ip-address": "10.0.20.70",
+        "ip-address-type": "ipv4",
+        "prefix": 24
+       },
+       {
+        "ip-address": "fe80::be24:11ff:fe00:1",
+        "ip-address-type": "ipv6",
+        "prefix": 64
+       }
+      ],
+      "name": "eth0"
+     }
+    ]
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve1/qemu/105/config": {
+  "body": {
+   "data": {
+    "agent": "1",
+    "cores": 1,
+    "digest": "3c9d63134638c99af75ca1a19a937c6a700ec7bd",
+    "ide2": "none,media=cdrom",
+    "memory": "1024",
+    "net0": "virtio=BC:24:11:48:E4:A6,bridge=vmbr0,tag=20,firewall=1",
+    "onboot": 1,
+    "ostype": "l26",
+    "scsi0": "local-lvm:vm-105-disk-0,iothread=1,size=32G,ssd=1",
+    "scsihw": "virtio-scsi-single",
+    "sockets": 1,
+    "tags": "legacy"
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve1/qemu/111/agent/get-osinfo": {
+  "body": {
+   "data": null,
+   "message": "QEMU guest agent is not running\n"
+  },
+  "status": 500
+ },
+ "/api2/json/nodes/pve1/qemu/111/agent/network-get-interfaces": {
+  "body": {
+   "data": null,
+   "message": "QEMU guest agent is not running\n"
+  },
+  "status": 500
+ },
+ "/api2/json/nodes/pve1/qemu/111/config": {
+  "body": {
+   "data": {
+    "agent": "1",
+    "cores": 2,
+    "digest": "8f78e9cb80dbaa5b81abd92ce6d8092388ecc6db",
+    "ide2": "none,media=cdrom",
+    "memory": "4096",
+    "net0": "virtio=BC:24:11:6C:FC:FE,bridge=vmbr0,tag=20,firewall=1",
+    "onboot": 1,
+    "ostype": "l26",
+    "scsi0": "local-lvm:vm-111-disk-0,iothread=1,size=32G,ssd=1",
+    "scsihw": "virtio-scsi-single",
+    "sockets": 1,
+    "tags": "iot"
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve1/qemu/9000/config": {
+  "body": {
+   "data": {
+    "agent": "1",
+    "cores": 2,
+    "digest": "aea590b951bdd4638ef90fdf625c1c689c3c1685",
+    "ide2": "none,media=cdrom",
+    "memory": "2048",
+    "net0": "virtio=BC:24:11:F1:1D:C8,bridge=vmbr0,tag=20,firewall=1",
+    "onboot": 0,
+    "ostype": "l26",
+    "scsi0": "local-lvm:vm-9000-disk-0,iothread=1,size=32G,ssd=1",
+    "scsihw": "virtio-scsi-single",
+    "sockets": 1,
+    "tags": "template",
+    "template": 1
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve1/status": {
+  "body": {
+   "data": {
+    "cpu": 0.07,
+    "cpuinfo": {
+     "cores": 6,
+     "cpus": 12,
+     "model": "Intel(R) Core(TM) i5-12500",
+     "sockets": 1
+    },
+    "kversion": "Linux 6.14.8-2-pve #1 SMP PREEMPT_DYNAMIC PMX x86_64",
+    "memory": {
+     "free": 47244640256,
+     "total": 68719476736,
+     "used": 21474836480
+    },
+    "pveversion": "pve-manager/9.2.1/5a3b1c2d",
+    "uptime": 2592000
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve2/lxc/202/config": {
+  "body": {
+   "data": {
+    "cores": 1,
+    "digest": "1e7b95c5614637fdcde70eb7f2d109134c95c6bf",
+    "hostname": "backup01",
+    "memory": 512,
+    "net0": "name=eth0,bridge=vmbr0,gw=10.0.20.1,hwaddr=BC:24:11:19:ED:28,ip=10.0.20.40/24,tag=20,type=veth",
+    "onboot": 1,
+    "ostype": "debian",
+    "rootfs": "local-lvm:vm-202-disk-0,size=8G",
+    "swap": 512,
+    "tags": "backup",
+    "unprivileged": 1
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve2/lxc/202/interfaces": {
+  "body": {
+   "data": [
+    {
+     "hwaddr": "00:00:00:00:00:00",
+     "inet": "127.0.0.1/8",
+     "inet6": "::1/128",
+     "name": "lo"
+    },
+    {
+     "hwaddr": "bc:24:11:19:ed:28",
+     "inet": "10.0.20.40/24",
+     "inet6": "fe80::be24:11ff:fe00:2/64",
+     "name": "eth0"
+    }
+   ]
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve2/lxc/204/config": {
+  "body": {
+   "data": {
+    "cores": 4,
+    "digest": "1cc641954099c249e0e4ef0402da3fd0364d95f0",
+    "features": "nesting=1,keyctl=1",
+    "hostname": "media01",
+    "memory": 4096,
+    "net0": "name=eth0,bridge=vmbr0,gw=10.0.20.1,hwaddr=BC:24:11:6D:A4:EB,ip=10.0.20.55/24,tag=20,type=veth",
+    "onboot": 1,
+    "ostype": "debian",
+    "rootfs": "local-lvm:vm-204-disk-0,size=8G",
+    "swap": 512,
+    "tags": "docker;media",
+    "unprivileged": 1
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve2/lxc/204/interfaces": {
+  "body": {
+   "data": [
+    {
+     "hwaddr": "00:00:00:00:00:00",
+     "inet": "127.0.0.1/8",
+     "inet6": "::1/128",
+     "name": "lo"
+    },
+    {
+     "hwaddr": "bc:24:11:6d:a4:eb",
+     "inet": "10.0.20.55/24",
+     "inet6": "fe80::be24:11ff:fe00:2/64",
+     "name": "eth0"
+    }
+   ]
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve2/network": {
+  "body": {
+   "data": [
+    {
+     "active": 1,
+     "autostart": 1,
+     "iface": "eno1",
+     "method": "manual",
+     "type": "eth"
+    },
+    {
+     "active": 1,
+     "autostart": 1,
+     "bridge_ports": "eno1",
+     "bridge_vlan_aware": 1,
+     "cidr": "10.0.10.12/24",
+     "gateway": "10.0.10.1",
+     "iface": "vmbr0",
+     "method": "static",
+     "type": "bridge"
+    },
+    {
+     "active": 1,
+     "autostart": 1,
+     "comments": "VLAN 20",
+     "iface": "vmbr0.20",
+     "method": "manual",
+     "type": "vlan",
+     "vlan-id": 20,
+     "vlan-raw-device": "vmbr0"
+    }
+   ]
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve2/qemu/102/agent/get-osinfo": {
+  "body": {
+   "data": {
+    "result": {
+     "id": "debian",
+     "pretty-name": "Debian GNU/Linux 12 (bookworm)"
+    }
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve2/qemu/102/agent/network-get-interfaces": {
+  "body": {
+   "data": {
+    "result": [
+     {
+      "hardware-address": "00:00:00:00:00:00",
+      "ip-addresses": [
+       {
+        "ip-address": "127.0.0.1",
+        "ip-address-type": "ipv4",
+        "prefix": 8
+       }
+      ],
+      "name": "lo"
+     },
+     {
+      "hardware-address": "bc:24:11:7d:a6:cf",
+      "ip-addresses": [
+       {
+        "ip-address": "10.0.20.12",
+        "ip-address-type": "ipv4",
+        "prefix": 24
+       },
+       {
+        "ip-address": "2001:db8:20::12",
+        "ip-address-type": "ipv6",
+        "prefix": 64
+       },
+       {
+        "ip-address": "fe80::be24:11ff:fe00:1",
+        "ip-address-type": "ipv6",
+        "prefix": 64
+       }
+      ],
+      "name": "eth0"
+     }
+    ]
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve2/qemu/102/config": {
+  "body": {
+   "data": {
+    "agent": "1",
+    "cores": 4,
+    "digest": "73d8a8d1f13e7ca94aea415d32cd539fa0d6ef4c",
+    "ide2": "none,media=cdrom",
+    "memory": "8192",
+    "net0": "virtio=BC:24:11:7D:A6:CF,bridge=vmbr0,tag=20,firewall=1",
+    "onboot": 1,
+    "ostype": "l26",
+    "scsi0": "local-lvm:vm-102-disk-0,iothread=1,size=64G,ssd=1",
+    "scsihw": "virtio-scsi-single",
+    "sockets": 1,
+    "tags": "docker"
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve2/qemu/104/agent/get-osinfo": {
+  "body": {
+   "data": {
+    "result": {
+     "id": "debian",
+     "pretty-name": "Debian GNU/Linux 12 (bookworm)"
+    }
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve2/qemu/104/agent/network-get-interfaces": {
+  "body": {
+   "data": {
+    "result": [
+     {
+      "hardware-address": "00:00:00:00:00:00",
+      "ip-addresses": [
+       {
+        "ip-address": "127.0.0.1",
+        "ip-address-type": "ipv4",
+        "prefix": 8
+       }
+      ],
+      "name": "lo"
+     },
+     {
+      "hardware-address": "bc:24:11:57:01:46",
+      "ip-addresses": [
+       {
+        "ip-address": "10.0.20.31",
+        "ip-address-type": "ipv4",
+        "prefix": 24
+       },
+       {
+        "ip-address": "fe80::be24:11ff:fe00:1",
+        "ip-address-type": "ipv6",
+        "prefix": 64
+       }
+      ],
+      "name": "eth0"
+     }
+    ]
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve2/qemu/104/config": {
+  "body": {
+   "data": {
+    "agent": "1",
+    "cores": 2,
+    "digest": "55d182a32deb76703aca414f690c40df95497849",
+    "ide2": "none,media=cdrom",
+    "memory": "4096",
+    "net0": "virtio=BC:24:11:57:01:46,bridge=vmbr0,tag=20,firewall=1",
+    "onboot": 1,
+    "ostype": "l26",
+    "scsi0": "local-lvm:vm-104-disk-0,iothread=1,size=32G,ssd=1",
+    "scsihw": "virtio-scsi-single",
+    "sockets": 1,
+    "tags": "db;prod"
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve2/qemu/106/agent/get-osinfo": {
+  "body": {
+   "data": {
+    "result": {
+     "id": "debian",
+     "pretty-name": "Debian GNU/Linux 12 (bookworm)"
+    }
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve2/qemu/106/agent/network-get-interfaces": {
+  "body": {
+   "data": {
+    "result": [
+     {
+      "hardware-address": "00:00:00:00:00:00",
+      "ip-addresses": [
+       {
+        "ip-address": "127.0.0.1",
+        "ip-address-type": "ipv4",
+        "prefix": 8
+       }
+      ],
+      "name": "lo"
+     },
+     {
+      "hardware-address": "bc:24:11:9e:71:84",
+      "ip-addresses": [
+       {
+        "ip-address": "2001:db8:20::80",
+        "ip-address-type": "ipv6",
+        "prefix": 64
+       },
+       {
+        "ip-address": "fe80::be24:11ff:fe00:1",
+        "ip-address-type": "ipv6",
+        "prefix": 64
+       }
+      ],
+      "name": "eth0"
+     }
+    ]
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve2/qemu/106/config": {
+  "body": {
+   "data": {
+    "agent": "1",
+    "cores": 1,
+    "digest": "a9d1f9b3b5affb776a3976b482963e6b94f8728a",
+    "ide2": "none,media=cdrom",
+    "memory": "1024",
+    "net0": "virtio=BC:24:11:9E:71:84,bridge=vmbr0,tag=20,firewall=1",
+    "onboot": 1,
+    "ostype": "l26",
+    "scsi0": "local-lvm:vm-106-disk-0,iothread=1,size=32G,ssd=1",
+    "scsihw": "virtio-scsi-single",
+    "sockets": 1,
+    "tags": ""
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve2/qemu/110/config": {
+  "body": {
+   "data": {
+    "agent": "1",
+    "cores": 4,
+    "digest": "395e76fd24b291e5188dc3e316efde8d2b863f16",
+    "efidisk0": "local-lvm:vm-110-disk-1,efitype=4m,size=4M",
+    "ide2": "none,media=cdrom",
+    "memory": "8192",
+    "net0": "virtio=BC:24:11:AB:93:44,bridge=vmbr0,tag=20,firewall=1",
+    "onboot": 1,
+    "ostype": "win11",
+    "scsi0": "local-lvm:vm-110-disk-0,iothread=1,size=64G,ssd=1",
+    "scsihw": "virtio-scsi-single",
+    "sockets": 1,
+    "tags": "windows",
+    "tpmstate0": "local-lvm:vm-110-disk-2,size=4M,version=v2.0"
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/nodes/pve2/status": {
+  "body": {
+   "data": {
+    "cpu": 0.07,
+    "cpuinfo": {
+     "cores": 6,
+     "cpus": 12,
+     "model": "Intel(R) Core(TM) i5-12500",
+     "sockets": 1
+    },
+    "kversion": "Linux 6.14.8-2-pve #1 SMP PREEMPT_DYNAMIC PMX x86_64",
+    "memory": {
+     "free": 47244640256,
+     "total": 68719476736,
+     "used": 21474836480
+    },
+    "pveversion": "pve-manager/9.2.1/5a3b1c2d",
+    "uptime": 2592000
+   }
+  },
+  "status": 200
+ },
+ "/api2/json/version": {
+  "body": {
+   "data": {
+    "release": "9.2",
+    "repoid": "0a1b2c3d",
+    "version": "9.2.1"
+   }
+  },
+  "status": 200
+ }
+}

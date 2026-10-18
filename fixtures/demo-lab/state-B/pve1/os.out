@@ -8,7 +8,7 @@ ID=debian
 
 --58bd3c6dbaf747ad6774da53 rc 0
 --58bd3c6dbaf747ad6774da53 part kernel
-6.8.12-4-pve
+6.14.8-2-pve
 --58bd3c6dbaf747ad6774da53 rc 0
 --58bd3c6dbaf747ad6774da53 part arch
 x86_64

@@ -1,6 +1,6 @@
 ATLAS-PROBE 1 version fd2db050252cf3dfe872f105
 --fd2db050252cf3dfe872f105 part version
-1.0.0
+@@PROBE_VERSION@@
 --fd2db050252cf3dfe872f105 rc 0
 --fd2db050252cf3dfe872f105 part sha256
 @@PROBE_SHA256@@  /usr/local/libexec/atlas-probe

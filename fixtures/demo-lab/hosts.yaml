@@ -2,6 +2,12 @@
 version: 1
 defaults:
   ssh: { user: atlas-ro, key: ssh_atlas_demo }
+sources:
+  proxmox:
+    - name: homelab
+      url: "https://pve1.lab.example:8006/api2/json"
+      credential: proxmox_auditor
+      tls: { ca_file: pve-root-ca.pem }
 hosts:
   - name: pve1
     address: "10.0.10.11"
@@ -18,13 +24,13 @@ hosts:
   - name: docker01
     address: "10.0.20.11"
     type: linux
-    collectors: [linux-ssh]
+    collectors: [linux-ssh, docker]
     ssh:
       host_keys: ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBPJiVwCEVBefER52sPLtXU38B0dokwN5p9NbFkJzvzj docker01"]
   - name: docker02
     address: "10.0.20.12"
     type: linux
-    collectors: [linux-ssh]
+    collectors: [linux-ssh, docker]
     ssh:
       host_keys: ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJJbFFvc7yLs718OYCH+bRRObwOxa0NxU3jRLjDiASD+ docker02"]
   - name: web01
@@ -57,6 +63,12 @@ hosts:
     collectors: [linux-ssh]
     ssh:
       host_keys: ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIClo+cmv+fxckB3mpt4ztdwCHxq6IAYnrmPtcxfP0TAn pi-garage"]
+  - name: media01
+    address: "10.0.20.55"
+    type: linux
+    collectors: [linux-ssh, docker]
+    ssh:
+      host_keys: ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDtD2kgGaH5/ZBaB11MzTIRtwaJ6JlmyLl1NtEZOmima media01"]
   - name: legacy01
     address: "10.0.20.70"
     type: linux

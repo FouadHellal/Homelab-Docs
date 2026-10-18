@@ -1,0 +1,20 @@
+ATLAS-PROBE 1 docker c678e90dcdfd96c42b4158ce
+--c678e90dcdfd96c42b4158ce part engine
+26.1.5 1.45
+--c678e90dcdfd96c42b4158ce rc 0
+--c678e90dcdfd96c42b4158ce part containers
+{"id":"517dc23bca42e400180e41f7e8cebcc0cace074ebe142d3271c35aeb16243fd3","name":"/jellyfin","image":"jellyfin/jellyfin:10.10.3","image_id":"sha256:97e791066c0fd0be17e32ba881c18d05d2aaf6e64d8db2223eb8b4155db6503b","status":"running","exit_code":0,"started_at":"2026-10-17T03:00:00.000000000Z","health":"healthy","restart_count":0,"restart_policy":"unless-stopped","labels":{"com.docker.compose.project":"media","com.docker.compose.service":"jellyfin","com.docker.compose.container-number":"1","com.docker.compose.project.config_files":"/srv/media/compose.yaml","com.docker.compose.config-hash":"993f5b8ab45ee463da63791c57be5e0dd35879158890a192838b2994925f89fe"},"env_names":["PATH",null],"cmd":null,"entrypoint":null,"healthcheck":null,"user":"","privileged":false,"network_mode":"bridge","cap_add":null,"readonly_rootfs":false,"ports":{"8096/tcp":[{"HostIp":"0.0.0.0","HostPort":"8096"}]},"networks":{"bridge":{"ip":"172.18.0.250","ip6":"","mac":"02:42:ac:12:00:02"},"_":null},"mounts":[{"type":"bind","source":"/mnt/media","destination":"/media","name":"","rw":false},null]}
+--c678e90dcdfd96c42b4158ce rc 0
+--c678e90dcdfd96c42b4158ce part images
+{"id":"sha256:97e791066c0fd0be17e32ba881c18d05d2aaf6e64d8db2223eb8b4155db6503b","tags":["jellyfin/jellyfin:10.10.3"],"digests":["jellyfin/jellyfin@sha256:eea387a2a75f2564e9b01a79d4e820fde9c1e59607dd3866eb65654d66d04543"],"created":"2026-10-01T00:00:00Z","size":123456789,"arch":"amd64"}
+--c678e90dcdfd96c42b4158ce rc 0
+--c678e90dcdfd96c42b4158ce part networks
+{"id":"b10293e0568961df11889a8ed49a8e42c05633d539641eb9de8b234f488f39d4","name":"bridge","driver":"bridge","scope":"local","internal":false,"ipv6":false,"subnets":[{"subnet":"172.17.0.0/16","gateway":"172.17.0.1"},null]}
+--c678e90dcdfd96c42b4158ce rc 0
+--c678e90dcdfd96c42b4158ce part volumes
+
+--c678e90dcdfd96c42b4158ce rc 0
+--c678e90dcdfd96c42b4158ce part compose
+[{"Name": "media", "Status": "running(1)", "ConfigFiles": "/srv/media/compose.yaml"}]
+--c678e90dcdfd96c42b4158ce rc 0
+--c678e90dcdfd96c42b4158ce end

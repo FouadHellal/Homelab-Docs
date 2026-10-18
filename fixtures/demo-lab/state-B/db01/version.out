@@ -1,6 +1,6 @@
 ATLAS-PROBE 1 version 8f6b15fbd8fc1cb98d64320f
 --8f6b15fbd8fc1cb98d64320f part version
-1.0.0
+@@PROBE_VERSION@@
 --8f6b15fbd8fc1cb98d64320f rc 0
 --8f6b15fbd8fc1cb98d64320f part sha256
 @@PROBE_SHA256@@  /usr/local/libexec/atlas-probe
