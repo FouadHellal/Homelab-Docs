@@ -114,7 +114,7 @@ Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a
 **Rejected.** A custom JSON-RPC server; exposing an SQL tool (unbounded queries).
 
 ## ADR-015 Process model and scheduler
-**Decision.** One container and one process: FastAPI (uvicorn) + APScheduler AsyncIOScheduler + MCP HTTP mounted as a sub-app. Scan lock = a DB row lease plus an OS file lock (`portalocker`, which works on Windows). Pin APScheduler 3.11.x and re-check 4.x stability at M6.
+**Decision.** One container and one process: FastAPI (uvicorn) + APScheduler AsyncIOScheduler + MCP HTTP mounted as a sub-app. Scan lock = an OS file lock via `filelock` (cross-platform; already in the dependency tree), held for the whole scan; a DB lease can be added if multi-host workers ever appear. Pin APScheduler 3.11.x and re-check 4.x stability at M6.
 **Rejected.** Celery/Redis (overkill); a separate worker container (more moving parts for ~100 targets).
 
 ## ADR-016 Unknown-device discovery is passive
@@ -128,3 +128,16 @@ Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a
 ## ADR-018 Secrets handling
 **Decision.** `SecretResolver` reads `/run/secrets/<name>` (prod) or `./secrets/<name>` (dev, git-ignored, never read by Claude). Values are wrapped in `SecretStr` and only unwrapped inside the transport call. SSH private keys are mounted read-only. Names must match `[a-z0-9][a-z0-9_.-]{0,63}`; symlinks, directories and files over 64 KiB are refused. The 0600 check applies to the dev `./secrets/` directory only, because Docker Compose bind-mounts file secrets 0444 and ignores `mode`, so `/run/secrets` relies on container isolation (non-root, single-purpose container). `.env.example` only. gitleaks runs in pre-commit (staged changes) and in CI (full history). Fake secrets must contain `ATLASFAKE`, the only allowlist.
 **Rejected.** Env-var secrets (they leak via `/proc`, `docker inspect`, crash dumps); a Vault (an extra service for a homelab).
+
+## ADR-019 Change-noise policy (M2)
+**Context.** A diff is only useful if an unchanged host produces nothing.
+**Decision.**
+- **Volatile, never diffed:** uptime, pids, mount used/avail, interface operstate, service `sub`, neighbour (ARP/NDP) tables (kept for reconciliation in M4) and per-section errors.
+- **Excluded:** `veth*` interfaces. They churn on every container restart, so only a volatile count is kept.
+- **Set-like lists are keyed by identity** (sockets by proto/address/port, routes by family/dst/gateway/dev, packages by name, cron by source+line), so ordering never matters.
+- **Packages:** a fixed key-package list (kernel, openssh, sudo, docker, systemd, openssl, libc, …) gets individual events. Every other package change is folded into one `packages.changed` event per host.
+- **Cron:** reported per source file. Redaction markers are keyed by an HMAC, so a rotated secret in a cron line shows up as a change without being revealed.
+- **Unclaimed changes:** anything no rule claims is folded into one `facts.changed` event, so nothing is silently dropped.
+- **Reachability:** events fire on transitions only (`host.unreachable` / `host.recovered`), not on every failed scan.
+
+**Rejected.** Generic JSON-path events (unreadable); diffing raw probe output (noisy, and it would need unredacted data).
