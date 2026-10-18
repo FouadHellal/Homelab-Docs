@@ -10,6 +10,7 @@ import html
 import io
 import json
 import re
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
@@ -104,23 +105,48 @@ def build(s: Session) -> dict[str, Any]:
     }
 
 
-def sanitize(doc: dict[str, Any], key: bytes) -> dict[str, Any]:
-    san = Sanitizer(key)
-    for e in doc["entities"]:
+def register_names(san: Sanitizer, entities: Iterable[dict[str, Any]]) -> None:
+    """Every name worth hiding: entity names plus hostnames, SSIDs, clients, domains in facets.
+
+    Shared by `--sanitize` exports and `atlas mcp --sanitize` so both hide the same things.
+    """
+    for e in entities:
         prefix = KIND_PREFIX.get(e["kind"], "obj")
         names = {e["name"], *e["name"].replace("(", " ").split()}
         san.register(
             [n for n in names if len(n) > 2 and not n.isupper() and not n.isdigit()], prefix
         )
         for f in e["facets"].values():
-            if isinstance(f, dict) and isinstance(f.get("os"), dict):
+            if not isinstance(f, dict):
+                continue
+            if isinstance(f.get("os"), dict):
                 san.register([f["os"].get("hostname") or ""], prefix)
-            for ssid in f.get("ssids") or [] if isinstance(f, dict) else []:
+            for ssid in f.get("ssids") or []:
                 san.register([ssid.get("name") or ""], "ssid")
-            for c in f.get("clients") or [] if isinstance(f, dict) else []:
+            for c in f.get("clients") or []:
                 san.register([c.get("name") or ""], "client")
-            for d in f.get("search_domains") or [] if isinstance(f, dict) else []:
+            for d in f.get("search_domains") or []:
                 san.register([d], "domain")
+
+
+def sanitizer_from_db(s: Session, key: bytes) -> Sanitizer:
+    facets: dict[str, dict[str, Any]] = {}
+    for f in s.scalars(select(Facet)):
+        facets.setdefault(f.entity_key, {})[f.collector] = f.data
+    san = Sanitizer(key)
+    register_names(
+        san,
+        (
+            {"name": e.display_name, "kind": e.kind, "facets": facets.get(e.key, {})}
+            for e in s.scalars(select(Entity).order_by(Entity.kind, Entity.display_name))
+        ),
+    )
+    return san
+
+
+def sanitize(doc: dict[str, Any], key: bytes) -> dict[str, Any]:
+    san = Sanitizer(key)
+    register_names(san, doc["entities"])
     out: dict[str, Any] = san.data(doc)
     for e in out["entities"]:
         e["annotation"] = None  # owner/purpose/notes/links never leave in sanitized exports
