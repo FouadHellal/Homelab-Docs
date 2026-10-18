@@ -1,0 +1,462 @@
+{
+ "secrets": [
+  {
+   "id": "env_assign",
+   "text": "MYSQL_ROOT_PASSWORD=hunter2-ATLASFAKE",
+   "secrets": [
+    "hunter2-ATLASFAKE"
+   ]
+  },
+  {
+   "id": "env_quoted",
+   "text": "export API_KEY=\"k-ATLASFAKE-1234\"",
+   "secrets": [
+    "k-ATLASFAKE-1234"
+   ]
+  },
+  {
+   "id": "yaml_colon",
+   "text": "password: s3cr3t-ATLASFAKE",
+   "secrets": [
+    "s3cr3t-ATLASFAKE"
+   ]
+  },
+  {
+   "id": "json_text",
+   "text": "{\"client_secret\":\"cs-ATLASFAKE-99\"}",
+   "secrets": [
+    "cs-ATLASFAKE-99"
+   ]
+  },
+  {
+   "id": "dbpass",
+   "text": "DB_PASS=pw-ATLASFAKE ./run",
+   "secrets": [
+    "pw-ATLASFAKE"
+   ]
+  },
+  {
+   "id": "url_userinfo",
+   "text": "postgres://immich:pg-ATLASFAKE@db:5432/immich",
+   "secrets": [
+    "pg-ATLASFAKE"
+   ]
+  },
+  {
+   "id": "url_userinfo_redis",
+   "text": "redis://:rd-ATLASFAKE@redis:6379/0",
+   "secrets": [
+    "rd-ATLASFAKE"
+   ]
+  },
+  {
+   "id": "bearer",
+   "text": "curl -H 'Authorization: Bearer eyATLASFAKE0123456789' https://api",
+   "secrets": [
+    "eyATLASFAKE0123456789"
+   ]
+  },
+  {
+   "id": "basic",
+   "text": "Authorization: Basic YWRtaW46ATLASFAKEMTIzNDU2==",
+   "secrets": [
+    "YWRtaW46ATLASFAKEMTIzNDU2=="
+   ]
+  },
+  {
+   "id": "pve_token",
+   "text": "Authorization: PVEAPIToken=atlas@pve!collector=0a1b2c3d-atlasfake-0000-0000-000000000000",
+   "secrets": [
+    "0a1b2c3d-atlasfake-0000-0000-000000000000"
+   ]
+  },
+  {
+   "id": "x_api_key",
+   "text": "X-API-KEY: uk-ATLASFAKE-abcdef",
+   "secrets": [
+    "uk-ATLASFAKE-abcdef"
+   ]
+  },
+  {
+   "id": "cli_password_eq",
+   "text": "/usr/bin/app --password=pw-ATLASFAKE --verbose",
+   "secrets": [
+    "pw-ATLASFAKE"
+   ]
+  },
+  {
+   "id": "cli_token_space",
+   "text": "cloudflared tunnel run --token tk-ATLASFAKE-0000",
+   "secrets": [
+    "tk-ATLASFAKE-0000"
+   ]
+  },
+  {
+   "id": "cli_requirepass",
+   "text": "redis-server --requirepass rp-ATLASFAKE",
+   "secrets": [
+    "rp-ATLASFAKE"
+   ]
+  },
+  {
+   "id": "mysql_attached",
+   "text": "mysqldump -u root -pmy-ATLASFAKE --all-databases",
+   "secrets": [
+    "my-ATLASFAKE"
+   ]
+  },
+  {
+   "id": "sshpass",
+   "text": "sshpass -p sp-ATLASFAKE ssh host",
+   "secrets": [
+    "sp-ATLASFAKE"
+   ]
+  },
+  {
+   "id": "query_token",
+   "text": "GET /api/hook?access_token=qt-ATLASFAKE&x=1",
+   "secrets": [
+    "qt-ATLASFAKE"
+   ]
+  },
+  {
+   "id": "query_sig",
+   "text": "https://bucket/obj?X-Amz-Signature=sigATLASFAKEabc&X-Amz-Date=1",
+   "secrets": [
+    "sigATLASFAKEabc"
+   ]
+  },
+  {
+   "id": "github",
+   "text": "GITHUB=ghp_ATLASFAKE0123456789abcdefghijklmnopq",
+   "secrets": [
+    "ghp_ATLASFAKE0123456789abcdefghijklmnopq"
+   ]
+  },
+  {
+   "id": "github_bare",
+   "text": "token is ghp_ATLASFAKE0123456789abcdefghijklmnopq ok",
+   "secrets": [
+    "ghp_ATLASFAKE0123456789abcdefghijklmnopq"
+   ]
+  },
+  {
+   "id": "gitlab",
+   "text": "glpat-ATLASFAKEabcdefghij12345",
+   "secrets": [
+    "glpat-ATLASFAKEabcdefghij12345"
+   ]
+  },
+  {
+   "id": "aws_akid",
+   "text": "aws id AKIAATLASFAKE0000001 used",
+   "secrets": [
+    "AKIAATLASFAKE0000001"
+   ]
+  },
+  {
+   "id": "aws_secret",
+   "text": "aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/ATLASFAKEbPxRfiCYEXAMPLE",
+   "secrets": [
+    "wJalrXUtnFEMI/K7MDENG/ATLASFAKEbPxRfiCYEXAMPLE"
+   ]
+  },
+  {
+   "id": "slack",
+   "text": "xoxb-ATLASFAKE-1234567890-abcdef",
+   "secrets": [
+    "xoxb-ATLASFAKE-1234567890-abcdef"
+   ]
+  },
+  {
+   "id": "slack_webhook",
+   "text": "https://hooks.slack.com/services/T000/B000/ATLASFAKExyz",
+   "secrets": [
+    "ATLASFAKExyz"
+   ]
+  },
+  {
+   "id": "discord_webhook",
+   "text": "https://discord.com/api/webhooks/123/ATLASFAKE-tok",
+   "secrets": [
+    "ATLASFAKE-tok"
+   ]
+  },
+  {
+   "id": "stripe",
+   "text": "sk_live_ATLASFAKE0123456789abcd",
+   "secrets": [
+    "sk_live_ATLASFAKE0123456789abcd"
+   ]
+  },
+  {
+   "id": "google",
+   "text": "AIzaATLASFAKE0123456789abcdefghijklmnopqrstu",
+   "secrets": [
+    "AIzaATLASFAKE0123456789abcdefghijklmnopqrstu"
+   ]
+  },
+  {
+   "id": "anthropic",
+   "text": "ANTHROPIC=sk-ant-api03-ATLASFAKE0123456789abcdef",
+   "secrets": [
+    "sk-ant-api03-ATLASFAKE0123456789abcdef"
+   ]
+  },
+  {
+   "id": "openai",
+   "text": "sk-proj-ATLASFAKE0123456789abcdefghij",
+   "secrets": [
+    "sk-proj-ATLASFAKE0123456789abcdefghij"
+   ]
+  },
+  {
+   "id": "docker_pat",
+   "text": "dckr_pat_ATLASFAKE0123456789abcdef",
+   "secrets": [
+    "dckr_pat_ATLASFAKE0123456789abcdef"
+   ]
+  },
+  {
+   "id": "vault",
+   "text": "VAULT=hvs.ATLASFAKE0123456789abcdefgh",
+   "secrets": [
+    "hvs.ATLASFAKE0123456789abcdefgh"
+   ]
+  },
+  {
+   "id": "tailscale",
+   "text": "TS_AUTHKEY=tskey-auth-ATLASFAKE-0123456789",
+   "secrets": [
+    "tskey-auth-ATLASFAKE-0123456789"
+   ]
+  },
+  {
+   "id": "jwt",
+   "text": "cookie session=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhdGxhcyIsIm4iOiJBVExBU0ZBS0UifQ.ATLASFAKEsig0123456789abcdef; Path=/",
+   "secrets": [
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhdGxhcyIsIm4iOiJBVExBU0ZBS0UifQ.ATLASFAKEsig0123456789abcdef"
+   ]
+  },
+  {
+   "id": "pem_openssh",
+   "text": "key:\n-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAAATLASFAKEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n-----END OPENSSH PRIVATE KEY-----\ntrailer",
+   "secrets": [
+    "ATLASFAKEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "b3BlbnNzaC1rZXktdjEAAAAA"
+   ]
+  },
+  {
+   "id": "pem_rsa",
+   "text": "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEAATLASFAKEQWERTYUIOPASDFGHJKL\n-----END RSA PRIVATE KEY-----",
+   "secrets": [
+    "MIIEowIBAAKCAQEAATLASFAKE"
+   ]
+  },
+  {
+   "id": "pem_unterminated",
+   "text": "output: -----BEGIN EC PRIVATE KEY-----\nMHcCAQEEIATLASFAKEtruncatedoutput",
+   "secrets": [
+    "ATLASFAKEtruncatedoutput"
+   ]
+  },
+  {
+   "id": "wireguard",
+   "text": "[Interface]\nPrivateKey = yAnz5TF+lXXJte14ATLASFAKEtji3zlMNq+hd2rYUIg=",
+   "secrets": [
+    "yAnz5TF+lXXJte14ATLASFAKEtji3zlMNq+hd2rYUIg"
+   ]
+  },
+  {
+   "id": "htpasswd_label",
+   "text": "traefik.http.middlewares.auth.basicauth.users=admin:$apr1$ATLASFAK$abcdefghijklmnopqrstuv",
+   "secrets": [
+    "$apr1$ATLASFAK$abcdefghijklmnopqrstuv"
+   ]
+  },
+  {
+   "id": "bcrypt",
+   "text": "hash $2y$10$ATLASFAKEabcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH",
+   "secrets": [
+    "$2y$10$ATLASFAKE"
+   ]
+  },
+  {
+   "id": "shadow_sha512",
+   "text": "root:$6$ATLASFAK$aaaaaaaaaaaaaaaaaaaaATLASFAKEbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:19000:0:99999:7:::",
+   "secrets": [
+    "ATLASFAKEbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   ]
+  },
+  {
+   "id": "wpa_psk_conf",
+   "text": "wpa_passphrase=wifi-ATLASFAKE-pass",
+   "secrets": [
+    "wifi-ATLASFAKE-pass"
+   ]
+  },
+  {
+   "id": "unifi_x_passphrase",
+   "text": "\"x_passphrase\": \"wifi-ATLASFAKE\"",
+   "secrets": [
+    "wifi-ATLASFAKE"
+   ]
+  },
+  {
+   "id": "cron_line",
+   "text": "0 3 * * * curl -s 'https://hc.lan/ping?token=cr-ATLASFAKE' >/dev/null",
+   "secrets": [
+    "cr-ATLASFAKE"
+   ]
+  },
+  {
+   "id": "healthcheck",
+   "text": "CMD-SHELL wget -qO- --header 'X-Auth-Token: hc-ATLASFAKE-0' http://localhost/health",
+   "secrets": [
+    "hc-ATLASFAKE-0"
+   ]
+  },
+  {
+   "id": "entropy_label",
+   "text": "com.example.license=Qz8ATLASFAKEx7Rk2Lm9Pw4Tz0VbN3",
+   "secrets": [
+    "Qz8ATLASFAKEx7Rk2Lm9Pw4Tz0VbN3"
+   ]
+  },
+  {
+   "id": "entropy_arg",
+   "text": "/app/bin --license-blob Zx9QwE4rT7yU1iO3pA6sD8fG2hJ5kL0ATLASFAKE",
+   "secrets": [
+    "Zx9QwE4rT7yU1iO3pA6sD8fG2hJ5kL0ATLASFAKE"
+   ]
+  },
+  {
+   "id": "unicode_ctx",
+   "text": "pässwörd ☃ PASSWORD=ünïcödé-ATLASFAKE",
+   "secrets": [
+    "ünïcödé-ATLASFAKE"
+   ]
+  },
+  {
+   "id": "multi",
+   "text": "A_TOKEN=one-ATLASFAKE B_SECRET=two-ATLASFAKE C=keep",
+   "secrets": [
+    "one-ATLASFAKE",
+    "two-ATLASFAKE"
+   ]
+  }
+ ],
+ "benign": [
+  {
+   "text": "nginx:1.27-alpine"
+  },
+  {
+   "text": "ghcr.io/home-assistant/home-assistant:2026.10.1"
+  },
+  {
+   "text": "sha256:abababababababababababababababababababababababababababababababab"
+  },
+  {
+   "text": "/var/lib/docker/volumes/immich_pgdata/_data"
+  },
+  {
+   "text": "550e8400-e29b-41d4-a716-446655440000"
+  },
+  {
+   "text": "bc:24:11:aa:bb:cc"
+  },
+  {
+   "text": "fe80::be24:11ff:feaa:bbcc"
+  },
+  {
+   "text": "2001:db8:20::11/64"
+  },
+  {
+   "text": "com.docker.compose.project=immich"
+  },
+  {
+   "text": "traefik.http.routers.app.rule=Host(`app.lan`)"
+  },
+  {
+   "text": "PASSWORD_FILE=/run/secrets/db_password"
+  },
+  {
+   "text": "--password-file=/run/secrets/db_password"
+  },
+  {
+   "text": "token_ttl=3600"
+  },
+  {
+   "text": "systemctl status sshd.service"
+  },
+  {
+   "text": "mysql -u root -p"
+  },
+  {
+   "text": "ssh -p 2222 atlas-ro@10.0.20.11"
+  },
+  {
+   "text": "Debian GNU/Linux 13 (trixie)"
+  },
+  {
+   "text": "immich_machine_learning-1"
+  },
+  {
+   "text": "linuxserver/wireguard:1.0.20250521"
+  },
+  {
+   "text": "café-nas.lan"
+  },
+  {
+   "text": "🍕-pi.lan"
+  },
+  {
+   "text": "UniFi Cloud Gateway Ultra"
+  },
+  {
+   "text": "Basic authentication enabled"
+  },
+  {
+   "text": "pci_passthrough=1"
+  },
+  {
+   "text": "bypass_proxy=true"
+  },
+  {
+   "text": "compass_heading=12"
+  },
+  {
+   "text": "python3 -m http.server 8080"
+  },
+  {
+   "text": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
+  },
+  {
+   "text": "65f2c1a9e4b7d8c3f0a1b2c3"
+  },
+  {
+   "text": "my-very-long-container-name-for-testing-01"
+  },
+  {
+   "text": "HomeAssistantSupervisorCoreContainer"
+  },
+  {
+   "text": "--log-level=info --config=/etc/app/config.yaml"
+  },
+  {
+   "text": "Authorization header missing"
+  },
+  {
+   "text": "/usr/lib/systemd/systemd-networkd"
+  },
+  {
+   "text": "local-lvm:vm-105-disk-0,size=32G"
+  },
+  {
+   "text": "net0: virtio=BC:24:11:AA:BB:CC,bridge=vmbr0,tag=20"
+  },
+  {
+   "text": "the token expired"
+  }
+ ]
+}
