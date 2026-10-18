@@ -97,6 +97,8 @@ ban-relative-imports = "all"
 "src/homelab_atlas/redact/rules.py" = ["S105"]
 # Deliberate attack inputs and ATLASFAKE secrets.
 "src/homelab_atlas/security/selftest.py" = ["S105", "S106", "RUF001"]
+# Typer commands take their options as parameters.
+"src/homelab_atlas/cli*.py" = ["PLR0917"]
 # RUF001: homoglyphs are deliberate attack inputs. S105/S106: fake ATLASFAKE secrets.
 "tests/**" = ["S101", "TID251", "RUF001", "S105", "S106", "PT011", "S104", "S604"]
 # Generated-data scripts: long literal rows, fake 0.0.0.0 listeners, prints.

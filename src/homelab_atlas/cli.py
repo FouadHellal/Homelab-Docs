@@ -45,8 +45,12 @@ def main(
             help="Show the version and exit.",
         ),
     ] = False,
+    verbose: Annotated[bool, typer.Option("-v", "--verbose", help="Log at INFO.")] = False,
 ) -> None:
     """Read-only homelab discovery and documentation."""
+    from homelab_atlas.log import configure_logging  # noqa: PLC0415
+
+    configure_logging("INFO" if verbose else "WARNING", json=False)
 
 
 @app.command("version")
@@ -89,3 +93,12 @@ def audit_verify(
         return
     console.print(f"[red]BROKEN[/] after {report.records} good records: {report.error}")
     raise typer.Exit(1)
+
+
+def _register_scan_commands() -> None:
+    from homelab_atlas.cli_scan import register  # noqa: PLC0415
+
+    register(app)
+
+
+_register_scan_commands()
