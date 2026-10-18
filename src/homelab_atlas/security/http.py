@@ -410,3 +410,17 @@ class ReadOnlyHttpClient:
                 detail=detail,
             )
         )
+
+
+def replay_transport(responses: Mapping[str, tuple[int, bytes]]) -> httpx.AsyncBaseTransport:
+    """`demo:` transport: recorded responses keyed by raw path (incl. query). Unknown -> 404.
+
+    Requests still go through ReadOnlyHttpClient, so every allowlist check applies.
+    """
+    table = dict(responses)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        status, body = table.get(request.url.raw_path.decode("ascii"), (404, b'{"data":null}'))
+        return httpx.Response(status, content=body, headers={"content-type": "application/json"})
+
+    return httpx.MockTransport(handler)
