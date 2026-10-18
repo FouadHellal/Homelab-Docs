@@ -21,7 +21,8 @@ Read-only, agentless auto-discovery and documentation of a homelab. Spec: docs/S
 ## Conventions
 - Python 3.12, src layout, package `homelab_atlas`, CLI `atlas` (Typer).
 - Pydantic v2 models for all collector output; volatile fields marked `Field(json_schema_extra={"volatile": True})`.
-- mypy `--strict` on `homelab_atlas.security.*` and `homelab_atlas.redact.*`; standard elsewhere.
+- mypy `strict = true` for the whole repo (src and tests), which covers the security modules' requirement. No bare `# type: ignore`.
+- Fake secrets in fixtures/tests must contain `ATLASFAKE` (gitleaks allowlist marker); anything else is treated as real.
 - Tests: `tests/unit`, `tests/security` (refusal/bypass/fuzz, hypothesis), `tests/integration` (demo lab). Security code needs a test for every refusal path.
 - Vendor API facts come from docs cited in DECISIONS.md, not memory. Record the version.
 - Paths: use `pathlib`; no POSIX-only assumptions in collector-side code (dev is on Windows).

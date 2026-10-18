@@ -1,0 +1,12 @@
+# gitleaks config: default rules plus a narrow allowlist for synthetic test secrets.
+# Convention: every fake secret in fixtures/ or tests/ MUST contain the marker ATLASFAKE
+# (e.g. ghp_ATLASFAKE0000000000000000000000000000). Anything else is treated as real.
+title = "homelab-atlas"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic secrets carrying the ATLASFAKE marker"
+regexTarget = "match"
+regexes = ['''ATLASFAKE''']
