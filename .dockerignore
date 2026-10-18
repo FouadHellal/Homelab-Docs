@@ -1,0 +1,9 @@
+# Allowlist: the build context is only what the image needs. Secrets, data, config,
+# fixtures (fake secrets would trip image secret scanners) and git history never enter it.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!src/
+src/**/__pycache__
+src/**/*.pyc
