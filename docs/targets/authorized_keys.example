@@ -1,0 +1,4 @@
+# ~atlas-ro/.ssh/authorized_keys -- replace <COLLECTOR_IP> and <PUBLIC_KEY>.
+# `restrict` disables pty, agent/port/X11 forwarding and ~/.ssh/rc; the forced
+# command ignores whatever the client asks for except the gate's exact strings.
+restrict,from="<COLLECTOR_IP>",command="/usr/local/libexec/atlas-probe-gate" ssh-ed25519 <PUBLIC_KEY> atlas-collector
