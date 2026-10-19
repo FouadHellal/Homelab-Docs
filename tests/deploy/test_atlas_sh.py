@@ -37,19 +37,30 @@ case "$args" in
   "inspect -f "*) echo healthy; exit 0 ;;
   *" logs atlas") echo "self-signed HTTPS certificate (SHA-256 AA:BB:CC)"; exit 0 ;;
   "build -t atlas:local "*) exit 0 ;;
+  *" exec -T atlas atlas --version") echo "atlas 9.9.9-fake"; exit 0 ;;
   *) exit 0 ;;
 esac
 """
 
+FAKE_GIT = r"""#!/usr/bin/env bash
+printf 'git %s\n' "$*" >> "$FAKE_LOG"
+case "$*" in
+  *" rev-parse HEAD") echo 0123456789abcdef ;;
+  *" pull --ff-only") exit "${FAKE_GIT_RC:-0}" ;;
+esac
+exit 0
+"""
+
 
 def _run(
-    tmp_path: Path, *args: str, stdin: str = "", pull_rc: int = 0
+    tmp_path: Path, *args: str, stdin: str = "", pull_rc: int = 0, git_rc: int = 0
 ) -> tuple[subprocess.CompletedProcess[str], str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
-    fake = bin_dir / "docker"
-    fake.write_bytes(FAKE_DOCKER.encode())
-    fake.chmod(0o755)
+    for name, body in (("docker", FAKE_DOCKER), ("git", FAKE_GIT)):
+        fake = bin_dir / name
+        fake.write_bytes(body.encode())
+        fake.chmod(0o755)
     log = tmp_path / "docker.log"
     env = {
         **os.environ,
@@ -59,7 +70,11 @@ def _run(
         "ATLAS_DIR": (tmp_path / "atlas").as_posix(),
         "FAKE_LOG": log.as_posix(),
         "FAKE_PULL_RC": str(pull_rc),
+        "FAKE_GIT_RC": str(git_rc),
+        # Git Bash on Windows puts its own git first on PATH: name the fake explicitly.
+        "ATLAS_GIT": (bin_dir / "git").as_posix(),
     }
+    env.pop("ATLAS_UPDATE_REEXEC", None)
     assert BASH is not None
     res = subprocess.run(  # noqa: S603 - fixed argv, test-only
         [BASH, SCRIPT.as_posix(), *args],
@@ -145,3 +160,68 @@ def test_proxy_mode_adds_override(tmp_path: Path) -> None:
     res, log = _run(tmp_path, "status")
     assert res.returncode == 0, res.stderr
     assert "docker-compose.proxy.yml" in log.splitlines()[-1] or "docker-compose.proxy.yml" in log
+
+
+def _installed(tmp_path: Path) -> Path:
+    res, _ = _run(tmp_path, "install", "--no-user")
+    assert res.returncode == 0, res.stdout + res.stderr
+    d = tmp_path / "atlas"
+    (d / "config" / "annotations" / "mine.yaml").write_text("note: keep me\n", encoding="utf-8")
+    (tmp_path / "docker.log").unlink()
+    return d
+
+
+def test_update_pulls_code_backs_up_and_keeps_everything(tmp_path: Path) -> None:
+    d = _installed(tmp_path)
+    key = (d / "secrets" / "atlas_master_key").read_bytes()
+    env = (d / ".env").read_bytes()
+    res, log = _run(tmp_path, "update")
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert "pull --ff-only" in log  # the clone is fast-forwarded first
+    assert log.count("pull --ff-only") == 1  # the re-run of the new script does not pull again
+    assert " pull atlas" in log
+    assert " up -d" in log
+    assert " down" not in log  # the data volume is never removed
+    assert "9.9.9-fake" in res.stdout
+    backups = list((d / "backups").glob("pre-update-*.tar.gz"))
+    assert len(backups) == 1
+    assert (d / "secrets" / "atlas_master_key").read_bytes() == key
+    assert (d / ".env").read_bytes() == env
+    assert (d / "config" / "annotations" / "mine.yaml").read_text(encoding="utf-8") == (
+        "note: keep me\n"
+    )
+
+
+def test_update_keeps_only_recent_backups(tmp_path: Path) -> None:
+    d = _installed(tmp_path)
+    (d / "backups").mkdir()
+    for day in range(1, 8):
+        (d / "backups" / f"pre-update-2026010{day}-000000.tar.gz").write_bytes(b"x")
+    res, _ = _run(tmp_path, "update", "--no-pull")
+    assert res.returncode == 0, res.stdout + res.stderr
+    names = sorted(p.name for p in (d / "backups").glob("pre-update-*.tar.gz"))
+    assert len(names) == 5
+    assert "pre-update-20260101-000000.tar.gz" not in names  # oldest go first
+    assert not any(n.startswith("pre-update-2026010") for n in names[-1:])  # the new one stays
+
+
+def test_update_continues_when_git_pull_fails(tmp_path: Path) -> None:
+    _installed(tmp_path)
+    res, log = _run(tmp_path, "update", "--no-backup", git_rc=1)
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert "git pull failed" in res.stderr
+    assert " pull atlas" in log
+    assert not (tmp_path / "atlas" / "backups").exists()
+
+
+def test_update_flags_and_not_installed(tmp_path: Path) -> None:
+    res, _ = _run(tmp_path, "update")
+    assert res.returncode != 0
+    assert "run install first" in res.stderr
+    _installed(tmp_path)
+    res, _ = _run(tmp_path, "update", "--frobnicate")
+    assert res.returncode != 0
+    res, log = _run(tmp_path, "update", "--no-pull", "--build")
+    assert res.returncode == 0, res.stderr
+    assert "git " not in log
+    assert "build -t atlas:local" in log

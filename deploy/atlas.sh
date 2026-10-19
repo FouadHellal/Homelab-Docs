@@ -3,13 +3,19 @@
 #
 #   git clone https://github.com/FouadHellal/Homelab-Docs.git && cd Homelab-Docs
 #   sudo ./deploy/atlas.sh install            # pulls the image (or builds it), creates an account, starts
-#   sudo ./deploy/atlas.sh user add alice     # more accounts at any time
+#   sudo atlas update                         # later: one command, keeps your data (see cmd_update)
+#   sudo atlas user add alice                 # more accounts at any time
 #
+# install puts an `atlas` shortcut in /usr/local/bin pointing at this script.
 # Everything lives in $ATLAS_DIR (default /opt/atlas): docker-compose.yml, .env, secrets/, config/.
 # The script never touches your homelab targets; it only manages this host's atlas containers.
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SELF="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")"
+REPO_DIR="$(cd "$(dirname "$SELF")/.." && pwd)"
+BIN_LINK="${ATLAS_BIN_LINK:-/usr/local/bin/atlas}"
+KEEP_BACKUPS="${ATLAS_KEEP_BACKUPS:-5}"
+GIT="${ATLAS_GIT:-git}"
 ATLAS_DIR="${ATLAS_DIR:-/opt/atlas}"
 IMAGE_DEFAULT="ghcr.io/fouadhellal/homelab-docs"
 APP_UID=10001
@@ -23,12 +29,16 @@ usage() {
 Usage: atlas.sh <command> [options]
 
   install [--build] [--no-user]   set up $ATLAS_DIR, get the image, create an account, start
-  update  [--build]               newer image (or rebuild from this clone), restart
+  update  [--build] [--no-pull] [--no-backup]
+                                  git pull this clone, back up the DB, newer image, restart.
+                                  Keeps .env, secrets/, config/ and the data volume (targets,
+                                  passwords, accounts, history).
   user add <name>                 create a web account (asks for the password)
   user passwd <name>              change a password (ends that user's sessions)
   status                          containers, health, URL, certificate fingerprint
   logs                            follow atlas logs
   backup [file.tar.gz]            consistent DB copy + config (NOT the master key)
+  version                         running atlas version
   stop | start                    stop / start the stack
   uninstall [--purge]             remove containers (--purge also deletes the data volume)
 
@@ -190,22 +200,79 @@ cmd_install() {
     fi
     compose up -d
     wait_healthy
+    link_cli
     print_access
+    say "update later with: sudo atlas update"
     say "next: log in, open Targets, add Proxmox / UniFi / your VMs. Back up $ATLAS_DIR/secrets/atlas_master_key somewhere safe."
 }
 
+link_cli() {  # `atlas` on PATH, so updates are one command
+    [ "$(id -u)" -eq 0 ] || return 0
+    [ -d "$(dirname "$BIN_LINK")" ] || return 0
+    if [ -e "$BIN_LINK" ] && [ ! -L "$BIN_LINK" ]; then
+        warn "$BIN_LINK exists and is not our shortcut; leaving it alone"
+        return 0
+    fi
+    ln -sfn "$REPO_DIR/deploy/atlas.sh" "$BIN_LINK"
+}
+
+git_pull() {  # fast-forward this clone; never discards local edits
+    [ -d "$REPO_DIR/.git" ] || { warn "$REPO_DIR is not a git clone; skipping the code update"; return 1; }
+    command -v "$GIT" >/dev/null 2>&1 || { warn "git is not installed; skipping the code update"; return 1; }
+    local before after
+    before="$("$GIT" -c safe.directory="$REPO_DIR" -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || true)"
+    say "updating the code in $REPO_DIR"
+    if ! "$GIT" -c safe.directory="$REPO_DIR" -C "$REPO_DIR" pull --ff-only; then
+        warn "git pull failed (local edits or diverged branch?); continuing with the code you have"
+        return 1
+    fi
+    after="$("$GIT" -c safe.directory="$REPO_DIR" -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || true)"
+    if [ "$before" != "$after" ]; then say "code: ${before:0:7} -> ${after:0:7}"; fi
+    return 0
+}
+
+prune_backups() {  # keep the newest $KEEP_BACKUPS pre-update backups (names sort by date)
+    local files=("$ATLAS_DIR/backups"/pre-update-*.tar.gz) i n
+    [ -e "${files[0]}" ] || return 0
+    n=$(( ${#files[@]} - KEEP_BACKUPS ))
+    for (( i = 0; i < n; i++ )); do rm -f -- "${files[i]}"; done
+}
+
 cmd_update() {
-    local build=0
-    [ "${1:-}" = "--build" ] && build=1
-    preflight
+    local build=0 pull=1 backup=1 a
+    for a in "$@"; do
+        case "$a" in
+            --build) build=1 ;; --no-pull) pull=0 ;; --no-backup) backup=0 ;;
+            *) die "unknown option $a" ;;
+        esac
+    done
     [ -f "$ATLAS_DIR/.env" ] || die "not installed in $ATLAS_DIR (run install first)"
+    if [ "$pull" = 1 ] && [ -z "${ATLAS_UPDATE_REEXEC:-}" ] && git_pull; then
+        # Run the freshly pulled script, so a fixed update procedure applies to this update.
+        ATLAS_UPDATE_REEXEC=1 exec bash "$REPO_DIR/deploy/atlas.sh" update --no-pull "$@"
+    fi
+    preflight
+    if [ "$backup" = 1 ] && [ -n "$(compose ps -q atlas 2>/dev/null || true)" ]; then
+        mkdir -p "$ATLAS_DIR/backups" && chmod 700 "$ATLAS_DIR/backups"
+        cmd_backup "$ATLAS_DIR/backups/pre-update-$(date +%Y%m%d-%H%M%S).tar.gz"
+        prune_backups
+    fi
     cp "$REPO_DIR/docker-compose.yml" "$REPO_DIR/docker-compose.proxy.yml" "$ATLAS_DIR/"
     sed -i.bak "s|^    build: \\.|    build: $REPO_DIR|" "$ATLAS_DIR/docker-compose.yml" && rm -f "$ATLAS_DIR/docker-compose.yml.bak"
     if [ "$(env_get ATLAS_VERSION)" = local ]; then build=1; fi
     get_image "$build"
     compose up -d
     wait_healthy
+    link_cli
+    cmd_version
     print_access
+    say "your targets, passwords, accounts and history are kept (data volume + $ATLAS_DIR)"
+}
+
+cmd_version() {
+    local v
+    v="$(compose exec -T atlas atlas --version 2>/dev/null | tail -n 1 || true)"
+    say "running: ${v:-unknown}"
 }
 
 cmd_backup() {
@@ -217,7 +284,7 @@ cmd_backup() {
     docker cp "$(compose ps -q atlas):/data/inventory.yaml" "$tmp/inventory.yaml" 2>/dev/null || true
     docker cp "$(compose ps -q atlas):/data/vault.json" "$tmp/vault.json" 2>/dev/null || true
     cp -r "$ATLAS_DIR/config" "$ATLAS_DIR/.env" "$tmp/"
-    tar -czf "$out" -C "$tmp" .
+    (umask 077; tar -czf - -C "$tmp" . > "$out")  # stdout: a "C:" path is not a remote host
     rm -rf "$tmp"
     say "wrote $out (encrypt it: it maps your network). The master key is NOT in it; keep $ATLAS_DIR/secrets/atlas_master_key separately."
 }
@@ -236,6 +303,7 @@ main() {
         status) compose ps; print_access ;;
         logs) compose logs -f atlas ;;
         backup) cmd_backup "$@" ;;
+        version) cmd_version ;;
         stop) compose stop ;;
         start) compose up -d && wait_healthy && print_access ;;
         uninstall)
