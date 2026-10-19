@@ -2,7 +2,7 @@
 {% set titles = {"proxmox": "Proxmox VE", "unifi": "UniFi gateway", "unas": "UniFi UNAS"} %}
 {% set placeholders = {"proxmox": "192.168.1.10", "unifi": "192.168.1.1", "unas": "192.168.1.30"} %}
 {% set names = {"proxmox": "homelab", "unifi": "ucg", "unas": "unas"} %}
-{% set cred_labels = {"proxmox": "API token (user@realm!tokenid=secret)", "unifi": "Integration API key", "unas": "Drive API key"} %}
+{% set cred_labels = {"proxmox": "API token (user@realm!tokenid=secret)", "unifi": "API key", "unas": "Drive API key"} %}
 {% block title %}{{ titles[f.kind] }}{% endblock %}
 {% block main %}
 <p class="crumbs"><a href="/targets">Targets</a> /</p>
@@ -12,23 +12,43 @@
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   <input type="hidden" name="kind" value="{{ f.kind }}">
   <input type="hidden" name="original" value="{{ f.original }}">
-  <div class="grid two">
-    <label>Name <input name="name" value="{{ f.name }}" required maxlength="64" placeholder="{{ names[f.kind] }}"></label>
-    <label>IP address or URL <input name="url" value="{{ f.url }}" required maxlength="512" placeholder="{{ placeholders[f.kind] }}"></label>
-  </div>
+  <label>Name <input name="name" value="{{ f.name }}" required maxlength="64" placeholder="{{ names[f.kind] }}"></label>
+
+  {% if f.kind == "unifi" %}
+  <fieldset><legend>Which API key do you have?</legend>
+    <label class="check"><input type="radio" name="connection" value="local"{% if f.connection != "cloud" %} checked{% endif %}>
+      <span><strong>Local key</strong>, created in the UniFi Network app on your gateway (its Integrations / API key settings). atlas talks to the gateway directly: no internet needed. <em>Recommended.</em></span></label>
+    <label class="check"><input type="radio" name="connection" value="cloud"{% if f.connection == "cloud" %} checked{% endif %}>
+      <span><strong>unifi.ui.com key</strong>, created in Site Manager (unifi.ui.com → Settings → API Keys). atlas reaches your gateway through Ubiquiti's cloud connector (api.ui.com, max 100 requests/min).</span></label>
+  </fieldset>
+  {% endif %}
+
   <label>{{ cred_labels[f.kind] }}
     {% if secret_set %}<span class="pill ok">stored</span> <span class="muted small">leave empty to keep it</span>{% endif %}
     <input name="credential" type="password" maxlength="4096" autocomplete="off"></label>
-  <p class="muted small">
-  {% if f.kind == "proxmox" %}Create it with <code>pveum user token add atlas@pve collector --privsep 1</code>, then give the user and the token the <strong>PVEAuditor</strong> role on <code>/</code>. That role is read-only.
-  {% elif f.kind == "unifi" %}Create the key while signed in as a local admin with <strong>View Only</strong> rights: a UniFi key carries the rights of whoever created it.
-  {% else %}The UNAS API is only community-documented; leaving the UNAS out is fine.{% endif %}</p>
-  <fieldset><legend>Server certificate</legend>
+
+  {% if f.kind == "unifi" %}
+  <fieldset><legend>Cloud key: pick your gateway</legend>
+    <p class="muted small">Only for a unifi.ui.com key. Skip this for a local key.</p>
+    <div id="consoles">
+      {% if f.console_id %}<p>Selected console <code>{{ f.console_id[:24] }}…</code></p><input type="hidden" name="console_id" value="{{ f.console_id }}">{% endif %}
+      <button type="button" class="ghost" hx-post="/targets/unifi/consoles" hx-include="[name=credential],[name=name],[name=original],[name=csrf_token]" hx-target="#consoles">Find my consoles</button>
+    </div>
+  </fieldset>
+  {% endif %}
+
+  <fieldset><legend>{{ "Local key: gateway address and certificate" if f.kind == "unifi" else "Address and certificate" }}</legend>
+    <label>IP address or URL <input name="url" value="{{ f.url if f.connection != 'cloud' else '' }}" maxlength="512" placeholder="{{ placeholders[f.kind] }}"></label>
     {% if pinned and pinned.sha256_pin %}<p>Pinned: <code class="fp">{{ pinned.sha256_pin }}</code></p>{% elif pinned and pinned.ca_file %}<p>CA file: <code>{{ pinned.ca_file }}</code></p>{% endif %}
     <div id="cert">
       <button type="button" class="ghost" hx-post="/targets/cert" hx-include="[name=url],[name=kind],[name=name],[name=csrf_token]" hx-target="#cert">{{ "Re-fetch certificate" if pinned else "Fetch certificate" }}</button>
     </div>
   </fieldset>
+
+  <p class="muted small">
+  {% if f.kind == "proxmox" %}Create the token with <code>pveum user token add atlas@pve collector --privsep 1</code> and give user and token the <strong>PVEAuditor</strong> role on <code>/</code> (read-only). See docs/SETUP-TARGETS.md §4.
+  {% elif f.kind == "unifi" %}Any key works for reading. A UniFi key carries the rights of whoever created it, and atlas only ever sends GET requests.
+  {% else %}The UNAS API is only community-documented; leaving the UNAS out is fine.{% endif %}</p>
   <div class="actions">
     <button type="submit"{% if not editable %} disabled{% endif %}>Save</button>
     <a href="/targets">Cancel</a>

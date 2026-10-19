@@ -24,6 +24,7 @@ from homelab_atlas.collectors.nas import NasCollector
 from homelab_atlas.collectors.pi import PiCollector
 from homelab_atlas.collectors.proxmox.collector import ProxmoxCollector
 from homelab_atlas.collectors.unifi.collector import UnifiCollector
+from homelab_atlas.collectors.unifi.sitemanager import CLOUD_MIN_INTERVAL_S
 from homelab_atlas.engine.scan import ScanEngine
 from homelab_atlas.inventory.hosts import Inventory
 from homelab_atlas.inventory.managed import CA_DIR, effective_inventory
@@ -33,7 +34,13 @@ from homelab_atlas.redact import Redactor
 from homelab_atlas.security.allowlist import Endpoint
 from homelab_atlas.security.audit import AuditLog, AuditSink
 from homelab_atlas.security.errors import RefusalReason, SecurityRefusal
-from homelab_atlas.security.http import AuthHeader, ReadOnlyHttpClient, TlsPolicy, replay_transport
+from homelab_atlas.security.http import (
+    AuthHeader,
+    HttpLimits,
+    ReadOnlyHttpClient,
+    TlsPolicy,
+    replay_transport,
+)
 from homelab_atlas.security.secrets import DEFAULT_DIRS, SecretResolver
 from homelab_atlas.security.ssh import AsyncSshTransport, SecretSource, SshRunner, SshTransport
 from homelab_atlas.security.vault import ChainedSecrets, Vault, load_master_key
@@ -148,16 +155,21 @@ def auth_header(scheme: AuthScheme, secret: SecretStr) -> AuthHeader:
 def live_http(secrets: SecretSource, ca_dirs: Sequence[Path]) -> Callable[[AuditSink], HttpFactory]:
     def bind(audit: AuditSink) -> HttpFactory:
         def make(source: ApiSource, endpoints: Iterable[Endpoint]) -> ReadOnlyHttpClient:
-            if source.tls.ca_file is None or not CA_FILE_RE.fullmatch(source.tls.ca_file):
-                raise SecurityRefusal(
-                    RefusalReason.TLS_POLICY,
-                    f"{source.name}: tls.ca_file (a file in the config dir) is required",
+            limits = None
+            if source.tls.public_pki:  # UniFi cloud connector only (validated by the model)
+                tls = TlsPolicy(ca_file=None, public_pki=True)
+                limits = HttpLimits(min_interval_s=CLOUD_MIN_INTERVAL_S)
+            else:
+                if source.tls.ca_file is None or not CA_FILE_RE.fullmatch(source.tls.ca_file):
+                    raise SecurityRefusal(
+                        RefusalReason.TLS_POLICY,
+                        f"{source.name}: tls.ca_file (a file in the config dir) is required",
+                    )
+                tls = TlsPolicy(
+                    ca_file=_find_ca(ca_dirs, source.tls.ca_file),
+                    check_hostname=source.tls.check_hostname,
+                    sha256_pin=source.tls.sha256_pin,
                 )
-            tls = TlsPolicy(
-                ca_file=_find_ca(ca_dirs, source.tls.ca_file),
-                check_hostname=source.tls.check_hostname,
-                sha256_pin=source.tls.sha256_pin,
-            )
             return ReadOnlyHttpClient(
                 target=source.name,
                 base_url=source.url,
@@ -165,6 +177,7 @@ def live_http(secrets: SecretSource, ca_dirs: Sequence[Path]) -> Callable[[Audit
                 audit=audit,
                 tls=tls,
                 auth=auth_header(source.auth, secrets.resolve(source.credential)),
+                limits=limits,
             )
 
         return make
@@ -257,3 +270,39 @@ async def test_ssh_login(data_dir: Path, audit: AuditSink, name: str) -> tuple[b
     version = (frame.text("version") or "?").strip()
     mode = "streamed, nothing installed" if target.auth == "password" else "installed probe"
     return True, f"logged in as {target.username}; probe {version[:16]} ({mode})"
+
+
+async def test_source(data_dir: Path, audit: AuditSink, kind: str, name: str) -> tuple[bool, str]:
+    """Targets page "Test connection" for Proxmox / UniFi: one GET of the version endpoint."""
+    from homelab_atlas.collectors.proxmox import endpoints as pve_ep  # noqa: PLC0415
+    from homelab_atlas.collectors.unifi import endpoints as unifi_ep  # noqa: PLC0415
+    from homelab_atlas.security.errors import HttpStatusError, TransportError  # noqa: PLC0415
+
+    try:
+        inputs = live_inputs(data_dir)
+        if kind == "proxmox":
+            source, ep = ProxmoxCollector.source(inputs.inventory, name), pve_ep.VERSION
+        elif kind == "unifi":
+            source, ep = UnifiCollector.source(inputs.inventory, name), unifi_ep.INFO
+        else:
+            return False, "no connection test for this kind yet; use Scan"
+    except (KeyError, ValueError, OSError) as exc:
+        return False, f"{name}: not usable ({type(exc).__name__})"
+    try:
+        async with inputs.http(audit)(source, {ep}) as client:
+            res = await client.get(ep)
+    except SecurityRefusal as exc:
+        return False, f"refused: {exc.reason.value} {exc.detail or ''}"[:200]
+    except HttpStatusError as exc:
+        hint = " (key/token refused)" if exc.status in (401, 403) else ""
+        return False, f"HTTP {exc.status}{hint}"
+    except TransportError as exc:
+        return False, str(exc)[:200]
+    body = res.json()
+    data = body.get("data", body) if isinstance(body, dict) else {}
+    version = (
+        (data.get("version") or data.get("applicationVersion") or "?")
+        if isinstance(data, dict)
+        else "?"
+    )
+    return True, f"connected; {kind} version {str(version)[:24]}"

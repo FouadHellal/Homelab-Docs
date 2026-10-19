@@ -5,6 +5,7 @@ POST exists only for registered, schema-checked, justified endpoints (e.g. a ses
 Callers cannot set headers, methods, URLs or redirects.
 """
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -39,7 +40,8 @@ from homelab_atlas.security.errors import (
 )
 
 FINAL_PATH_RE: Final = re.compile(r"(/[A-Za-z0-9._:@-]+)+")
-BASE_PATH_RE: Final = re.compile(r"(/[A-Za-z0-9._-]+)*")
+# ":" is allowed inside segments for UniFi cloud console ids (/v1/connector/consoles/<hex>:<n>/...).
+BASE_PATH_RE: Final = re.compile(r"(/[A-Za-z0-9._-][A-Za-z0-9._:-]*)*")
 AUTH_HEADER_NAMES: Final = frozenset({"X-API-KEY", "Authorization"})
 #: Headers that must never appear on a request (method override and friends).
 FORBIDDEN_HEADERS: Final = frozenset(
@@ -48,24 +50,44 @@ FORBIDDEN_HEADERS: Final = frozenset(
 MAX_SEGMENTS: Final = 32
 
 
+#: Hosts that may be verified against the public PKI instead of a pinned anchor (ADR-026):
+#: Ubiquiti's cloud connector for UniFi Site Manager API keys. Nothing else.
+PUBLIC_PKI_HOSTS: Final = frozenset({"api.ui.com"})
+
+
 @dataclass(frozen=True, slots=True)
 class TlsPolicy:
     """Trust exactly the given anchor(s): a private CA or the device's self-signed leaf.
 
-    System CAs are never loaded. `check_hostname=False` is allowed only because the trust
-    store is a pinned anchor, not the public PKI. `sha256_pin` is an optional extra leaf pin.
+    System CAs are never loaded, except `public_pki=True`, which is only accepted for the
+    hosts in PUBLIC_PKI_HOSTS and always checks the host name (certifi's CA bundle).
+    `check_hostname=False` is allowed only because the trust store is a pinned anchor.
+    `sha256_pin` is an optional extra leaf pin.
     """
 
-    ca_file: Path
+    ca_file: Path | None
     check_hostname: bool = True
     sha256_pin: str | None = None
+    public_pki: bool = False
 
     def __post_init__(self) -> None:
         if self.sha256_pin is not None and not re.fullmatch(r"[0-9a-f]{64}", self.sha256_pin):
             raise SecurityRefusal(RefusalReason.TLS_POLICY, "sha256_pin must be 64 lowercase hex")
+        if self.public_pki and (self.ca_file is not None or not self.check_hostname):
+            raise SecurityRefusal(RefusalReason.TLS_POLICY, "public PKI always checks host names")
+        if not self.public_pki and self.ca_file is None:
+            raise SecurityRefusal(RefusalReason.TLS_POLICY, "CA/anchor file missing")
 
     def ssl_context(self) -> ssl.SSLContext:
-        if not self.ca_file.is_file():
+        if self.public_pki:
+            import certifi  # noqa: PLC0415 - httpx dependency
+
+            ctx = ssl.create_default_context(cafile=certifi.where())
+            ctx.check_hostname = True
+            ctx.verify_mode = ssl.CERT_REQUIRED
+            ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+            return ctx
+        if self.ca_file is None or not self.ca_file.is_file():
             raise SecurityRefusal(RefusalReason.TLS_POLICY, "CA/anchor file missing")
         ctx = ssl.create_default_context(cafile=str(self.ca_file))
         ctx.verify_flags |= ssl.VERIFY_X509_PARTIAL_CHAIN
@@ -93,6 +115,8 @@ class HttpLimits:
     read_s: float = 20.0
     total_s: float = 60.0
     max_bytes: int = 16 * 1024 * 1024
+    #: Minimum spacing between requests (the UniFi cloud connector allows 100/min/console).
+    min_interval_s: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,6 +180,11 @@ class ReadOnlyHttpClient:
         self._base_path = url.path.rstrip("/")
         if transport is None and tls is None:
             raise SecurityRefusal(RefusalReason.TLS_POLICY, "a TlsPolicy is required")
+        if tls is not None and tls.public_pki and url.host not in PUBLIC_PKI_HOSTS:
+            raise SecurityRefusal(
+                RefusalReason.TLS_POLICY, f"public PKI not allowed for {url.host}"
+            )
+        self._next_at = 0.0
         headers = {
             "Accept": "application/json",
             "Accept-Encoding": "identity",
@@ -226,6 +255,11 @@ class ReadOnlyHttpClient:
         except SecurityRefusal as exc:
             self._record(op, "refused", start, reason=exc.reason.value, detail=exc.detail)
             raise
+        if self._limits.min_interval_s:
+            wait = self._next_at - time.monotonic()
+            if wait > 0:
+                await asyncio.sleep(wait)
+            self._next_at = time.monotonic() + self._limits.min_interval_s
         try:
             result = await self._send(request, op)
         except SecurityRefusal as exc:

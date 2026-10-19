@@ -1,5 +1,6 @@
 """CLI: `atlas serve` and `atlas user add|passwd`."""
 
+import functools
 import os
 import secrets
 import shutil
@@ -22,6 +23,7 @@ from homelab_atlas.runtime import (
     lab_inputs,
     live_inputs,
     live_secrets,
+    test_source,
     test_ssh_login,
 )
 from homelab_atlas.scheduler import Scheduler
@@ -125,6 +127,10 @@ def make_targets(
     return svc, tester
 
 
+async def _source_tester(rt: Runtime, kind: str, name: str) -> tuple[bool, str]:
+    return await test_source(rt.data_dir, rt.audit, kind, name)
+
+
 def make_scheduler(rt: Runtime, *, lab: bool) -> Scheduler:
     """Each run rebuilds inputs, so hosts.yaml edits apply without a restart."""
     days = int(os.environ.get("ATLAS_SNAPSHOT_DAYS", str(DEFAULT_SNAPSHOT_DAYS)))
@@ -195,6 +201,7 @@ def serve(
             schedule=schedule,
             targets=targets,
             tester=tester,
+            source_tester=None if lab else functools.partial(_source_tester, rt),
             setup_token_file=setup_file,
         )
     )
