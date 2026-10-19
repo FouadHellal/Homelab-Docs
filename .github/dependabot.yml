@@ -12,3 +12,7 @@ updates:
   - package-ecosystem: docker   # base-image digests in the Dockerfile
     directory: /
     schedule: { interval: weekly }
+    ignore:
+      # Python minor/major upgrades are deliberate (requires-python, tests); keep digests fresh.
+      - dependency-name: python
+        update-types: [version-update:semver-major, version-update:semver-minor]
