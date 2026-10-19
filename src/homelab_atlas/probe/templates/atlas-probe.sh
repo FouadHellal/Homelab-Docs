@@ -48,7 +48,7 @@ files() {
     local prefix="$1" f
     shift
     for f in "$@"; do
-        [ -f "$f" ] && [ ! -L "$f" ] || continue
+        if [ ! -f "$f" ] || [ -L "$f" ]; then continue; fi
         safe_name "$f" || continue
         part "$prefix:$f" cat -- "$f"
     done

@@ -9,6 +9,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 
 def _sqlite_pragmas(dbapi_conn: Any, _record: Any) -> None:
@@ -22,7 +23,12 @@ def _sqlite_pragmas(dbapi_conn: Any, _record: Any) -> None:
 
 def make_engine(db_path: Path) -> Engine:
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    engine = create_engine(f"sqlite+pysqlite:///{db_path.as_posix()}", future=True)
+    # NullPool: every session opens and closes its own SQLite connection (cheap for SQLite),
+    # so no connection outlives its session and nothing is left for the GC to close
+    # (Python 3.13 warns about unclosed sqlite3 connections).
+    engine = create_engine(
+        f"sqlite+pysqlite:///{db_path.as_posix()}", future=True, poolclass=NullPool
+    )
     event.listen(engine, "connect", _sqlite_pragmas)
     if os.name == "posix":
         db_path.touch(mode=0o600, exist_ok=True)

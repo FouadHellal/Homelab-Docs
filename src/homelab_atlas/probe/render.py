@@ -12,7 +12,7 @@ from typing import Final
 
 from homelab_atlas.security.allowlist import PROBE_COMMANDS, ProbeSection
 
-PROBE_VERSION: Final = "1.3.0"
+PROBE_VERSION: Final = "1.3.1"
 PROBE_PATH: Final = "/usr/local/libexec/atlas-probe"
 GATE_PATH: Final = "/usr/local/libexec/atlas-probe-gate"
 SUDO_PATH: Final = "/usr/bin/sudo"

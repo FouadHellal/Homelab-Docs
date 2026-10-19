@@ -125,9 +125,9 @@ user_cmd() {  # user_cmd add|passwd <name>
 }
 
 wait_healthy() {
-    local id status i
+    local id status
     id="$(compose ps -q atlas)"
-    for i in $(seq 1 60); do
+    for _ in $(seq 1 60); do
         status="$(docker inspect -f '{{.State.Health.Status}}' "$id" 2>/dev/null || echo starting)"
         [ "$status" = healthy ] && return 0
         [ "$status" = unhealthy ] && break
