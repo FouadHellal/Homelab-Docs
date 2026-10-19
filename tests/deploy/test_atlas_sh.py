@@ -73,6 +73,7 @@ def _run(
         "FAKE_GIT_RC": str(git_rc),
         # Git Bash on Windows puts its own git first on PATH: name the fake explicitly.
         "ATLAS_GIT": (bin_dir / "git").as_posix(),
+        "ATLAS_BIN_LINK": (bin_dir / "atlas-link").as_posix(),  # never /usr/local/bin in tests
     }
     env.pop("ATLAS_UPDATE_REEXEC", None)
     assert BASH is not None
