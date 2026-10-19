@@ -10,9 +10,10 @@
     {% endfor %}
   </nav>
   <div class="topo-tools" role="toolbar" aria-label="Topology tools">
-    <input type="search" id="topo-search" placeholder="Find a machine, IP, app…" maxlength="64" autocomplete="off">
+    <span class="search-wrap"><input type="search" id="topo-search" placeholder="Find a machine, IP, app…  ( / )" maxlength="64" autocomplete="off"><span id="topo-count" class="muted small" aria-live="polite"></span></span>
     {% if view == "logical" %}
-    <label class="toggle"><input type="checkbox" id="topo-containers"> Containers</label>
+    <label class="toggle" title="Docker containers inside each machine (C)"><input type="checkbox" id="topo-containers"> Containers</label>
+    <label class="toggle"><input type="checkbox" id="topo-stopped" checked> Stopped</label>
     <label class="toggle"><input type="checkbox" id="topo-undocumented" checked> Not documented</label>
     {% elif view == "physical" %}
     <label class="toggle"><input type="checkbox" id="topo-everything"> Phones, TVs &amp; IoT</label>
@@ -26,6 +27,20 @@
     <button type="button" class="ghost small" id="topo-png" title="Download as PNG">PNG</button>
   </div>
 </div>
+{% if view == "logical" and pve and pve.nodes %}
+<section class="kpis" aria-label="Proxmox summary">
+  <div class="kpi"><span class="kpi-k">Nodes</span><span class="kpi-n">{{ pve.nodes }}</span>
+    <span class="chips">{% for c in pve.clusters %}<span class="chip">{{ c }}</span>{% endfor %}</span></div>
+  <div class="kpi"><span class="kpi-k">VMs &amp; LXCs</span><span class="kpi-n">{{ pve.running }}<small> / {{ pve.guests }}</small></span>
+    <span class="chips"><span class="chip c-vm">{{ pve.vms }} VMs</span><span class="chip c-lxc">{{ pve.lxcs }} LXC</span>{% if pve.stopped %}<span class="chip">{{ pve.stopped }} stopped</span>{% endif %}{% if pve.unknown %}<span class="chip">{{ pve.unknown }} state unknown</span>{% endif %}</span></div>
+  <div class="kpi"><span class="kpi-k">vCPU allocated</span><span class="kpi-n">{{ pve.vcpu }}{% if pve.cores %}<small> / {{ pve.cores }} cores</small>{% endif %}</span>
+    {% if pve.cores %}<span class="bar"><span class="bar-fill" data-pct="{{ [100, (pve.vcpu * 100 / pve.cores) | round | int] | min }}"></span></span>{% endif %}</div>
+  <div class="kpi"><span class="kpi-k">Memory allocated</span><span class="kpi-n">{{ pve.mem_gb }}<small> GB{% if pve.ram_gb %} / {{ pve.ram_gb }} GB{% endif %}</small></span>
+    {% if pve.ram_gb %}<span class="bar"><span class="bar-fill" data-pct="{{ [100, (pve.mem_gb * 100 / pve.ram_gb) | round | int] | min }}"></span></span>{% endif %}</div>
+  <div class="kpi"><span class="kpi-k">Documented inside</span><span class="kpi-n">{{ pve.documented }}<small> / {{ pve.guests }}</small></span>
+    <span class="muted small">guests atlas logs in to</span></div>
+</section>
+{% endif %}
 <div class="topo-wrap">
   <div id="cy" class="cy" data-src="/api/topology?view={{ view }}" data-view="{{ view }}" role="img" aria-label="{{ view }} topology graph"></div>
   <aside id="topo-panel" class="topo-panel" hidden>
@@ -34,6 +49,6 @@
   </aside>
   <div id="topo-menu" class="topo-menu" role="menu" hidden></div>
   <div class="topo-legend" id="topo-legend"></div>
-  <div class="topo-hint muted small">Click: details · Right-click: actions · Double-click: open · Scroll: zoom</div>
+  <div class="topo-hint muted small">Click: details · Right-click: actions · Double-click: open · <kbd>/</kbd> search · <kbd>F</kbd> fit · <kbd>C</kbd> containers</div>
 </div>
 {% endblock %}

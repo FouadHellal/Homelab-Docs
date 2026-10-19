@@ -1,9 +1,9 @@
 """Cytoscape element lists for the topology views (SPEC §10, ADR-030).
 
-* proxmox (`logical`): cluster box > one box per PVE node > its VMs/LXCs as tiles (each = the
-  machine inside, with apps/services/containers); containers as children on request; other
-  machines (Pi, NAS, bare-metal Linux) in their own box. Guests of nodes atlas does not log in
-  to come from a node's /etc/pve view and are marked "not documented".
+* proxmox (`logical`): cluster box > one box per PVE node. Inside: the node itself (hub), its
+  bridges, and its VMs/LXCs wired to the bridge their NIC uses (each guest = the machine
+  inside, with apps/services/containers); containers on request; other machines (Pi, NAS,
+  bare-metal Linux) in their own box. Data from the API or from /etc/pve (ADR-031).
 * physical: UniFi site > gateway > switches > APs, clients hung off their uplink device, each
   client classified (infrastructure vs personal/IoT) so the UI can hide the noise;
 * vlan:     one compound node per UniFi network, members by IP address.
@@ -111,107 +111,164 @@ def _card_data(m: dict[str, Any]) -> dict[str, Any]:
         if web and ip and web["web_port"] in (443, 8006, 8007, 9443)
         else (f"http://{ip}:{web['web_port']}" if web and ip else None),
         "web_app": web["name"] if web else None,
+        "scan_target": m.get("target"),
+        "pve_from": m.get("pve_source"),
+        "tags": m.get("tags") or [],
+        "ips": m["ips"][:6],
     }
 
 
-def proxmox(s: Session, c: Ctx) -> list[dict[str, Any]]:
-    """Cluster > nodes > guests, plus other machines. Containers are children of their machine."""
-    out: list[dict[str, Any]] = []
-    cards = {m["key"]: m for m in machines(s)}
-    clusters: dict[str, str] = {}
-    for key, m in cards.items():
-        if m["kind"] != "pve-node":
-            continue
-        cname = key.removeprefix("pve:node:").split("/")[0]
-        cid = clusters.setdefault(cname, f"cluster:{cname}")
-        out.append(
-            {"data": {"id": cid, "label": f"{cname}", "kind": "pve-cluster", "role": "group"}}
-        )
+def _node_box(
+    key: str, m: dict[str, Any], guests: list[dict[str, Any]], cid: str
+) -> list[dict[str, Any]]:
+    info = m.get("pve") or {}
+    running = sum(1 for g in guests if g["status"] == "running")
+    bits = [
+        m["short"],
+        (m["ips"] or [""])[0],
+        f"PVE {info['version']}" if info.get("version") else "",
+        f"{len(guests)} guests ({running} running)",
+    ]
+    out: list[dict[str, Any]] = [
+        {
+            "data": {
+                "id": key,
+                "key": key,
+                "label": "  ·  ".join(b for b in bits if b),
+                "kind": "pve-node",
+                "role": "group",
+                "parent": cid,
+                **_card_data(m),
+                "pve": info,
+                "guest_count": len(guests),
+                "running": running,
+            }
+        },
+        {
+            "data": {
+                "id": f"hub:{key}",
+                "key": key,
+                "label": m["short"],
+                "kind": "pve-hub",
+                "parent": key,
+                **_card_data(m),
+                "pve": info,
+            }
+        },
+    ]
+    bridges = {b["name"]: b for b in info.get("bridges") or []}
+    for g in guests:
+        for n in g["nics"]:
+            if n["bridge"] and n["bridge"] not in bridges:
+                bridges[n["bridge"]] = {"name": n["bridge"], "cidr": None, "ports": []}
+    used = {n["bridge"] for g in guests for n in g["nics"] if n["bridge"]}
+    for name, b in sorted(bridges.items()):
+        bid = f"br:{key}:{name}"
+        sub = b.get("cidr") or ("VLAN-aware" if b.get("vlan_aware") else "")
         out.append(
             {
                 "data": {
-                    "id": key,
-                    "key": key,
-                    "label": m["short"],
-                    "kind": "pve-node",
-                    "role": "group",
-                    "parent": cid,
-                    **_card_data(m),
+                    "id": bid,
+                    "label": name,
+                    "sub": sub,
+                    "kind": "bridge",
+                    "parent": key,
+                    "ports": b.get("ports") or [],
+                    "idle": name not in used,
+                    "node_key": key,
                 }
             }
         )
-    nodes_by_name = {k.split("/")[-1]: k for k, m in cards.items() if m["kind"] == "pve-node"}
+        out.append(_edge(f"hub:{key}", bid, "trunk"))
+    for g in sorted(guests, key=lambda g: g["vmid"] or 0):
+        out.append(
+            {
+                "data": {
+                    "id": g["key"],
+                    "key": g["key"],
+                    "label": g["short"],
+                    "kind": g["kind"],
+                    "parent": key,
+                    **_card_data(g),
+                    "nics": g["nics"],
+                    "bridge": next((n["bridge"] for n in g["nics"] if n["bridge"]), None),
+                }
+            }
+        )
+        wired = False
+        for i, n in enumerate(g["nics"]):
+            if not n["bridge"]:
+                continue
+            edge = _edge(f"br:{key}:{n['bridge']}", g["key"], "nic" if i == 0 else "nic2")
+            edge["data"]["id"] += f"#{i}"
+            if n["vlan"] is not None:
+                edge["data"]["label"] = f"VLAN {n['vlan']}"
+            out.append(edge)
+            wired = True
+        if not wired:
+            out.append(_edge(f"hub:{key}", g["key"], "trunk"))
+    return out
+
+
+def _is_pve_host(m: dict[str, Any]) -> bool:
+    """A Linux host that runs Proxmox VE but has no node data yet (old probe, no sudo)."""
+    return m["kind"] == "linux-host" and any(a["name"] == "Proxmox VE" for a in m["apps"])
+
+
+def proxmox(s: Session, c: Ctx) -> list[dict[str, Any]]:
+    """Cluster > node boxes; inside each box the node itself (hub), its bridges and its guests
+    wired to the bridge their NIC uses (ADR-031). Other machines get their own box."""
+    out: list[dict[str, Any]] = []
+    cards = {m["key"]: m for m in machines(s)}
+    nodes = {k: m for k, m in cards.items() if m["kind"] == "pve-node" or _is_pve_host(m)}
+    guests_of: dict[str, list[dict[str, Any]]] = {k: [] for k in nodes}
+    by_name = {m["short"].lower(): k for k, m in nodes.items()}
     for key, m in cards.items():
         if m["kind"] not in ("pve-vm", "pve-lxc"):
             continue
         parent = c.entities[key].parent_key if key in c.entities else None
-        parent = parent if parent in cards else nodes_by_name.get(m["node"] or "")
+        parent = parent if parent in nodes else by_name.get(str(m["node"] or "").lower())
+        if parent is not None:
+            guests_of[parent].append(m)
+    clusters: dict[str, list[str]] = {}
+    for key in sorted(nodes, key=lambda k: nodes[k]["short"].lower()):
+        cname = key.removeprefix("pve:node:").split("/")[0] if key.startswith("pve:") else "Proxmox"
+        clusters.setdefault(cname, []).append(key)
+    for cname, keys in sorted(clusters.items()):
+        cid = f"cluster:{cname}"
+        total = sum(len(guests_of[k]) for k in keys)
         out.append(
             {
                 "data": {
-                    "id": key,
-                    "key": key,
-                    "label": m["short"],
-                    "kind": m["kind"],
-                    "parent": parent,
-                    **_card_data(m),
+                    "id": cid,
+                    "label": f"{cname}  ·  {len(keys)} nodes  ·  {total} guests",
+                    "kind": "pve-cluster",
+                    "role": "group",
                 }
             }
         )
-    # Guests of nodes atlas does not log in to, from any node's /etc/pve view (ADR-028).
-    present = {d["data"]["id"] for d in out}
-    for f in c.facets:
-        pve = f.data.get("pve") if f.collector == "linux-ssh" else None
-        if not isinstance(pve, dict):
-            continue
-        cname = str(pve.get("cluster") or pve.get("node") or "pve")
-        cid = clusters.setdefault(cname, f"cluster:{cname}")
-        if cid not in present:
-            out.append(
-                {"data": {"id": cid, "label": cname, "kind": "pve-cluster", "role": "group"}}
-            )
-            present.add(cid)
-        for g in pve.get("cluster_guests") or []:
-            gkey = f"pve:{'vm' if g.get('type') == 'qemu' else 'lxc'}:{cname}/{g.get('vmid')}"
-            nkey = f"pve:node:{cname}/{g.get('node')}"
-            if nkey not in present:
-                out.append(
-                    {
-                        "data": {
-                            "id": nkey,
-                            "key": nkey,
-                            "label": g.get("node"),
-                            "kind": "pve-node",
-                            "role": "group",
-                            "parent": cid,
-                            "documented": False,
-                            "status": "unscanned",
-                        }
-                    }
-                )
-                present.add(nkey)
-            if gkey in present:
-                continue
+        for key in keys:
+            out.extend(_node_box(key, nodes[key], guests_of[key], cid))
+    # Guests whose node is unknown (should not happen; never drop a machine silently).
+    placed = {d["data"]["id"] for d in out}
+    for key, m in cards.items():
+        if m["kind"] in ("pve-vm", "pve-lxc") and key not in placed:
             out.append(
                 {
                     "data": {
-                        "id": gkey,
-                        "label": g.get("name"),
-                        "kind": "pve-vm" if g.get("type") == "qemu" else "pve-lxc",
-                        "parent": nkey,
-                        "vmid": g.get("vmid"),
-                        "node": g.get("node"),
-                        "documented": False,
-                        "status": "unscanned",
-                        "apps": [],
-                        "services": 0,
-                        "containers": 0,
+                        "id": key,
+                        "key": key,
+                        "label": m["short"],
+                        "kind": m["kind"],
+                        "parent": "group:other",
+                        **_card_data(m),
                     }
                 }
             )
-            present.add(gkey)
-    others = [m for m in cards.values() if m["kind"] in ("linux-host", "nas")]
-    if others:
+    others = [
+        m for m in cards.values() if m["kind"] in ("linux-host", "nas") and m["key"] not in nodes
+    ]
+    if others or any(d["data"].get("parent") == "group:other" for d in out):
         out.append(
             {
                 "data": {
@@ -241,6 +298,8 @@ def proxmox(s: Session, c: Ctx) -> list[dict[str, Any]]:
         if e.kind != "container" or e.status == "gone":
             continue
         host = canonical_key(c, e.parent_key or "")
+        if host in nodes:
+            host = f"hub:{host}"  # containers on the hypervisor itself hang off its hub
         if host not in machine_ids:
             continue
         name = (

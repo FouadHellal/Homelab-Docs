@@ -4,7 +4,7 @@
 <header class="page-head">
   <div>
     <h1>What's running</h1>
-    <p class="muted">Apps atlas recognises, every running systemd service and every Docker container, across all machines it logs in to.</p>
+    <p class="muted">Apps atlas recognises and every Docker container, across all machines it logs in to. All services are in the <a href="/services">Services</a> table.</p>
   </div>
   <form method="get" action="/running" class="inline">
     <input type="search" name="q" value="{{ q }}" placeholder="Filter: pihole, postgres, 5432, docker01…" maxlength="64" class="wide-search">
@@ -38,13 +38,9 @@
 </section>
 
 <section class="card" id="services">
-  <div class="section-head"><h2>Services <span class="muted small">(running systemd units)</span></h2>
-    <input type="search" class="table-search" placeholder="Filter services…" data-search-target="#svc-table" maxlength="64"></div>
-  <table class="data" id="svc-table"><thead><tr><th>Machine</th><th>Unit</th><th>Description</th><th>At boot</th></tr></thead><tbody>
-  {% for s in r.services %}
-  <tr data-search="{{ s.host }} {{ s.unit }} {{ s.description or '' }}"><td><a href="/entity?key={{ s.key | urlencode }}">{{ s.host }}</a></td><td><code>{{ s.unit }}</code></td><td class="muted">{{ s.description or "" }}</td><td>{{ s.enabled or "" }}</td></tr>
-  {% else %}<tr><td colspan="4" class="muted">None.</td></tr>{% endfor %}
-  </tbody></table>
+  <div class="section-head"><h2>Services <span class="muted small">({{ r.services | length }} running systemd units)</span></h2>
+    <a class="btn small" href="/services{{ '?q=' ~ q | urlencode if q }}">Full table, filters &amp; CSV →</a></div>
+  <p class="muted small">Every unit, including stopped and failed ones, with the app each belongs to, is on the <a href="/services">Services</a> page.</p>
 </section>
 
 <section class="card" id="containers">

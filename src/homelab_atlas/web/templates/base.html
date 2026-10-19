@@ -4,7 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false, "selfRequestsOnly": true, "historyCacheSize": 0}'>
+  <meta name="color-scheme" content="light dark">
   <title>{% block title %}atlas{% endblock %} · atlas</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/vendor/htmx.min.js" nonce="{{ nonce }}" defer></script>
   <script src="/static/app.js" nonce="{{ nonce }}" defer></script>
@@ -12,24 +14,65 @@
 </head>
 <body{% if user %} hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'{% endif %}>
 {% if user %}
+{% set groups = [
+  ("Dashboard", "/", []),
+  ("Infrastructure", None, [
+    ("/topology", "Topology", "Proxmox nodes, VMs, network, VLANs"),
+    ("/entities", "Inventory", "Every machine and device"),
+    ("/services", "Services", "All services and containers, CSV"),
+    ("/running", "Apps", "Recognised apps by category"),
+  ]),
+  ("Network", None, [
+    ("/ips", "IP addresses", "One row per device"),
+    ("/vlans", "VLANs", "Networks and members"),
+    ("/ports", "Ports", "What listens where"),
+    ("/unknown", "Unknown devices", "Seen, not documented"),
+  ]),
+  ("Changes", "/changes", []),
+  ("Targets", "/targets", []),
+  ("Docs", "/docs", []),
+] %}
 <header class="top">
-  <a class="brand" href="/">atlas{% if lab %} <span class="badge lab">demo lab</span>{% endif %}</a>
-  <nav>
-    {% for href, label in [("/", "Dashboard"), ("/entities", "Inventory"), ("/topology", "Topology"), ("/running", "Running"), ("/ips", "IPs"), ("/vlans", "VLANs"), ("/ports", "Ports"), ("/changes", "Changes"), ("/unknown", "Unknown"), ("/targets", "Targets")] %}
-    <a href="{{ href }}"{% if path == href or (href != "/" and path.startswith(href)) %} aria-current="page"{% endif %}>{{ label }}</a>
+  <a class="brand" href="/" aria-label="atlas home"><img src="/static/favicon.svg" alt="" width="20" height="20"> atlas{% if lab %} <span class="badge lab">demo lab</span>{% endif %}</a>
+  <nav class="menu" aria-label="Main">
+    {% for label, href, items in groups %}
+      {% if items %}
+      <details class="dropdown">
+        <summary{% for h, _l, _d in items if path.startswith(h) %} aria-current="page"{% endfor %}>{{ label }}</summary>
+        <div class="dropdown-panel" role="menu">
+          {% for h, l, d in items %}
+          <a role="menuitem" href="{{ h }}"{% if path.startswith(h) %} aria-current="page"{% endif %}><strong>{{ l }}</strong><span>{{ d }}</span></a>
+          {% endfor %}
+        </div>
+      </details>
+      {% else %}
+      <a href="{{ href }}"{% if path == href or (href != "/" and path.startswith(href)) %} aria-current="page"{% endif %}>{{ label }}</a>
+      {% endif %}
     {% endfor %}
   </nav>
   <div class="who">
+    <button type="button" id="palette-open" class="ghost palette-btn" aria-label="Quick find (Ctrl+K)" title="Quick find">Find… <kbd>Ctrl K</kbd></button>
     <button type="button" id="theme-toggle" class="ghost" aria-label="Toggle light/dark">◐</button>
-    <span>{{ user.username }}</span>
-    <form method="post" action="/logout" class="inline">
-      <input type="hidden" name="csrf_token" value="{{ csrf }}">
-      <button type="submit" class="ghost">Log out</button>
-    </form>
+    <details class="dropdown user-menu">
+      <summary>{{ user.username }}</summary>
+      <div class="dropdown-panel right" role="menu">
+        <a role="menuitem" href="/targets"><strong>Targets</strong><span>Machines, Proxmox, UniFi</span></a>
+        <a role="menuitem" href="/docs"><strong>Documentation</strong><span>How atlas works</span></a>
+        <form method="post" action="/logout" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <button type="submit" class="menu-logout" role="menuitem">Log out</button>
+        </form>
+      </div>
+    </details>
   </div>
 </header>
+<dialog id="palette" class="palette" aria-label="Quick find">
+  <input id="palette-q" type="search" placeholder="Jump to a page, machine or app…" maxlength="64" autocomplete="off">
+  <ul id="palette-list" role="listbox"></ul>
+  <p class="muted small">↑ ↓ to move · Enter to open · Esc to close</p>
+</dialog>
 {% endif %}
 <main>{% block main %}{% endblock %}</main>
-<footer>homelab-atlas {{ version }} · read-only</footer>
+<footer>homelab-atlas {{ version }} · read-only · <a href="/docs">docs</a></footer>
 </body>
 </html>

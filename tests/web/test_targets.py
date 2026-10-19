@@ -513,3 +513,36 @@ def test_delete_source_removes_key(client: tuple[TestClient, str], env: dict[str
     assert ManagedInventory(env["data"]).load().sources.unifi == ()
     assert c.get("/targets/source?kind=nope").status_code == 404
     assert c.get("/targets/source?kind=unifi&name=missing").status_code == 404
+
+
+def test_saving_a_target_queues_its_first_scan(env: dict[str, Any], tmp_path: Path) -> None:
+    from homelab_atlas.scheduler import Scheduler  # noqa: PLC0415
+
+    sched = Scheduler(lambda: None, intervals={})  # type: ignore[arg-type,return-value]
+    seen: list[list[str] | None] = []
+
+    def fake_trigger(hosts: list[str] | None = None) -> str:
+        seen.append(hosts)
+        return "queued"
+
+    sched.trigger = fake_trigger  # type: ignore[method-assign]
+    app = create_app(
+        WebConfig(
+            sessions=env["rt"].sessions,
+            annotations_dir=tmp_path / "ann",
+            allowed_hosts=["testserver"],
+            targets=env["svc"],
+            scheduler=sched,
+        )
+    )
+    with TestClient(app, base_url="https://testserver") as c:
+        csrf = _login(c)
+        r = c.post("/targets/host", data=_host(csrf, name="newvm"), follow_redirects=False)
+        assert r.status_code == 303, r.text
+        assert "first+scan+is+queued" in r.headers["location"].replace("%20", "+")
+        assert seen == [["newvm"]]
+        # A scan button press while another scan runs is queued, not refused.
+        res = c.post("/targets/scan", data={"csrf_token": csrf, "name": "newvm"})
+        assert res.status_code == 200
+        assert "queued" in res.text
+        assert seen[-1] == ["newvm"]

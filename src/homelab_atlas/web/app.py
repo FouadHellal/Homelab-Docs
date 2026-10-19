@@ -13,10 +13,11 @@ from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from importlib.resources import files
 from pathlib import Path
 from typing import Annotated, Any, Final
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -28,6 +29,7 @@ from sqlalchemy.orm import Session
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from homelab_atlas import __version__
+from homelab_atlas.export.build import csv_table
 from homelab_atlas.inventory import annotations as ann
 from homelab_atlas.inventory.managed import SourceKind
 from homelab_atlas.scheduler import Scheduler
@@ -116,6 +118,41 @@ def safe_next(target: str | None) -> str:
     return "/" if parts.scheme or parts.netloc else target
 
 
+PALETTE_PAGES: Final = (
+    ("/", "Dashboard"),
+    ("/topology", "Topology: Proxmox"),
+    ("/topology?view=physical", "Topology: network"),
+    ("/topology?view=vlan", "Topology: VLANs"),
+    ("/entities", "Inventory"),
+    ("/services", "Services"),
+    ("/services?state=failed", "Failed services"),
+    ("/running", "Apps"),
+    ("/ips", "IP addresses"),
+    ("/vlans", "VLANs"),
+    ("/ports", "Ports"),
+    ("/unknown", "Unknown devices"),
+    ("/changes", "Changes"),
+    ("/targets", "Targets"),
+    ("/targets/host", "Add a VM / host"),
+    ("/docs", "Documentation"),
+)
+
+
+def _ago(when: datetime | None, now: datetime | None = None) -> str:
+    """'3 min ago' for a UTC timestamp (naive values from SQLite are UTC)."""
+    if when is None:
+        return "never"
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    secs = int(((now or datetime.now(UTC)) - when).total_seconds())
+    if secs < 60:
+        return "just now"
+    for unit, size in (("d", 86400), ("h", 3600), ("min", 60)):
+        if secs >= size:
+            return f"{secs // size} {unit} ago"
+    return "just now"  # pragma: no cover - unreachable
+
+
 def _safe_error(exc: Exception) -> str:
     """Errors from the security layer are already secret-free; keep them short."""
     if isinstance(exc, SecurityRefusal):
@@ -127,6 +164,7 @@ def create_app(cfg: WebConfig) -> FastAPI:
     templates = Jinja2Templates(directory=str(PKG / "templates"))
     templates.env.autoescape = True
     templates.env.globals["version"] = __version__
+    templates.env.filters["ago"] = _ago
     throttle = LoginThrottle(*LOGIN_RATE)
 
     @asynccontextmanager
@@ -386,17 +424,22 @@ def create_app(cfg: WebConfig) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def dashboard(request: Request, s: DB, user: User) -> Response:
         cards = views.machines(s)
+        names, addresses = _target_names()
         return page(
             request,
             "dashboard.html",
             user,
-            d=queries.dashboard(s),
+            d=queries.dashboard(s, names),
             annotation_errors=app.state.annotation_errors,
             sched=cfg.scheduler,
             scheduled=cfg.schedule,
             machines=cards,
             top_apps=views.top_apps(cards),
-            discovered=views.discovered_not_documented(s),
+            health={n: queries.target_health(rs) for n, rs in queries.latest_runs(s).items()},
+            target_names=names or set(),
+            discovered=views.discovered_not_documented(
+                s, addresses | {n.lower() for n in names or ()}
+            ),
             can_add=cfg.targets is not None and cfg.targets.editable,
         )
 
@@ -405,12 +448,13 @@ def create_app(cfg: WebConfig) -> FastAPI:
         """Manual full scan (same read-only engine as the schedule). Needs CSRF."""
         if cfg.scheduler is None:
             raise HTTPException(404, "scheduler disabled (start with atlas serve --schedule)")
-        started = cfg.scheduler.trigger()
+        state = cfg.scheduler.trigger()
         if not partial(request):
             return RedirectResponse("/", 303)
-        msg = "Scan started." if started else "A scan is already running."
-        return page(request, "_scan_status.html", user, sched=cfg.scheduler, message=msg,
-                    status=202 if started else 200)  # htmx skips 4xx swaps  # fmt: skip
+        msg = "Scan started." if state == "started" else "Queued: it runs after the current scan."
+        return page(
+            request, "_scan_status.html", user, sched=cfg.scheduler, message=msg, status=202
+        )
 
     @app.get("/entities", response_class=HTMLResponse)
     def entity_list(
@@ -452,6 +496,71 @@ def create_app(cfg: WebConfig) -> FastAPI:
         request: Request, s: DB, user: User, q: Annotated[str | None, Query(max_length=64)] = None
     ) -> Response:
         return page(request, "running.html", user, r=views.everything_running(s, q), q=q or "")
+
+    ServiceFilters = tuple[str | None, str, str | None, str | None]
+
+    def service_filters(
+        machine: Annotated[str | None, Query(max_length=64)] = None,
+        state: Annotated[str, Query(max_length=10)] = "running",
+        kind: Annotated[str | None, Query(max_length=10)] = None,
+        q: Annotated[str | None, Query(max_length=64)] = None,
+    ) -> ServiceFilters:
+        state = state if state in views.SERVICE_STATES else "running"
+        return machine or None, state, kind if kind in ("systemd", "container") else None, q
+
+    Filters = Annotated[ServiceFilters, Depends(service_filters)]
+
+    @app.get("/services", response_class=HTMLResponse)
+    def services_page(request: Request, s: DB, user: User, f: Filters) -> Response:
+        machine, state, kind, q = f
+        t = views.service_table(s, machine=machine, state=state, kind=kind, q=q)
+        name = "_services_rows.html" if partial(request) else "services.html"
+        query = urlencode(
+            {k: v for k, v in zip(("machine", "state", "kind", "q"), f, strict=True) if v}
+        )
+        return page(request, name, user, t=t, machine=machine or "", state=state,
+                    kind=kind or "", q=q or "", query=query)  # fmt: skip
+
+    @app.get("/docs", response_class=HTMLResponse)
+    def docs_page(request: Request, user: User) -> Response:
+        return page(request, "docs.html", user)
+
+    @app.get("/api/palette")
+    def palette(s: DB, _user: User) -> JSONResponse:
+        """Quick-find entries: pages, machines and recognised apps (labels are data)."""
+        items: list[dict[str, str]] = [
+            {"label": label, "hint": "page", "href": href} for href, label in PALETTE_PAGES
+        ]
+        cards = views.machines(s)
+        for m in cards:
+            hint = " · ".join(
+                x for x in (views.KIND_LABELS.get(m["kind"], m["kind"]), (m["ips"] or [""])[0]) if x
+            )
+            items.append(
+                {
+                    "label": m["short"],
+                    "hint": hint,
+                    "href": f"/entity?key={quote(m['key'], safe='')}",
+                }
+            )
+        apps = sorted({a["name"] for m in cards for a in m["apps"]})
+        items += [
+            {"label": a, "hint": "app", "href": f"/services?state=all&q={quote(a)}"} for a in apps
+        ]
+        return JSONResponse({"items": items[:800]})
+
+    @app.get("/services.csv")
+    def services_csv(s: DB, _user: User, f: Filters) -> Response:
+        """The Services table as CSV, with the same filters (values were redacted at scan)."""
+        machine, state, kind, q = f
+        t = views.service_table(s, machine=machine, state=state, kind=kind, q=q)
+        body = csv_table(t["rows"], list(views.SERVICE_COLUMNS))
+        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M")
+        return Response(
+            body,
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="atlas-services-{stamp}.csv"'},
+        )
 
     @app.get("/vlans", response_class=HTMLResponse)
     def vlans(request: Request, s: DB, user: User) -> Response:
@@ -516,9 +625,10 @@ def create_app(cfg: WebConfig) -> FastAPI:
         return RedirectResponse("/unknown", 303)
 
     @app.get("/topology", response_class=HTMLResponse)
-    def topology_page(request: Request, user: User, view: str = "logical") -> Response:
+    def topology_page(request: Request, s: DB, user: User, view: str = "logical") -> Response:
         view = view if view in ("physical", "logical", "vlan") else "logical"
-        return page(request, "topology.html", user, view=view)
+        pve = views.proxmox_summary(views.machines(s)) if view == "logical" else None
+        return page(request, "topology.html", user, view=view, pve=pve)
 
     @app.get("/api/topology")
     def topology_json(s: DB, _user: User, view: str = "logical") -> JSONResponse:
@@ -609,6 +719,16 @@ def create_app(cfg: WebConfig) -> FastAPI:
             raise HTTPException(404, "targets page disabled")
         return cfg.targets
 
+    def _target_names() -> tuple[set[str] | None, set[str]]:
+        """Configured target names (hosts and sources) and host addresses."""
+        if cfg.targets is None:
+            return None, set()
+        inv, _ = cfg.targets.inventory()
+        names = {h.name for h in inv.hosts}
+        for kind in ("proxmox", "unifi", "unas"):
+            names |= {src.name for src in getattr(inv.sources, kind)}
+        return names, {h.address for h in inv.hosts}
+
     def _kind(kind: str) -> SourceKind:
         if kind not in ("proxmox", "unifi", "unas"):
             raise HTTPException(404, "unknown source kind")
@@ -619,10 +739,13 @@ def create_app(cfg: WebConfig) -> FastAPI:
 
     @app.get("/targets", response_class=HTMLResponse)
     def targets_page(
-        request: Request, user: User, msg: Annotated[str, Query(max_length=200)] = ""
+        request: Request, s: DB, user: User, msg: Annotated[str, Query(max_length=200)] = ""
     ) -> Response:
         svc = targets_svc()
-        return page(request, "targets.html", user, v=svc.view(), message=msg, sched=cfg.scheduler)
+        runs = queries.latest_runs(s)
+        health = {name: queries.target_health(rs) for name, rs in runs.items()}
+        return page(request, "targets.html", user, v=svc.view(), message=msg,
+                    sched=cfg.scheduler, runs=runs, health=health)  # fmt: skip
 
     @app.get("/targets/host", response_class=HTMLResponse)
     def target_host_form(
@@ -661,7 +784,7 @@ def create_app(cfg: WebConfig) -> FastAPI:
         )
 
     @app.post("/targets/host", response_class=HTMLResponse)
-    def target_host_save(
+    async def target_host_save(
         request: Request,
         user: Csrf,
         name: Annotated[str, Form(max_length=64)],
@@ -711,7 +834,11 @@ def create_app(cfg: WebConfig) -> FastAPI:
                 pinned=entry.ssh.host_keys if entry else (),
                 atlas_key=svc.atlas_public_key(create=True),
             )
-        return RedirectResponse(f"/targets?msg={quote(form.name + ' saved')}", 303)
+        msg = f"{form.name} saved"
+        if cfg.scheduler is not None and form.collectors:
+            cfg.scheduler.trigger(hosts=[form.name])  # first scan right away, not in an hour
+            msg += "; its first scan is queued"
+        return RedirectResponse(f"/targets?msg={quote(msg)}", 303)
 
     @app.post("/targets/host/delete")
     def target_host_delete(user: Csrf, name: Annotated[str, Form(max_length=64)]) -> Response:
@@ -805,7 +932,11 @@ def create_app(cfg: WebConfig) -> FastAPI:
                 secret_set=bool(src and svc.has_secret(src.credential)),
                 pinned=src.tls if src else None,
             )
-        return RedirectResponse(f"/targets?msg={quote(form.name + ' saved')}", 303)
+        msg = f"{form.name} saved"
+        if cfg.scheduler is not None:
+            cfg.scheduler.trigger(hosts=[form.name])
+            msg += "; its first scan is queued"
+        return RedirectResponse(f"/targets?msg={quote(msg)}", 303)
 
     @app.post("/targets/unifi/consoles", response_class=HTMLResponse)
     async def target_unifi_consoles(
@@ -906,12 +1037,12 @@ def create_app(cfg: WebConfig) -> FastAPI:
                 ok=False,
                 text="scanning from the UI is off (atlas serve without a scheduler)",
             )
-        started = cfg.scheduler.trigger(hosts=[name])
+        state = cfg.scheduler.trigger(hosts=[name])
         text = (
-            f"Scan of {name} started; results appear on the dashboard and its page."
-            if started
-            else "A scan is already running."
+            f"Scan of {name} started; this row updates when it is done."
+            if state == "started"
+            else f"{name} is queued: it is scanned right after the current scan."
         )
-        return page(request, "_test_result.html", user, ok=started, text=text)
+        return page(request, "_test_result.html", user, ok=True, text=text)
 
     return app

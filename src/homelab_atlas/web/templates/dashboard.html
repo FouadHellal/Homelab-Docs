@@ -57,7 +57,7 @@
         {% for g in guests if g.node == n.short %}
         <a class="guest {{ 'off' if g.status != 'running' }}" href="/entity?key={{ g.key | urlencode }}" title="{{ g.kind | replace('pve-', '') | upper }} {{ g.vmid }} · {{ g.status }}{% if g.ips %} · {{ g.ips | first }}{% endif %}">
           {{ status_dot(g.status) }}{{ g.short }}{% if g.containers %}<span class="badge">{{ g.containers }}</span>{% endif %}</a>
-        {% else %}<span class="muted small">No guests reported (add the Proxmox API or SSH this node).</span>{% endfor %}
+        {% else %}<span class="muted small">No guests reported yet. Add this node on Targets as <em>proxmox-node</em> with sudo, or the Proxmox API (<a href="/docs#proxmox">how</a>).</span>{% endfor %}
       </div>
     </div>
     {% endfor %}
@@ -65,12 +65,15 @@
 
   <div class="card">
     <h2>Needs attention</h2>
-    {% if d.problems or d.missing %}
-    <ul class="plain">
-      {% for r in d.problems %}<li><span class="pill {{ r.status }}">{{ r.status }}</span> <strong>{{ r.target }}</strong> · {{ r.collector }} <span class="muted small">{{ (r.errors | first) if r.errors else "" }}</span></li>{% endfor %}
+    {% if d.problems or d.missing or d.never_scanned %}
+    <ul class="plain attention">
+      {% for r in d.problems %}<li><span class="pill {{ r.status }}">{{ r.status }}</span> <a href="/targets#t-{{ r.target | urlencode }}"><strong>{{ r.target }}</strong></a> · {{ r.collector }}
+        {% if r.errors %}<div class="muted small err">{{ r.errors | first }}</div>{% endif %}</li>{% endfor %}
+      {% for t in d.never_scanned %}<li><span class="pill info">{{ "queued" if sched and t in sched.status.queued else "not scanned yet" }}</span> <a href="/targets#t-{{ t | urlencode }}"><strong>{{ t }}</strong></a>
+        <span class="muted small">added, waiting for its first scan</span></li>{% endfor %}
       {% for e in d.missing %}<li><span class="pill failed">missing</span> <a href="/entity?key={{ e.key | urlencode }}">{{ e.display_name }}</a></li>{% endfor %}
     </ul>
-    {% else %}<p class="muted">Nothing. Every collector answered on the last scan.</p>{% endif %}
+    {% else %}<p class="muted">Nothing. Every target answered on its latest scan.</p>{% endif %}
     {% if discovered %}
     <h3>Seen on the network, not documented yet</h3>
     <p class="muted small">UniFi sees these servers, VMs and Pis, but atlas doesn't log in to them, so their services and containers are unknown.</p>
@@ -103,7 +106,7 @@
         <span class="m-kind">{% if m.kind == "pve-node" %}PVE node{% elif m.vmid %}{{ "VM" if m.kind == "pve-vm" else "LXC" }} {{ m.vmid }}{% if m.node %} · {{ m.node }}{% endif %}{% else %}{{ m.kind | replace("linux-host", "host") }}{% endif %}</span></div>
       <div class="m-line"><code>{{ m.ips | first or "no IP seen" }}</code>{% if m.ips | length > 1 %}<span class="muted small"> +{{ m.ips | length - 1 }}</span>{% endif %}
         {% if m.vlan is not none %}<span class="muted small"> · VLAN {{ m.vlan }}</span>{% endif %}</div>
-      <div class="m-line muted small">{{ m.os or ("not documented: add it on Targets" if not m.documented and m.kind != "pve-node" else "") }}{% if m.cores %} · {{ m.cores }} vCPU{% endif %}{% if m.memory_mb %} · {{ (m.memory_mb / 1024) | round(1) }} GB{% endif %}</div>
+      <div class="m-line muted small">{% set h = health.get(m.target or m.short) %}{% if m.os %}{{ m.os }}{% elif m.documented or m.kind == "pve-node" %}{% elif h == "failed" %}<a class="bad" href="/targets#t-{{ m.short | urlencode }}">last scan failed: see why</a>{% elif m.short in target_names %}<span>waiting for its first scan</span>{% else %}not documented: add it on Targets{% endif %}{% if m.cores %} · {{ m.cores }} vCPU{% endif %}{% if m.memory_mb %} · {{ (m.memory_mb / 1024) | round(1) }} GB{% endif %}</div>
       {{ app_chips(m.apps, 6) }}
       <div class="m-foot">{% if m.documented %}{{ m.services }} services · {{ m.ports }} ports{% endif %}{% if m.containers %} · {{ m.containers_running }}/{{ m.containers }} containers{% endif %}</div>
     </a>

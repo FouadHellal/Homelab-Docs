@@ -7,13 +7,15 @@ are one machine (same_as), with every facet merged. Everything here is computed 
 import ipaddress
 import re
 from collections import defaultdict
+from collections.abc import Iterable
 from typing import Any, Final
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from homelab_atlas.engine.apps import detect
+from homelab_atlas.engine.apps import CATEGORY_LABELS, app_for_unit, detect
 from homelab_atlas.engine.reconcile import RECONCILE
+from homelab_atlas.store.facets import facet_views
 from homelab_atlas.store.tables import Entity, Event, Facet
 from homelab_atlas.web.queries import _ip_key, context, ip_table
 
@@ -86,8 +88,14 @@ def machines(s: Session) -> list[dict[str, Any]]:
     """One card per machine, with what runs on it."""
     ents = {e.key: e for e in s.scalars(select(Entity)) if e.status != "gone"}
     by_entity: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
-    for f in s.scalars(select(Facet)):
+    sources: dict[str, str] = {}
+    ssh_target: dict[str, str] = {}
+    for f in facet_views(s.scalars(select(Facet))):
         by_entity[f.entity_key][f.collector] = f.data
+        if f.collector == "proxmox":
+            sources[f.entity_key] = f.source
+        elif f.collector == "linux-ssh":
+            ssh_target[f.entity_key] = f.target
     twins: dict[str, list[str]] = defaultdict(list)
     for e in ents.values():
         if e.same_as and e.same_as in ents:
@@ -104,29 +112,24 @@ def machines(s: Session) -> list[dict[str, Any]]:
         facets = dict(by_entity.get(key, {}))
         for t in twins.get(key, []):
             _merge(facets, by_entity.get(t, {}))
-        out.append(_card(key, e, facets, ents, sorted(set(ips_by_key.get(key, [])), key=_ip_key)))
+        card = _card(key, e, facets, ents, sorted(set(ips_by_key.get(key, [])), key=_ip_key))
+        card["pve_source"] = sources.get(key)
+        card["target"] = ssh_target.get(key) or next(
+            (ssh_target[t] for t in twins.get(key, []) if t in ssh_target), None
+        )
+        out.append(card)
     order = {"pve-node": 0, "pve-vm": 1, "pve-lxc": 1, "linux-host": 2, "nas": 3}
     return sorted(out, key=lambda m: (order.get(m["kind"], 9), m["node"] or "", m["name"].lower()))
 
 
 def _guest(facets: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    for c in ("proxmox", "linux-ssh"):
-        g = facets.get(c)
-        if isinstance(g, dict) and "vmid" in g:
-            return g
-    return {}
+    g = facets.get("proxmox")  # the strongest Proxmox source (store.facets)
+    return g if isinstance(g, dict) and "vmid" in g else {}
 
 
 def _card(key: str, e: Entity, facets: dict[str, dict[str, Any]], ents: dict[str, Entity],
           ips: list[str]) -> dict[str, Any]:  # fmt: skip
-    lx = (
-        facets.get("linux-ssh")
-        if isinstance(facets.get("linux-ssh"), dict) and "vmid" not in facets["linux-ssh"]
-        else None
-    )
-    # A guest entity's "linux-ssh" facet is the /etc/pve view; the host's own facet is a twin's.
-    if lx is None:
-        lx = next((d for c, d in facets.items() if c == "linux-ssh" and "vmid" not in d), None)
+    lx = facets.get("linux-ssh")  # the Linux host itself (or the one inside this guest)
     dk = facets.get("docker") or {}
     g = _guest(facets)
     services = [x for x in (lx or {}).get("services") or [] if x.get("active") == "active"]
@@ -165,6 +168,59 @@ def _card(key: str, e: Entity, facets: dict[str, dict[str, Any]], ents: dict[str
         "ports": len((lx or {}).get("sockets") or []),
         "apps": apps,
         "tags": g.get("tags") or [],
+        "nics": [
+            {"bridge": n.get("bridge"), "vlan": n.get("vlan_tag"), "mac": n.get("mac")}
+            for n in g.get("nics") or []
+        ],
+        "pve": _node_info(facets, lx) if key.startswith("pve:node:") else None,
+    }
+
+
+def _node_info(facets: dict[str, dict[str, Any]], lx: dict[str, Any] | None) -> dict[str, Any]:
+    """A Proxmox node's version, size and bridges, from the API or from its own host facts."""
+    p = facets.get("proxmox") or {}
+    bridges = [
+        {
+            "name": i["iface"],
+            "cidr": i.get("cidr"),
+            "vlan_aware": i.get("vlan_aware"),
+            "ports": i.get("bridge_ports") or [],
+        }
+        for i in p.get("interfaces") or []
+        if i.get("type") in ("bridge", "OVSBridge") and i.get("iface")
+    ]
+    if not bridges and lx:
+        ports: dict[str, list[str]] = defaultdict(list)
+        for i in lx.get("interfaces") or []:
+            if i.get("master"):
+                ports[i["master"]].append(i["name"])
+        bridges = [
+            {
+                "name": i["name"],
+                "vlan_aware": None,
+                "ports": ports.get(i["name"], []),
+                "cidr": next(
+                    (
+                        a.get("address")
+                        for a in i.get("addresses") or []
+                        if ":" not in str(a.get("address"))
+                    ),
+                    None,
+                ),
+            }
+            for i in lx.get("interfaces") or []
+            if i.get("kind") == "bridge" and str(i.get("name", "")).startswith(("vmbr", "vnet"))
+        ]
+    mem = p.get("memory_bytes")
+    return {
+        "version": p.get("pve_version") or ((lx or {}).get("pve") or {}).get("version"),
+        "cpu_cores": p.get("cpu_cores"),
+        "cpu_model": p.get("cpu_model"),
+        "memory_gb": round(mem / 2**30, 1) if isinstance(mem, int) else None,
+        "uptime_s": p.get("uptime_s"),
+        "cpu_load": p.get("cpu_load"),
+        "online": p.get("online"),
+        "bridges": sorted(bridges, key=lambda b: b["name"]),
     }
 
 
@@ -321,8 +377,15 @@ def recent_activity(s: Session, limit: int = 8) -> list[dict[str, Any]]:
     return [{"event": e, "name": n or e.entity_key} for e, n in rows]
 
 
-def discovered_not_documented(s: Session) -> list[dict[str, Any]]:
-    """Infrastructure UniFi sees (VMs, Pis, servers) that atlas does not log in to yet."""
+def discovered_not_documented(
+    s: Session, target_addresses: Iterable[str] = ()
+) -> list[dict[str, Any]]:
+    """Infrastructure UniFi sees (VMs, Pis, servers) that atlas does not log in to yet.
+
+    Addresses that are already targets are left out: they are listed under "Needs attention"
+    until their first successful scan.
+    """
+    targets = {a.strip().lower() for a in target_addresses}
     c = context(s)
     documented_macs: set[str] = set()
     documented_ips: set[str] = set()
@@ -342,7 +405,15 @@ def discovered_not_documented(s: Session) -> list[dict[str, Any]]:
             continue
         for cl in f.data.get("clients") or []:
             mac, ip = cl.get("mac") or "", cl.get("ip")
-            if not mac or mac in seen or mac in documented_macs or (ip and ip in documented_ips):
+            known = documented_ips | targets
+            name = str(cl.get("name") or "").lower()
+            if (
+                not mac
+                or mac in seen
+                or mac in documented_macs
+                or (ip and ip in known)
+                or (name and name in targets)
+            ):
                 continue
             seen.add(mac)
             v = classify(
@@ -364,3 +435,162 @@ def discovered_not_documented(s: Session) -> list[dict[str, Any]]:
                 }
             )
     return sorted(out, key=lambda x: _ip_key(x["ip"] or "z"))
+
+
+def proxmox_summary(cards: list[dict[str, Any]]) -> dict[str, Any]:
+    """Topology header numbers (nodes, guests by type/state, allocated vCPU and RAM)."""
+    nodes = [m for m in cards if m["kind"] == "pve-node"]
+    guests = [m for m in cards if m["kind"] in ("pve-vm", "pve-lxc") and m["vmid"] is not None]
+    cores = sum((m.get("pve") or {}).get("cpu_cores") or 0 for m in nodes)
+    ram = sum((m.get("pve") or {}).get("memory_gb") or 0 for m in nodes)
+    return {
+        "nodes": len(nodes),
+        "clusters": sorted({m["key"].removeprefix("pve:node:").split("/")[0] for m in nodes}),
+        "guests": len(guests),
+        "vms": sum(1 for m in guests if m["kind"] == "pve-vm"),
+        "lxcs": sum(1 for m in guests if m["kind"] == "pve-lxc"),
+        "running": sum(1 for m in guests if m["status"] == "running"),
+        "stopped": sum(1 for m in guests if m["status"] == "stopped"),
+        "unknown": sum(1 for m in guests if m["status"] not in ("running", "stopped")),
+        "vcpu": sum(m["cores"] or 0 for m in guests if m["status"] != "stopped"),
+        "cores": cores or None,
+        "mem_gb": round(
+            sum(m["memory_mb"] or 0 for m in guests if m["status"] != "stopped") / 1024, 1
+        ),
+        "ram_gb": round(ram, 1) or None,
+        "documented": sum(1 for m in guests if m["documented"]),
+    }
+
+
+KIND_LABELS: Final = {
+    "pve-node": "Proxmox node",
+    "pve-vm": "VM",
+    "pve-lxc": "LXC",
+    "linux-host": "Host",
+    "nas": "NAS",
+}
+SERVICE_STATES: Final = ("running", "failed", "inactive", "all")
+SERVICE_COLUMNS: Final = (
+    "machine", "kind", "node", "ip", "type", "name", "description", "state", "sub",
+    "enabled", "app", "category", "image", "ports",
+)  # fmt: skip
+
+
+def _unit_state(active: str | None) -> str:
+    if active == "active":
+        return "running"
+    return "failed" if active == "failed" else "inactive"
+
+
+def _container_state(c: dict[str, Any]) -> str:
+    status = str(c.get("status") or "")
+    if status == "running":
+        return "running"
+    if status in ("restarting", "dead") or (c.get("exit_code") or 0) != 0:
+        return "failed"
+    return "inactive"
+
+
+def _machine_rows(
+    m: dict[str, Any], lx: dict[str, Any], dk: dict[str, Any]
+) -> list[dict[str, Any]]:
+    base = {
+        "machine": m["short"],
+        "key": m["key"],
+        "kind": KIND_LABELS.get(m["kind"], m["kind"]),
+        "node": m["node"] or "",
+        "ip": (m["ips"] or [""])[0],
+    }
+    rows: list[dict[str, Any]] = []
+    for u in lx.get("services") or []:
+        app = app_for_unit(str(u.get("unit") or ""))
+        rows.append(
+            {
+                **base,
+                "type": "systemd",
+                "name": str(u.get("unit") or "").removesuffix(".service"),
+                "description": u.get("description") or "",
+                "state": _unit_state(u.get("active")),
+                "sub": u.get("sub") or "",
+                "enabled": u.get("enabled") or "",
+                "app": app.name if app else "",
+                "category": CATEGORY_LABELS.get(app.category, app.category) if app else "",
+                "image": "",
+                "ports": "",
+            }
+        )
+    for c in dk.get("containers") or []:
+        found = next((a for a in detect(containers=[c]) if a["category"] != "system"), None)
+        health = f" ({c.get('health')})" if c.get("health") else ""
+        ports = [
+            f"{p.get('host_port')}->{p.get('container_port')}/{p.get('proto')}"
+            for p in c.get("ports") or []
+            if p.get("host_port")
+        ]
+        rows.append(
+            {
+                **base,
+                "type": "container",
+                "name": c.get("name") or "",
+                "description": c.get("compose_project") or "",
+                "state": _container_state(c),
+                "sub": str(c.get("status") or "") + health,
+                "enabled": c.get("restart_policy") or "",
+                "app": found["name"] if found else "",
+                "category": found["category_label"] if found else "",
+                "image": c.get("image") or "",
+                "ports": ", ".join(ports),
+            }
+        )
+    return rows
+
+
+def service_table(
+    s: Session,
+    *,
+    machine: str | None = None,
+    state: str = "running",
+    kind: str | None = None,
+    q: str | None = None,
+) -> dict[str, Any]:
+    """Every systemd unit and Docker container on every documented machine, one row each,
+    filtered the way the Services page (and its CSV export) asks."""
+    cards = machines(s)
+    twins: dict[str, list[str]] = defaultdict(list)
+    for e in s.scalars(select(Entity).where(Entity.same_as.is_not(None))):
+        twins[str(e.same_as)].append(e.key)
+    facets: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+    for f in s.scalars(select(Facet).where(Facet.collector.in_(("linux-ssh", "docker")))):
+        facets[f.entity_key][f.collector] = f.data
+    rows: list[dict[str, Any]] = []
+    for m in cards:
+        if not m["documented"] and not m["containers"]:
+            continue
+        lx: dict[str, Any] = {}
+        dk: dict[str, Any] = {}
+        for k in (m["key"], *twins.get(m["key"], [])):
+            lx = lx or facets[k].get("linux-ssh") or {}
+            dk = dk or facets[k].get("docker") or {}
+        rows.extend(_machine_rows(m, lx, dk))
+    total = len(rows)
+    counts = {st: sum(1 for r in rows if r["state"] == st) for st in SERVICE_STATES[:3]}
+    names = sorted({r["machine"] for r in rows}, key=str.lower)
+    if machine:
+        rows = [r for r in rows if r["machine"] == machine]
+    if state in SERVICE_STATES[:3]:
+        rows = [r for r in rows if r["state"] == state]
+    if kind in ("systemd", "container"):
+        rows = [r for r in rows if r["type"] == kind]
+    if q:
+        ql = q.lower()[:64]
+        rows = [r for r in rows if any(ql in str(v).lower() for v in r.values())]
+    rows.sort(key=lambda r: (r["machine"].lower(), r["type"], r["name"].lower()))
+    return {
+        "rows": rows,
+        "total": total,
+        "counts": counts,
+        "machines": names,
+        "undocumented": sorted(
+            m["short"] for m in cards if not m["documented"] and m["status"] != "stopped"
+        ),
+    }

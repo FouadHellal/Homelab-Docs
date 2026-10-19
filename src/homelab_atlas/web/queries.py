@@ -1,7 +1,9 @@
 """Read models for the UI (and later MCP/exports). Plain dicts; templates escape everything."""
 
 import ipaddress
+from collections.abc import Iterable
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any, Final
 
 from sqlalchemy import func, or_, select
@@ -9,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from homelab_atlas.engine.reconcile import RECONCILE, Index, build_index, network_of
 from homelab_atlas.inventory.hosts import Inventory
+from homelab_atlas.store.facets import SOURCE_LABELS, FacetView, facet_views
 from homelab_atlas.store.tables import Annotation, CollectorRun, Entity, Event, Facet, Scan
 
 HIDDEN_KINDS: Final = frozenset({"unknown-device", "container", "compose-project"})
@@ -25,14 +28,14 @@ def _ip_key(ip: str) -> tuple[int, int]:
 
 @dataclass(slots=True)
 class Ctx:
-    facets: list[Facet]
+    facets: list[FacetView]
     names: dict[str, str]
     entities: dict[str, Entity]
     index: Index
 
 
 def context(s: Session, inventory: Inventory | None = None) -> Ctx:
-    facets = list(s.scalars(select(Facet)))
+    facets = facet_views(s.scalars(select(Facet)))
     entities = {e.key: e for e in s.scalars(select(Entity))}
     names = {k: e.display_name for k, e in entities.items()}
     real = [f for f in facets if f.collector != RECONCILE]
@@ -50,7 +53,60 @@ def canonical_key(c: Ctx, key: str) -> str:
 # ------------------------------------------------------------------ dashboard
 
 
-def dashboard(s: Session) -> dict[str, Any]:
+def latest_runs(s: Session) -> dict[str, list[dict[str, Any]]]:
+    """The most recent result of every (target, collector), whichever scan it came from.
+
+    Scheduled scans run one collector at a time, so "the last scan" alone says nothing about
+    the other targets: this is what the dashboard and the Targets page show instead.
+    """
+    newest = (
+        select(CollectorRun.target, CollectorRun.collector, func.max(CollectorRun.id).label("id"))
+        .group_by(CollectorRun.target, CollectorRun.collector)
+        .subquery()
+    )
+    rows = s.execute(
+        select(CollectorRun, Scan.finished_at, Scan.started_at)
+        .join(newest, CollectorRun.id == newest.c.id)
+        .join(Scan, Scan.id == CollectorRun.scan_id)
+    ).all()
+    good: dict[tuple[str, str], Any] = {
+        (t, c): when
+        for t, c, when in s.execute(
+            select(CollectorRun.target, CollectorRun.collector, func.max(Scan.finished_at))
+            .join(Scan, Scan.id == CollectorRun.scan_id)
+            .where(CollectorRun.status.in_(("ok", "partial")))
+            .group_by(CollectorRun.target, CollectorRun.collector)
+        )
+    }
+    out: dict[str, list[dict[str, Any]]] = {}
+    for run, finished, started in rows:
+        out.setdefault(run.target, []).append(
+            {
+                "collector": run.collector,
+                "status": run.status,
+                "errors": list(run.errors or [])[:5],
+                "when": finished or started,
+                "last_ok": good.get((run.target, run.collector)),
+                "duration_ms": run.duration_ms,
+                "entity_key": run.entity_key,
+            }
+        )
+    for runs in out.values():
+        runs.sort(key=lambda r: r["collector"])
+    return out
+
+
+def target_health(runs: list[dict[str, Any]] | None) -> str:
+    """One word for a target: never | ok | partial | failed (worst of its collectors)."""
+    if not runs:
+        return "never"
+    statuses = {r["status"] for r in runs}
+    if statuses & {"failed", "refused"}:
+        return "failed"
+    return "partial" if "partial" in statuses else "ok"
+
+
+def dashboard(s: Session, targets: Iterable[str] | None = None) -> dict[str, Any]:
     counts: dict[str, int] = {}
     for kind, status, n in s.execute(
         select(Entity.kind, Entity.status, func.count()).group_by(Entity.kind, Entity.status)
@@ -60,10 +116,11 @@ def dashboard(s: Session) -> dict[str, Any]:
         if kind != "unknown-device":  # unknown devices have their own tile
             counts[kind] = counts.get(kind, 0) + n
     last = s.scalar(select(Scan).order_by(Scan.id.desc()).limit(1))
-    runs = (
-        list(s.scalars(select(CollectorRun).where(CollectorRun.scan_id == last.id))) if last else []
-    )
+    latest = latest_runs(s)
+    wanted = set(targets) if targets is not None else set(latest)
+    runs = [SimpleNamespace(target=t, **r) for t, rs in latest.items() if t in wanted for r in rs]
     problems = [r for r in runs if r.status != "ok"]
+    never = sorted(t for t in wanted if t not in latest)
     events = s.execute(
         select(Event, Entity.display_name)
         .join(Entity, Entity.key == Event.entity_key, isouter=True)
@@ -80,6 +137,7 @@ def dashboard(s: Session) -> dict[str, Any]:
         "last_scan": last,
         "by_collector": dict(sorted(by_collector.items())),
         "problems": sorted(problems, key=lambda r: (r.status, r.target)),
+        "never_scanned": never,
         "events": [{"event": e, "name": n or e.entity_key} for e, n in events],
         "missing": missing,
         "unknown": s.scalar(
@@ -114,17 +172,18 @@ def entity_detail(s: Session, key: str) -> dict[str, Any] | None:
     if entity is None:
         return None
     facets: dict[str, Any] = {}
-    for f in s.scalars(select(Facet).where(Facet.entity_key == key)):
-        # Node/guest data read over SSH from /etc/pve (ADR-028) is Proxmox data: show it as such
-        # and leave "linux-ssh" for the Linux host inside the guest.
-        pve_view = f.collector == "linux-ssh" and ("vmid" in f.data or key.startswith("pve:node:"))
-        facets.setdefault("proxmox" if pve_view else f.collector, f.data)
+    pve_source: str | None = None
+    for f in facet_views(s.scalars(select(Facet).where(Facet.entity_key == key))):
+        # Proxmox data from the API or from /etc/pve over SSH: one "proxmox" view (ADR-031).
+        facets.setdefault(f.collector, f.data)
+        if f.collector == "proxmox":
+            pve_source = f.source
     twins = list(s.scalars(select(Entity).where(Entity.same_as == key)))
     same = s.get(Entity, entity.same_as) if entity.same_as else None
     related = [key, *(t.key for t in twins), *([same.key] if same else [])]
     for t in twins:  # show the inner host's facets on the VM page as well
-        for f in s.scalars(select(Facet).where(Facet.entity_key == t.key)):
-            facets.setdefault(f.collector, f.data)
+        for fv in facet_views(s.scalars(select(Facet).where(Facet.entity_key == t.key))):
+            facets.setdefault(fv.collector, fv.data)
     children = list(
         s.scalars(
             select(Entity)
@@ -144,6 +203,7 @@ def entity_detail(s: Session, key: str) -> dict[str, Any] | None:
         "children": children,
         "events": events,
         "annotation": s.get(Annotation, key),
+        "pve_source": SOURCE_LABELS.get(pve_source or ""),
     }
 
 
