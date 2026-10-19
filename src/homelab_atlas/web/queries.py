@@ -113,7 +113,12 @@ def entity_detail(s: Session, key: str) -> dict[str, Any] | None:
     entity = s.get(Entity, key)
     if entity is None:
         return None
-    facets = {f.collector: f.data for f in s.scalars(select(Facet).where(Facet.entity_key == key))}
+    facets: dict[str, Any] = {}
+    for f in s.scalars(select(Facet).where(Facet.entity_key == key)):
+        # Node/guest data read over SSH from /etc/pve (ADR-028) is Proxmox data: show it as such
+        # and leave "linux-ssh" for the Linux host inside the guest.
+        pve_view = f.collector == "linux-ssh" and ("vmid" in f.data or key.startswith("pve:node:"))
+        facets.setdefault("proxmox" if pve_view else f.collector, f.data)
     twins = list(s.scalars(select(Entity).where(Entity.same_as == key)))
     same = s.get(Entity, entity.same_as) if entity.same_as else None
     related = [key, *(t.key for t in twins), *([same.key] if same else [])]
@@ -189,7 +194,15 @@ def ip_table(s: Session, q: str | None = None) -> list[dict[str, Any]]:
                 owner = c.index.mac_owner.get(cl.get("mac") or "", f"net:mac:{cl.get('mac')}")
                 add(cl.get("ip"), cl.get("mac"), owner, "unifi client")
         elif f.collector == RECONCILE:
-            add(d.get("ip"), d.get("mac"), f.entity_key, "unknown")
+            # Only devices still unexplained. Identified ones are already listed under the
+            # machine that explains them, and a guest's network facet repeats its UniFi row.
+            e = c.entities.get(f.entity_key)
+            if (
+                e is not None
+                and e.kind == "unknown-device"
+                and e.status in ("unknown", "acknowledged")
+            ):
+                add(d.get("ip"), d.get("mac"), f.entity_key, "unknown")
     out = sorted(rows.values(), key=lambda r: _ip_key(r["ip"]))
     if q:
         ql = q.lower()[:64]

@@ -34,7 +34,7 @@ from homelab_atlas.scheduler import Scheduler
 from homelab_atlas.security.errors import HttpStatusError, SecurityRefusal, TransportError
 from homelab_atlas.store.tables import Annotation, Entity
 from homelab_atlas.store.tables import User as UserRow
-from homelab_atlas.web import auth, queries, topology
+from homelab_atlas.web import auth, queries, topology, views
 from homelab_atlas.web.targets import (
     HOST_COLLECTORS,
     HOST_TYPES,
@@ -385,6 +385,7 @@ def create_app(cfg: WebConfig) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     def dashboard(request: Request, s: DB, user: User) -> Response:
+        cards = views.machines(s)
         return page(
             request,
             "dashboard.html",
@@ -393,6 +394,10 @@ def create_app(cfg: WebConfig) -> FastAPI:
             annotation_errors=app.state.annotation_errors,
             sched=cfg.scheduler,
             scheduled=cfg.schedule,
+            machines=cards,
+            top_apps=views.top_apps(cards),
+            discovered=views.discovered_not_documented(s),
+            can_add=cfg.targets is not None and cfg.targets.editable,
         )
 
     @app.post("/scan", response_class=HTMLResponse)
@@ -426,14 +431,27 @@ def create_app(cfg: WebConfig) -> FastAPI:
         detail = queries.entity_detail(s, key)
         if detail is None:
             raise HTTPException(404, "no such entity")
-        return page(request, "entity.html", user, d=detail)
+        run = views.running(s, key) if detail["entity"].kind in views.MACHINE_KINDS else None
+        has_run = run is not None and (run["services"] or run["containers"] or run["processes"])
+        return page(request, "entity.html", user, d=detail, run=run if has_run else None)
 
     @app.get("/ips", response_class=HTMLResponse)
     def ips(
+        request: Request,
+        s: DB,
+        user: User,
+        q: Annotated[str | None, Query(max_length=64)] = None,
+        everything: bool = False,
+    ) -> Response:
+        groups = views.ip_groups(s, q, everything=everything)
+        name = "_ip_groups_rows.html" if partial(request) else "ips.html"
+        return page(request, name, user, g=groups, q=q or "", everything=everything)
+
+    @app.get("/running", response_class=HTMLResponse)
+    def running_page(
         request: Request, s: DB, user: User, q: Annotated[str | None, Query(max_length=64)] = None
     ) -> Response:
-        name = "_ip_rows.html" if partial(request) else "ips.html"
-        return page(request, name, user, rows=queries.ip_table(s, q), q=q or "")
+        return page(request, "running.html", user, r=views.everything_running(s, q), q=q or "")
 
     @app.get("/vlans", response_class=HTMLResponse)
     def vlans(request: Request, s: DB, user: User) -> Response:

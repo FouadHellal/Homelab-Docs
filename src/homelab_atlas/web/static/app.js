@@ -1,4 +1,5 @@
 // atlas UI glue. No inline scripts anywhere (strict CSP); everything starts here.
+// Topology lives in topology.js (loaded only on that page).
 (function () {
   "use strict";
 
@@ -11,6 +12,52 @@
   }
   applyTheme(storedTheme());
 
+  // ------------------------------------------------------------ list filtering
+  // <div class="seg" data-filter-target="#grid"><button data-filter="pve-vm">…  → items' data-kind
+  function wireSegFilters(root) {
+    root.querySelectorAll(".seg[data-filter-target]").forEach(function (seg) {
+      var target = document.querySelector(seg.dataset.filterTarget);
+      if (!target) return;
+      seg.querySelectorAll("[data-filter]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var kinds = btn.dataset.filter.split(" ");
+          seg.querySelectorAll("[data-filter]").forEach(function (b) { b.classList.toggle("on", b === btn); });
+          target.querySelectorAll("[data-kind]").forEach(function (item) {
+            item.classList.toggle("is-hidden", kinds[0] !== "all" && kinds.indexOf(item.dataset.kind) < 0);
+          });
+        });
+      });
+    });
+  }
+
+  // <input data-search-target="#table-or-grid">  → hides children whose data-search lacks the text
+  function wireSearch(root) {
+    root.querySelectorAll("input[data-search-target]").forEach(function (input) {
+      input.addEventListener("input", function () {
+        var q = input.value.trim().toLowerCase();
+        document.querySelectorAll(input.dataset.searchTarget).forEach(function (target) {
+          target.querySelectorAll("[data-search]").forEach(function (item) {
+            item.classList.toggle("no-match", q !== "" && item.dataset.search.toLowerCase().indexOf(q) < 0);
+          });
+        });
+      });
+    });
+  }
+
+  // <div data-tabset><button class="tab-btn" data-tab="id">…<div class="tab-panel" id="id">
+  function wireTabs(root) {
+    root.querySelectorAll("[data-tabset]").forEach(function (set) {
+      set.querySelectorAll(".tab-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          set.querySelectorAll(".tab-btn").forEach(function (b) { b.classList.toggle("on", b === btn); });
+          set.querySelectorAll(".tab-panel").forEach(function (p) { p.classList.toggle("on", p.id === btn.dataset.tab); });
+          var search = set.querySelector("input[data-search-target]");
+          if (search) search.dispatchEvent(new Event("input"));
+        });
+      });
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     var btn = document.getElementById("theme-toggle");
     if (btn) {
@@ -20,79 +67,14 @@
         var next = current === "dark" ? "light" : "dark";
         applyTheme(next);
         try { localStorage.setItem("atlas-theme", next); } catch (e) { /* private mode */ }
-        drawTopology();
+        if (window.atlasTopology) window.atlasTopology.redraw();
       });
     }
-    drawTopology();
+    wireSegFilters(document);
+    wireSearch(document);
+    wireTabs(document);
   });
 
-  // ------------------------------------------------------------ topology
-  var cyInstance = null;
-
-  function css(name) {
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  }
-
-  var SHAPES = {
-    "unifi-site": "round-rectangle", gateway: "diamond", switch: "rectangle", ap: "ellipse",
-    "pve-cluster": "round-rectangle", "pve-node": "rectangle", "pve-vm": "round-rectangle",
-    "pve-lxc": "round-rectangle", "linux-host": "round-rectangle", "compose-project": "hexagon",
-    container: "ellipse", nas: "barrel", "unknown-device": "triangle", vlan: "round-rectangle"
-  };
-
-  // One box per VLAN, members in a square-ish grid: readable and stable between reloads.
-  function vlanPositions(elements) {
-    var groups = {};
-    elements.forEach(function (e) {
-      var p = e.data.parent;
-      if (p) (groups[p] = groups[p] || []).push(e.data.id);
-    });
-    var pos = {}, x0 = 0;
-    Object.keys(groups).sort().forEach(function (g) {
-      var ids = groups[g], cols = Math.max(1, Math.ceil(Math.sqrt(ids.length)));
-      ids.forEach(function (id, i) { pos[id] = { x: x0 + (i % cols) * 120, y: Math.floor(i / cols) * 80 }; });
-      x0 += cols * 120 + 140;
-    });
-    return function (node) { return pos[node.id()]; };
-  }
-
-  function drawTopology() {
-    var el = document.getElementById("cy");
-    if (!el || typeof window.cytoscape !== "function") return;
-    var view = el.dataset.view;
-    fetch(el.dataset.src, { credentials: "same-origin", headers: { Accept: "application/json" } })
-      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-      .then(function (data) {
-        if (cyInstance) cyInstance.destroy();
-        cyInstance = window.cytoscape({
-          container: el,
-          elements: data.elements,
-          style: [
-            { selector: "node", style: {
-                "label": "data(label)", "font-size": 10, "color": css("--fg"), "text-wrap": "wrap",
-                "text-valign": "bottom", "text-margin-y": 4, "background-color": css("--accent"),
-                "shape": function (n) { return SHAPES[n.data("kind")] || "ellipse"; },
-                "width": 22, "height": 22, "min-zoomed-font-size": 7 } },
-            { selector: "node[status = 'unknown'], node[kind = 'unknown-device']", style: { "background-color": css("--bad") } },
-            { selector: "node[status = 'missing'], node[status = 'gone']", style: { "background-color": css("--warn") } },
-            { selector: "node[kind = 'container']", style: { "width": 12, "height": 12, "background-color": css("--ok") } },
-            { selector: ":parent", style: {
-                "background-opacity": 0.08, "background-color": css("--accent"), "border-color": css("--muted"),
-                "border-width": 1, "padding": 12, "text-valign": "top", "font-weight": "bold", "shape": "round-rectangle" } },
-            { selector: "edge", style: {
-                "width": 1.2, "line-color": css("--line"), "curve-style": "bezier",
-                "target-arrow-shape": "none" } },
-            { selector: "edge[kind = 'wireless']", style: { "line-style": "dashed" } }
-          ],
-          layout: view === "vlan"
-            ? { name: "preset", positions: vlanPositions(data.elements), fit: true, padding: 30 }
-            : { name: "breadthfirst", directed: true, spacingFactor: 1.1, padding: 20, animate: false }
-        });
-        cyInstance.on("tap", "node", function (evt) {
-          var key = evt.target.data("key");
-          if (key) window.location.href = "/entity?key=" + encodeURIComponent(key);
-        });
-      })
-      .catch(function (err) { el.textContent = "Could not load topology: " + err.message; });
-  }
+  // htmx swaps in new rows: re-run the search filter so it stays applied.
+  document.addEventListener("htmx:afterSwap", function (e) { wireTabs(e.target); });
 })();

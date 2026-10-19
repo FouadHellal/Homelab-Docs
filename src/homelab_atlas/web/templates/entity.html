@@ -12,6 +12,8 @@
   {% for t in d.twins %} · seen over SSH as <a href="/entity?key={{ t.key | urlencode }}">{{ t.display_name }}</a>{% endfor %}
 </p>
 
+{% if run %}{% include "_running.html" %}{% endif %}
+
 <section class="card" id="annotation">{% with a = d.annotation, key = e.key %}{% include "_annotation.html" %}{% endwith %}</section>
 
 {% set f = d.facets %}

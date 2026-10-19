@@ -1,59 +1,131 @@
 {% extends "base.html" %}
-{% block title %}Dashboard{% endblock %}
+{% from "_macros.html" import app_chips, status_dot %}
+{% block title %}Overview{% endblock %}
 {% block main %}
-<h1>Dashboard</h1>
+{% set nodes = machines | selectattr("kind", "equalto", "pve-node") | list %}
+{% set guests = machines | selectattr("kind", "in", ["pve-vm", "pve-lxc"]) | list %}
+{% set running_guests = guests | selectattr("status", "equalto", "running") | list %}
+{% set ctr_total = machines | sum(attribute="containers") %}
+{% set ctr_running = machines | sum(attribute="containers_running") %}
+{% set svc_total = machines | sum(attribute="services") %}
+{% set app_total = machines | map(attribute="apps") | map("length") | sum %}
+
+<header class="page-head">
+  <div>
+    <h1>Overview</h1>
+    <p class="muted">{% if d.last_scan %}Last scan {{ d.last_scan.started_at.strftime("%Y-%m-%d %H:%M") }} UTC · {{ d.last_scan.status }}{% else %}No scan yet: add targets, then press Scan now.{% endif %}</p>
+  </div>
+  {% if sched %}
+  <form method="post" action="/scan" hx-post="/scan" hx-target="#scan-status" hx-swap="outerHTML" class="inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button type="submit">Scan now</button>
+  </form>
+  {% endif %}
+</header>
+
 {% if annotation_errors %}
 <div class="card warn"><strong>Annotation files skipped:</strong>
   <ul>{% for e in annotation_errors %}<li>{{ e }}</li>{% endfor %}</ul></div>
 {% endif %}
-<section class="grid stats">
-  {% for kind, n in d.counts.items() %}
-  <a class="card stat" href="/entities?kind={{ kind | urlencode }}"><span class="n">{{ n }}</span><span class="label">{{ kind }}</span></a>
-  {% endfor %}
-  <a class="card stat {% if d.unknown %}alert{% endif %}" href="/unknown"><span class="n">{{ d.unknown }}</span><span class="label">unknown devices</span></a>
+
+<section class="tiles">
+  <a class="tile" href="#machines"><span class="n">{{ machines | length }}</span><span class="label">machines</span>
+    <span class="sub">{{ machines | selectattr("documented") | list | length }} documented over SSH</span></a>
+  <a class="tile" href="/topology"><span class="n">{{ running_guests | length }}<small>/{{ guests | length }}</small></span><span class="label">VMs &amp; containers running</span>
+    <span class="sub">on {{ nodes | length }} Proxmox node{{ "" if nodes | length == 1 else "s" }}</span></a>
+  <a class="tile" href="/running#containers"><span class="n">{{ ctr_running }}<small>/{{ ctr_total }}</small></span><span class="label">Docker containers up</span>
+    <span class="sub">{{ d.counts.get("compose-project", 0) }} compose projects</span></a>
+  <a class="tile" href="/running#services"><span class="n">{{ svc_total }}</span><span class="label">services running</span>
+    <span class="sub">systemd, all machines</span></a>
+  <a class="tile" href="/running"><span class="n">{{ app_total }}</span><span class="label">apps recognised</span>
+    <span class="sub">{{ top_apps | join(", ") if top_apps else "scan a machine over SSH" }}</span></a>
+  <a class="tile {{ 'alert' if d.unknown }}" href="/unknown"><span class="n">{{ d.unknown }}</span><span class="label">unknown devices</span>
+    <span class="sub">infrastructure first</span></a>
 </section>
 
 <section class="grid two">
   <div class="card">
-    <h2>Last scan</h2>
-    {% if d.last_scan %}
-    <p>#{{ d.last_scan.id }} · {{ d.last_scan.label or d.last_scan.mode }} · {{ d.last_scan.started_at.strftime("%Y-%m-%d %H:%M UTC") }} · {{ d.last_scan.status }}</p>
-    <table><thead><tr><th>Collector</th><th>Runs</th></tr></thead><tbody>
-      {% for c, st in d.by_collector.items() %}
-      <tr><td>{{ c }}</td><td>{% for k, v in st.items() %}<span class="pill {{ k }}">{{ v }} {{ k }}</span> {% endfor %}</td></tr>
-      {% endfor %}
-    </tbody></table>
-    {% else %}<p class="muted">No scans yet. Run <code>atlas scan</code>.</p>{% endif %}
+    <h2>Proxmox <a class="more" href="/topology">topology</a></h2>
+    {% if not nodes and not guests %}
+    <p class="muted">No Proxmox data yet. Add your Proxmox API token on <a href="/targets/source?kind=proxmox">Targets</a>, or add a Proxmox node as an SSH machine: atlas reads its VM list from <code>/etc/pve</code>.</p>
+    {% endif %}
+    {% for n in nodes %}
+    <div class="node-row">
+      <div class="node-head">{{ status_dot(n.status) }}<a href="/entity?key={{ n.key | urlencode }}"><strong>{{ n.short }}</strong></a>
+        <span class="muted small">{{ n.ips | first or "" }}</span></div>
+      <div class="guest-chips">
+        {% for g in guests if g.node == n.short %}
+        <a class="guest {{ 'off' if g.status != 'running' }}" href="/entity?key={{ g.key | urlencode }}" title="{{ g.kind | replace('pve-', '') | upper }} {{ g.vmid }} · {{ g.status }}{% if g.ips %} · {{ g.ips | first }}{% endif %}">
+          {{ status_dot(g.status) }}{{ g.short }}{% if g.containers %}<span class="badge">{{ g.containers }}</span>{% endif %}</a>
+        {% else %}<span class="muted small">No guests reported (add the Proxmox API or SSH this node).</span>{% endfor %}
+      </div>
+    </div>
+    {% endfor %}
   </div>
+
   <div class="card">
     <h2>Needs attention</h2>
     {% if d.problems or d.missing %}
     <ul class="plain">
-      {% for r in d.problems %}<li><span class="pill {{ r.status }}">{{ r.status }}</span> {{ r.target }} · {{ r.collector }} <span class="muted">{{ (r.errors | first) if r.errors else "" }}</span></li>{% endfor %}
+      {% for r in d.problems %}<li><span class="pill {{ r.status }}">{{ r.status }}</span> <strong>{{ r.target }}</strong> · {{ r.collector }} <span class="muted small">{{ (r.errors | first) if r.errors else "" }}</span></li>{% endfor %}
       {% for e in d.missing %}<li><span class="pill failed">missing</span> <a href="/entity?key={{ e.key | urlencode }}">{{ e.display_name }}</a></li>{% endfor %}
     </ul>
-    {% else %}<p class="muted">Nothing.</p>{% endif %}
+    {% else %}<p class="muted">Nothing. Every collector answered on the last scan.</p>{% endif %}
+    {% if discovered %}
+    <h3>Seen on the network, not documented yet</h3>
+    <p class="muted small">UniFi sees these servers, VMs and Pis, but atlas doesn't log in to them, so their services and containers are unknown.</p>
+    <ul class="plain discovered">
+      {% for x in discovered[:12] %}
+      <li><span class="pill info">{{ x.category }}</span> <strong>{{ x.name }}</strong> <code>{{ x.ip or "" }}</code>
+        {% if can_add %}<a class="small" href="/targets/host?prefill_name={{ x.name | urlencode }}&amp;prefill_address={{ (x.ip or '') | urlencode }}&amp;prefill_type={{ x.type }}">Add as target</a>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
   </div>
 </section>
 
-{% if sched %}
-<section class="card">
-  <h2>Schedule
-    <form class="inline" method="post" action="/scan" hx-post="/scan" hx-target="#scan-status" hx-swap="outerHTML">
-      <input type="hidden" name="csrf_token" value="{{ csrf }}">
-      <button type="submit" class="small">Scan now</button>
-    </form></h2>
-  {% set message = None %}{% include "_scan_status.html" %}
+<section class="card" id="machines">
+  <div class="section-head">
+    <h2>Machines</h2>
+    <div class="seg" role="group" aria-label="Filter machines" data-filter-target="#machine-grid">
+      <button type="button" class="seg-btn on" data-filter="all">All</button>
+      <button type="button" class="seg-btn" data-filter="pve-node">Proxmox nodes</button>
+      <button type="button" class="seg-btn" data-filter="pve-vm">VMs</button>
+      <button type="button" class="seg-btn" data-filter="pve-lxc">LXC</button>
+      <button type="button" class="seg-btn" data-filter="linux-host nas">Other</button>
+    </div>
+    <input type="search" class="grid-search" placeholder="Search name, IP, app…" data-search-target="#machine-grid" maxlength="64">
+  </div>
+  <div class="machine-grid" id="machine-grid">
+    {% for m in machines %}
+    <a class="machine" href="/entity?key={{ m.key | urlencode }}" data-kind="{{ m.kind }}" data-search="{{ m.short }} {{ m.ips | join(' ') }} {{ m.apps | map(attribute='name') | join(' ') }} {{ m.os or '' }}">
+      <div class="m-head">{{ status_dot(m.status) }}<strong>{{ m.short }}</strong>
+        <span class="m-kind">{% if m.kind == "pve-node" %}PVE node{% elif m.vmid %}{{ "VM" if m.kind == "pve-vm" else "LXC" }} {{ m.vmid }}{% if m.node %} · {{ m.node }}{% endif %}{% else %}{{ m.kind | replace("linux-host", "host") }}{% endif %}</span></div>
+      <div class="m-line"><code>{{ m.ips | first or "no IP seen" }}</code>{% if m.ips | length > 1 %}<span class="muted small"> +{{ m.ips | length - 1 }}</span>{% endif %}
+        {% if m.vlan is not none %}<span class="muted small"> · VLAN {{ m.vlan }}</span>{% endif %}</div>
+      <div class="m-line muted small">{{ m.os or ("not documented: add it on Targets" if not m.documented and m.kind != "pve-node" else "") }}{% if m.cores %} · {{ m.cores }} vCPU{% endif %}{% if m.memory_mb %} · {{ (m.memory_mb / 1024) | round(1) }} GB{% endif %}</div>
+      {{ app_chips(m.apps, 6) }}
+      <div class="m-foot">{% if m.documented %}{{ m.services }} services · {{ m.ports }} ports{% endif %}{% if m.containers %} · {{ m.containers_running }}/{{ m.containers }} containers{% endif %}</div>
+    </a>
+    {% else %}<p class="muted">No machines yet. Add some on <a href="/targets">Targets</a>.</p>{% endfor %}
+  </div>
 </section>
-{% endif %}
 
-<section class="card">
-  <h2>Recent changes <a class="more" href="/changes">all</a></h2>
-  <table class="events"><tbody>
-    {% for row in d.events %}{% set e = row.event %}
-    <tr><td><span class="sev {{ e.severity }}">{{ e.severity }}</span></td><td><code>{{ e.type }}</code></td>
-        <td><a href="/entity?key={{ e.entity_key | urlencode }}">{{ e.summary }}</a></td></tr>
-    {% else %}<tr><td class="muted">No changes yet.</td></tr>{% endfor %}
-  </tbody></table>
+<section class="grid two">
+  <div class="card">
+    <h2>Recent changes <a class="more" href="/changes">all</a></h2>
+    <table class="events"><tbody>
+      {% for row in d.events[:10] %}{% set e = row.event %}
+      <tr><td><span class="sev {{ e.severity }}">{{ e.severity }}</span></td>
+          <td><a href="/entity?key={{ e.entity_key | urlencode }}">{{ e.summary }}</a></td></tr>
+      {% else %}<tr><td class="muted">No changes yet.</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+  {% if sched %}
+  <div class="card">
+    <h2>Schedule</h2>
+    {% set message = None %}{% include "_scan_status.html" %}
+  </div>
+  {% endif %}
 </section>
 {% endblock %}

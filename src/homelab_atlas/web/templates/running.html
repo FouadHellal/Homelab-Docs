@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Running{% endblock %}
+{% block main %}
+<header class="page-head">
+  <div>
+    <h1>What's running</h1>
+    <p class="muted">Apps atlas recognises, every running systemd service and every Docker container, across all machines it logs in to.</p>
+  </div>
+  <form method="get" action="/running" class="inline">
+    <input type="search" name="q" value="{{ q }}" placeholder="Filter: pihole, postgres, 5432, docker01…" maxlength="64" class="wide-search">
+  </form>
+</header>
+
+<nav class="tabs sticky-tabs">
+  <a href="#apps">Apps <span class="count">{{ r.apps_by_category.values() | map("length") | sum }}</span></a>
+  <a href="#services">Services <span class="count">{{ r.services | length }}</span></a>
+  <a href="#containers">Containers <span class="count">{{ r.containers | length }}</span></a>
+</nav>
+
+<section class="card" id="apps">
+  <h2>Apps</h2>
+  {% for cat, apps in r.apps_by_category.items() %}
+  <h3>{{ cat }}</h3>
+  <div class="app-grid">
+    {% for a in apps %}
+    <div class="app-card" data-cat="{{ a.category }}">
+      <div class="app-name">{{ a.name }}</div>
+      <div class="app-hosts">
+        {% for h in a.hosts %}
+        <a class="host-chip" href="/entity?key={{ h.key | urlencode }}">{{ h.name }}</a>{% if h.web_port and h.ip %}<a class="open" href="{{ 'https' if h.web_port in (443, 8006, 8007, 9443) else 'http' }}://{{ h.ip }}:{{ h.web_port }}" rel="noopener noreferrer" target="_blank" title="Open web UI">open ↗</a>{% endif %}
+        {% endfor %}
+      </div>
+      <div class="muted small">{{ a.evidence | join(" · ") }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}<p class="muted">No recognised apps yet. Add machines on <a href="/targets">Targets</a> so atlas can look inside them.</p>{% endfor %}
+</section>
+
+<section class="card" id="services">
+  <div class="section-head"><h2>Services <span class="muted small">(running systemd units)</span></h2>
+    <input type="search" class="table-search" placeholder="Filter services…" data-search-target="#svc-table" maxlength="64"></div>
+  <table class="data" id="svc-table"><thead><tr><th>Machine</th><th>Unit</th><th>Description</th><th>At boot</th></tr></thead><tbody>
+  {% for s in r.services %}
+  <tr data-search="{{ s.host }} {{ s.unit }} {{ s.description or '' }}"><td><a href="/entity?key={{ s.key | urlencode }}">{{ s.host }}</a></td><td><code>{{ s.unit }}</code></td><td class="muted">{{ s.description or "" }}</td><td>{{ s.enabled or "" }}</td></tr>
+  {% else %}<tr><td colspan="4" class="muted">None.</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+
+<section class="card" id="containers">
+  <div class="section-head"><h2>Containers</h2>
+    <input type="search" class="table-search" placeholder="Filter containers…" data-search-target="#ctr-table" maxlength="64"></div>
+  <table class="data" id="ctr-table"><thead><tr><th>Machine</th><th>Container</th><th>Image</th><th>State</th><th>Project</th><th>Published</th></tr></thead><tbody>
+  {% for c in r.containers %}
+  <tr data-search="{{ c.host }} {{ c.name }} {{ c.image }} {{ c.compose_project or '' }}">
+    <td><a href="/entity?key={{ c.key | urlencode }}">{{ c.host }}</a></td><td><strong>{{ c.name }}</strong></td><td><code>{{ c.image }}</code></td>
+    <td><span class="pill {{ 'ok' if c.status == 'running' else 'failed' }}">{{ c.status }}</span>{% if c.health %} <span class="pill {{ 'ok' if c.health == 'healthy' else 'partial' }}">{{ c.health }}</span>{% endif %}</td>
+    <td>{{ c.compose_project or "" }}</td><td class="small">{{ c.ports | join(", ") }}</td></tr>
+  {% else %}<tr><td colspan="6" class="muted">None.</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+{% endblock %}
