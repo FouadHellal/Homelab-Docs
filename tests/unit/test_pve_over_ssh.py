@@ -90,3 +90,29 @@ def test_procs_parser_handles_spaces_and_skips_kernel_threads() -> None:
     assert "pveproxy" in names
     assert not any(p.args and p.args.startswith("[") for p in procs)
     assert all(p.pid != 2 for p in procs)
+
+
+def test_probe_never_reads_pve_secrets() -> None:
+    probe = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "homelab_atlas"
+        / "probe"
+        / "templates"
+        / "atlas-probe.sh"
+    ).read_text(encoding="utf-8")
+    section = probe[probe.index("    pve)") : probe.index(";;", probe.index("    pve)"))]
+    reads = [ln for ln in section.splitlines() if ln.strip().startswith(("part ", "files "))]
+    assert reads
+    for ln in reads:
+        assert "priv" not in ln, ln  # keys, API tokens, shadow.cfg (pmxcfs docs)
+        assert "storage.cfg" not in ln, ln
+        assert "user.cfg" not in ln, ln
+
+
+def test_pve_guest_secrets_are_redacted(tmp_path: Path) -> None:
+    rt = _scan_without_pve_api(tmp_path)
+    with rt.sessions() as s:
+        blobs = [str(f.data) for f in s.scalars(select(Facet)).all()]
+    assert blobs
+    assert not any("ATLASFAKEhash" in b for b in blobs)  # the cipassword hash never lands
