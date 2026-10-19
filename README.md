@@ -182,10 +182,16 @@ sudo atlas uninstall          # stop and remove containers (add --purge to delet
 
 **Updating keeps everything you entered.** `sudo atlas update`:
 
-1. fast-forwards the clone (`git pull --ff-only`, never discards local edits);
+1. fast-forwards the clone (`git pull --ff-only`), running git as the clone's owner so your
+   GitHub login works with a private repository. It never discards local edits. If the pull
+   fails, the update **stops** and says why, instead of reinstalling the old code;
 2. writes a backup to `/opt/atlas/backups/pre-update-<date>.tar.gz` (the last 5 are kept);
 3. pulls the new image (or rebuilds it if you installed with `--build`);
-4. restarts the stack.
+4. recreates the container and prints `updated: atlas 0.2.0 -> atlas 0.3.1`. If the version
+   did not change, it says so.
+
+Then reload the page with **Ctrl+F5**. `sudo atlas version` shows the running version and the
+commit of your clone.
 
 Your targets, stored passwords and keys, accounts, notes and history live in the data volume and
 in `/opt/atlas` (`.env`, `secrets/`, `config/`). An update never deletes them. Database changes
@@ -227,6 +233,7 @@ The bearer token is in `/opt/atlas/secrets/mcp_token`. See [docs/DEPLOY.md §6](
 | UniFi local: certificate error | Fetch the certificate again (the gateway's certificate changed after an update) and confirm it. |
 | Forgot the password | `sudo atlas user passwd <name>` |
 | Topology/dashboard shows no Proxmox nodes or VMs | Add a Proxmox node as `proxmox-node` with sudo, or fix the token: **Test connection** says "sees no nodes" when the *token itself* lacks the PVEAuditor role (privilege separation). Run the last `pveum acl modify … --tokens` line of section 1. |
+| `sudo atlas update` changed nothing | Run `sudo atlas version`. If the commit is old, `git pull` failed (often a private repo: root has no GitHub login). Run `git -C <your clone> pull` as your own user, then `sudo atlas update --no-pull`, then Ctrl+F5 in the browser. |
 | A machine never gets documented | Look at its **Last scan** on Targets. *Not scanned yet*: press Scan. *Failed*: open the line for the reason (wrong password, `PasswordAuthentication no`, host key, timeout). |
 | A Pi-hole (or other box) shows no services | It isn't a target yet: add it as a machine, then **Scan**. |
 

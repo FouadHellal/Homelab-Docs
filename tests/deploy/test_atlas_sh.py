@@ -181,9 +181,11 @@ def test_update_pulls_code_backs_up_and_keeps_everything(tmp_path: Path) -> None
     assert "pull --ff-only" in log  # the clone is fast-forwarded first
     assert log.count("pull --ff-only") == 1  # the re-run of the new script does not pull again
     assert " pull atlas" in log
-    assert " up -d" in log
+    assert " up -d --force-recreate" in log
     assert " down" not in log  # the data volume is never removed
-    assert "9.9.9-fake" in res.stdout
+    assert "code already up to date" in res.stdout
+    assert "Ctrl+F5" in res.stdout
+    assert "still running atlas 9.9.9-fake" in res.stderr  # same fake image: says so
     backups = list((d / "backups").glob("pre-update-*.tar.gz"))
     assert len(backups) == 1
     assert (d / "secrets" / "atlas_master_key").read_bytes() == key
@@ -206,13 +208,15 @@ def test_update_keeps_only_recent_backups(tmp_path: Path) -> None:
     assert not any(n.startswith("pre-update-2026010") for n in names[-1:])  # the new one stays
 
 
-def test_update_continues_when_git_pull_fails(tmp_path: Path) -> None:
+def test_update_stops_loudly_when_git_pull_fails(tmp_path: Path) -> None:
+    # Silently carrying on with the old code looked like "the update did nothing".
     _installed(tmp_path)
     res, log = _run(tmp_path, "update", "--no-backup", git_rc=1)
-    assert res.returncode == 0, res.stdout + res.stderr
-    assert "git pull failed" in res.stderr
-    assert " pull atlas" in log
-    assert not (tmp_path / "atlas" / "backups").exists()
+    assert res.returncode != 0
+    assert "git pull failed, so nothing was updated" in res.stderr
+    assert "update --no-pull" in res.stderr
+    assert " pull atlas" not in log
+    assert " up -d" not in log
 
 
 def test_update_flags_and_not_installed(tmp_path: Path) -> None:
