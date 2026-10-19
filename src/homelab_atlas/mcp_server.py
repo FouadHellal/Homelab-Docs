@@ -11,10 +11,12 @@ import ipaddress
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from typing import Any, Final
+from typing import Annotated, Any, Final
 
+import structlog
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
+from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -25,7 +27,10 @@ from homelab_atlas.store.tables import Annotation, Entity, Facet
 from homelab_atlas.web import queries
 
 MAX_RESULT_BYTES: Final = 200_000
+#: Tool arguments are short identifiers or search terms; refuse anything longer.
+Arg = Annotated[str, Field(max_length=128)]
 MAX_ROWS: Final = 500
+log = structlog.get_logger()
 READ_ONLY: Final = ToolAnnotations(
     read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
 )
@@ -78,16 +83,18 @@ def build_server(
         }
 
     @mcp.tool(annotations=READ_ONLY, structured_output=True)
-    def list_hosts(kind: str | None = None, query: str | None = None) -> dict[str, Any]:
+    def list_hosts(kind: Arg | None = None, query: Arg | None = None) -> dict[str, Any]:
         """List machines and devices. kind: linux-host, pve-vm, pve-lxc, pve-node, unifi-device,
         nas, container, unknown-device... query: substring of name or key."""
+        log.info("mcp.tool", tool="list_hosts", sanitized=sanitize_key is not None)
         with sessions() as s:
             return out([entity_row(e) for e in queries.entities(s, kind, query)[:MAX_ROWS]])
 
     @mcp.tool(annotations=READ_ONLY, structured_output=True)
-    def get_host(name_or_key: str) -> dict[str, Any]:
+    def get_host(name_or_key: Arg) -> dict[str, Any]:
         """Everything known about one machine: facets per collector (linux-ssh, docker, proxmox,
         unifi, nas, pi), annotation, children, recent changes. Accepts an entity key or a name."""
+        log.info("mcp.tool", tool="get_host", sanitized=sanitize_key is not None)
         with sessions() as s:
             key = name_or_key
             if s.get(Entity, key) is None:
@@ -131,8 +138,9 @@ def build_server(
             )
 
     @mcp.tool(annotations=READ_ONLY, structured_output=True)
-    def list_containers(host: str | None = None, query: str | None = None) -> dict[str, Any]:
+    def list_containers(host: Arg | None = None, query: Arg | None = None) -> dict[str, Any]:
         """Docker containers with image, status, health, published ports and compose project."""
+        log.info("mcp.tool", tool="list_containers", sanitized=sanitize_key is not None)
         with sessions() as s:
             rows = []
             for f in s.scalars(select(Facet).where(Facet.collector == "docker")):
@@ -160,8 +168,9 @@ def build_server(
             return out(rows[:MAX_ROWS])
 
     @mcp.tool(annotations=READ_ONLY, structured_output=True)
-    def search_ip(ip_or_cidr: str) -> dict[str, Any]:
+    def search_ip(ip_or_cidr: Arg) -> dict[str, Any]:
         """Who has this IP, or which IPs fall in a CIDR (e.g. 10.0.30.0/24). Also matches MACs."""
+        log.info("mcp.tool", tool="search_ip", sanitized=sanitize_key is not None)
         with sessions() as s:
             rows = queries.ip_table(s)
             try:
@@ -175,8 +184,9 @@ def build_server(
             return out(hits[:MAX_ROWS])
 
     @mcp.tool(annotations=READ_ONLY, structured_output=True)
-    def find_service(query: str) -> dict[str, Any]:
+    def find_service(query: Arg) -> dict[str, Any]:
         """Find a service by port number, process, container, image or systemd unit name."""
+        log.info("mcp.tool", tool="find_service", sanitized=sanitize_key is not None)
         q = query.lower().strip()[:64]
         with sessions() as s:
             ports = [
@@ -200,10 +210,11 @@ def build_server(
 
     @mcp.tool(annotations=READ_ONLY, structured_output=True)
     def what_changed(
-        since_hours: int = 24, severity: str | None = None, query: str | None = None
+        since_hours: int = 24, severity: Arg | None = None, query: Arg | None = None
     ) -> dict[str, Any]:
         """Change events (port opened, image updated, new device on VLAN, host unreachable...)
         from the last `since_hours` hours, newest first. severity: warning | notice | info."""
+        log.info("mcp.tool", tool="what_changed", sanitized=sanitize_key is not None)
         since = datetime.now(UTC) - timedelta(hours=max(1, min(since_hours, 24 * 365)))
         with sessions() as s:
             rows = [
@@ -225,6 +236,7 @@ def build_server(
     @mcp.tool(annotations=READ_ONLY, structured_output=True)
     def list_unknown_devices(include_acknowledged: bool = False) -> dict[str, Any]:
         """Devices seen on the network (UniFi clients, ARP) that no inventory entry explains."""
+        log.info("mcp.tool", tool="list_unknown_devices", sanitized=sanitize_key is not None)
         with sessions() as s:
             return out(
                 [
@@ -257,7 +269,12 @@ class BearerAuth:
         self.app, self.expected = app, f"Bearer {token}".encode()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "http":
+        if scope["type"] == "websocket":
+            supplied = dict(scope.get("headers") or []).get(b"authorization", b"")
+            if not hmac.compare_digest(supplied, self.expected):
+                await send({"type": "websocket.close", "code": 1008})
+                return
+        elif scope["type"] == "http":
             supplied = dict(scope.get("headers") or []).get(b"authorization", b"")
             if not hmac.compare_digest(supplied, self.expected):
                 await send(
