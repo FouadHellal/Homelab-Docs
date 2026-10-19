@@ -126,14 +126,27 @@ never reads Wi-Fi passwords.
 Passwords and keys are stored encrypted and are never shown again. `root` logins are refused:
 use a normal user, with sudo if you want Docker details.
 
+**Everything that runs, not only Docker.** A machine scan lists every systemd service (running,
+stopped or failed), the running processes, listening ports and timers. atlas then recognises about
+70 common apps from those, so a Pi-hole installed with its script shows up as Pi-hole, next to
+Unbound, Tailscale and the rest. Add the Pi-hole (and any other box) as a machine to see this.
+Process command lines are redacted before they are stored.
+
+**Proxmox VMs without an API token.** Add each Proxmox node as a machine (Linux, with sudo).
+atlas reads the cluster's guest list and guest configs from `/etc/pve` over SSH and shows every
+VM and LXC under its node, as the API would. It never reads `/etc/pve/priv`. If you also add a
+Proxmox API token (section 1), the API is used instead.
+
 ### What you get
 
 | Page | What's there |
 |---|---|
-| **Dashboard** | Counts, last scans, problems, recent changes, "Scan now" |
-| **Inventory** | Every machine; open one for OS, network, ports, services, containers, disks, users, notes and history |
-| **Topology** | Physical (gateway → switches → APs → hosts), logical (Proxmox node → VMs → containers), VLANs |
-| **IPs / VLANs / Ports** | Searchable tables |
+| **Dashboard** | Clickable tiles, your Proxmox nodes with their guests, a card per machine with the apps found on it (filter by kind, search), problems, devices seen on the network but not documented yet, recent changes, "Scan now" |
+| **Running** | Everything that runs, on every machine: recognised apps by category (Pi-hole, Unbound, Tailscale, Home Assistant, Jellyfin, NetBox, Grafana…), every systemd service, every container. It is searchable. |
+| **Inventory** | Every machine. Open one for OS, network, ports, a **Running** panel (services, containers, processes, ports, timers), disks, users, notes and history |
+| **Topology** | **Proxmox**: cluster → nodes → VMs/LXCs, containers on demand. **Network**: gateway → switches → APs → hosts. **VLANs**. Hover to highlight links, click for details, **right-click** for actions (open, open web UI, copy IP, focus, show containers, hide, add as target), search, three layouts, PNG export |
+| **IPs** | One row per device with all its addresses, MACs and networks. Link-local and Docker-bridge addresses are hidden until you ask for them |
+| **VLANs / Ports** | Searchable tables |
 | **Changes** | Typed events: port opened, image updated, container restarted, new device on a VLAN, VM not backed up… |
 | **Unknown** | Devices on the network you haven't added, infrastructure first |
 
@@ -143,11 +156,31 @@ Scans run on their own: UniFi and Proxmox every 15 min, machines hourly. Use **S
 ## Day-to-day
 
 ```bash
-sudo ./deploy/atlas.sh status          # health, address, certificate fingerprint
-sudo ./deploy/atlas.sh logs            # follow the logs
-git pull && sudo ./deploy/atlas.sh update    # new version (pull or rebuild), restart
-sudo ./deploy/atlas.sh backup          # DB + config to a .tar.gz
-sudo ./deploy/atlas.sh uninstall       # stop and remove containers (add --purge to delete data)
+sudo atlas update             # new version: git pull, DB backup, new image, restart
+sudo atlas status             # health, address, certificate fingerprint
+sudo atlas logs               # follow the logs
+sudo atlas version            # running version
+sudo atlas backup             # DB + config to a .tar.gz
+sudo atlas uninstall          # stop and remove containers (add --purge to delete data)
+```
+
+`atlas` is a shortcut to `deploy/atlas.sh` that `install` and `update` put in `/usr/local/bin`.
+
+**Updating keeps everything you entered.** `sudo atlas update`:
+
+1. fast-forwards the clone (`git pull --ff-only`, never discards local edits);
+2. writes a backup to `/opt/atlas/backups/pre-update-<date>.tar.gz` (the last 5 are kept);
+3. pulls the new image (or rebuilds it if you installed with `--build`);
+4. restarts the stack.
+
+Your targets, stored passwords and keys, accounts, notes and history live in the data volume and
+in `/opt/atlas` (`.env`, `secrets/`, `config/`). An update never deletes them. Database changes
+are migrated automatically on start. Options: `--no-pull` (keep the code), `--no-backup`, `--build`.
+
+**Coming from the first version** (no `atlas` shortcut yet), run once in your clone:
+
+```bash
+git pull && sudo ./deploy/atlas.sh update
 ```
 
 **Back up `/opt/atlas/secrets/atlas_master_key` separately.** Without it the stored passwords
@@ -178,7 +211,9 @@ The bearer token is in `/opt/atlas/secrets/mcp_token`. See [docs/DEPLOY.md §6](
 | VM scan is *partial* | No sudo, so Docker details, port owners and root crontabs are missing. Tick *use for sudo*, or give the user sudo. |
 | UniFi cloud: *the key was refused* | The key is from unifi.ui.com but was entered as Local, or the other way round. Pick the other option. |
 | UniFi local: certificate error | Fetch the certificate again (the gateway's certificate changed after an update) and confirm it. |
-| Forgot the password | `sudo ./deploy/atlas.sh user passwd <name>` |
+| Forgot the password | `sudo atlas user passwd <name>` |
+| Topology/dashboard shows no Proxmox nodes or VMs | Add a Proxmox API token (Targets → Sources), or add each PVE node as a machine with sudo (see *Proxmox VMs without an API token*). |
+| A Pi-hole (or other box) shows no services | It isn't a target yet: add it as a machine, then **Scan**. |
 
 ## Architecture
 

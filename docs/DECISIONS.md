@@ -425,3 +425,87 @@ Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a
   - VMs without the QEMU guest agent therefore still show IPs, VLANs and their switch on the host page, in the topology, in exports and in MCP answers.
 
 **Rejected.** Active scanning or fingerprinting (ADR-016 passive only); vendor lookups over the internet; hiding devices outright (they're one click away, and the owner decides).
+
+## ADR-028 Proxmox VE over SSH: guests from /etc/pve when there is no API token (v2, owner request)
+**Context.** The owner added their PVE node as an SSH machine but no Proxmox API source, so the dashboard showed no nodes and no VMs. "I want the topology of the two Proxmox and which VMs they cover."
+
+**Facts used.** From the Proxmox VE Administration Guide, chapter "Proxmox Cluster File System (pmxcfs)", for version 9.2.13 (read 2026-10-19):
+- Guest configs live in `/etc/pve/nodes/<node>/qemu-server/<vmid>.conf` and `/etc/pve/nodes/<node>/lxc/<vmid>.conf`.
+- `.members` and `.vmlist` are status files. The guide says they are JSON but gives no schema, so the parser is lenient and tolerates missing keys.
+- `/etc/pve/priv/` holds `authkey.key`, `token.cfg`, `shadow.cfg` and storage passwords. It is root-only.
+- Group `www-data` can read most of the other files.
+
+**Decisions.**
+- Probe 1.4.0 gains a `pve` section that reads exactly these files:
+  - `pveversion`;
+  - `.members` and `.vmlist`;
+  - the `qemu-server/*.conf` and `lxc/*.conf` globs;
+  - `ls /run/qemu-server` and `/sys/fs/cgroup/lxc` for the running state.
+- **`priv/` is never read.** The paths are constants in the probe, and a test fails if `priv` appears in them.
+- Config values go through the Redactor, as for every collector. `cipassword` and similar fields are redacted.
+- The parser stops at the first `[snapshot]` section, so only the current config counts.
+- The linux-ssh collector emits `pve-node` and `pve-vm`/`pve-lxc` facets under the **same entity keys as the API collector**: `pve:node:{cluster}/{node}` and `pve:{vm|lxc}:{cluster}/{vmid}`. Each node emits itself and the guests in its own `nodes/<self>/` directory.
+- `cluster_guests` (volatile) lets reconciliation claim the MACs and names of guests on nodes that aren't scanned yet. The topology then shows them as "not documented" placeholders under the right node.
+- The SSH path is skipped when a Proxmox API source exists. The API stays authoritative and the two never fight over a key.
+- A new `procs` section adds `ps` with fixed columns, args only. Command lines are redacted, at most 600 rows are kept, kernel threads are dropped, and it is volatile (never diffed).
+- When `systemctl --output=json` is unavailable, a plain-text `list-units` fallback is used.
+
+**Rejected.**
+- Running `qm`/`pct` commands: they need root and widen the allowlist.
+- Reading `/etc/pve/priv` or `storage.cfg` secrets.
+- Calling the local API with a ticket over SSH: that is a credential on the wire.
+
+## ADR-029 What runs where: app recognition and the Running views (v2, owner request)
+**Context.** "Check everything that is running on the VMs, not only Dockers, but also services… especially in the Pi-hole."
+
+**Decisions.**
+- **`engine/apps.py`** is a static catalog of about 70 apps. Each entry has systemd unit prefixes, process names, container image substrings, well-known ports and a web UI port. Catalog entries cover:
+  - DNS, VPN, remote access, proxies;
+  - hypervisor and containers;
+  - home automation, media, files;
+  - automation, dev, monitoring, databases;
+  - system apps.
+- **Evidence rules.** A unit, process or image is required. A listening port alone is weak evidence and never identifies an app; it is only added as supporting evidence.
+- **Web UI link.** It is offered only when the web port is actually listening, or when there is no socket list at all.
+- **Computed on read, never stored.** Recognition runs when a page loads, so improving the catalog changes old scans too and needs no migration.
+- **Machines read model (`web/views.py`).** One card per box. A Proxmox guest and the Linux host inside it are merged through `same_as`. Each card carries its services, containers, ports and apps.
+- **Where it shows up:**
+  - the `/running` page (all machines, searchable);
+  - a Running panel on host pages (tabs: services, containers, processes, ports, timers);
+  - dashboard cards;
+  - topology panels.
+- **IP table: one row per device.** Rows are grouped by entity. Link-local, loopback and container-bridge addresses (`docker*`, `br-*`, `veth*`…) are hidden behind a link. A stale "unknown device" row is dropped when the same MAC belongs to a documented entity.
+
+**Rejected.**
+- Storing app detections as facets: they would raise diff noise every time the catalog changed.
+- Fingerprinting by connecting to ports: that is active probing, which ADR-016 rules out.
+
+## ADR-030 Topology v2: Proxmox-first, interactive (v2, owner request)
+**Context.** "The topology of the two Proxmox and which VMs they cover… interactive, right click… effects… better looking."
+
+**Decisions.**
+- **The logical view is now "Proxmox":**
+  - compound boxes go cluster → node → guests;
+  - an "Other machines" group holds Pis, NAS and bare-metal hosts;
+  - containers are separate nodes, hidden by default, linked by a dashed "runs" edge and placed inside their machine's node box.
+- **Tidy layout.** A deterministic preset layout places guests in rows. Each row is as tall as the tallest container stack under it, so nothing overlaps; a test checks this in the browser, and the read model is checked in `tests/web/test_v2_pages.py`. Organic (cose) and Rings (concentric) are offered as alternatives.
+- **Interaction:**
+  - hover highlights neighbours;
+  - click opens a side panel;
+  - double-click opens the host page;
+  - right-click menu: open, open web UI, copy IP, focus, highlight, show/hide containers, hide, add as target;
+  - background menu: fit, re-arrange, show hidden, PNG, scan everything (POST with the CSRF header);
+  - search, plus toggles for containers and undocumented machines.
+- **Rendering:**
+  - status borders and a glow underlay;
+  - animated dashes on uplinks and "runs" edges, disabled under `prefers-reduced-motion`;
+  - SVG data-URI icons, which the CSP allows (`img-src 'self' data:`);
+  - name and IP as two label lines.
+  - Panel text is set with `textContent` only, so there is no HTML from target data.
+- **Visibility.** Layout code uses its own check (the `gone-hidden` class on the element or an ancestor). Cytoscape's `visible()` is stale right after a class toggle in a batch, which placed newly shown containers wrongly.
+- **Updates.** `atlas update` does a `git pull --ff-only` of the clone, writes a pre-update backup (the last 5 are kept), pulls the image and restarts. A `/usr/local/bin/atlas` shortcut makes this one command. The data volume, `.env`, `secrets/` and `config/` are never touched.
+
+**Rejected.**
+- A WebGL or 3D graph library: a bigger vendored surface for little gain.
+- Free-form saved positions: the layout would no longer be reproducible, and they could be added later.
+- Auto-updating from inside the container (watchtower-style): it needs the Docker socket inside atlas.

@@ -88,6 +88,10 @@ The latest review pass and its findings are in [docs/SECURITY-REVIEW.md](docs/SE
 ## Operating it safely
 
 - **Network:** LAN or VPN only, behind your TLS reverse proxy. Never port-forward it.
+- **What v2 reads in addition** (probe 1.4.0):
+  - `ps` command lines, which go through the Redactor before storage and are never diffed;
+  - on Proxmox nodes, `/etc/pve` guest configs and the `.members`/`.vmlist` status files. `/etc/pve/priv` (keys, API tokens, `shadow.cfg`) is never read; a test checks the probe's paths (ADR-028).
+- **`atlas update`** runs `git pull --ff-only` in your clone as root, so only update from a remote you trust. It never resets local edits, and it never touches targets.
 - **Updates:** pin image tags, rotate the Proxmox token and the UniFi key yearly, and keep the
   collector's SSH key on the deploy host only (`from=` in `authorized_keys`).
 - **Doctor:** run `atlas doctor --live` after every target change. It flags excess privilege,
