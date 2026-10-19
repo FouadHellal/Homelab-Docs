@@ -17,6 +17,8 @@ from urllib.parse import urlsplit
 
 from pydantic import SecretStr, ValidationError
 
+from homelab_atlas.collectors.unifi import endpoints as unifi_ep
+from homelab_atlas.collectors.unifi import sitemanager as sm
 from homelab_atlas.inventory.hosts import (
     HostEntry,
     Inventory,
@@ -36,6 +38,8 @@ from homelab_atlas.inventory.managed import (
 )
 from homelab_atlas.security import discover
 from homelab_atlas.security.audit import AuditEvent, AuditSink
+from homelab_atlas.security.errors import HttpStatusError, TransportError
+from homelab_atlas.security.http import AuthHeader, HttpLimits, ReadOnlyHttpClient, TlsPolicy
 from homelab_atlas.security.ssh_keys import ATLAS_KEY_SECRET, generate_client_key, public_line
 from homelab_atlas.security.vault import Vault
 
@@ -79,6 +83,9 @@ class SourceForm:
     cert_sha256: str = ""
     cert_confirmed: bool = False
     original: str = ""
+    #: UniFi only: "local" (gateway API) or "cloud" (unifi.ui.com key via the connector)
+    connection: Literal["local", "cloud"] = "local"
+    console_id: str = ""
 
 
 def normalize_url(kind: str, value: str) -> str:
@@ -118,6 +125,7 @@ class TargetsService:
         vault: Vault | None,
         audit: AuditSink,
         readonly_inventory: Inventory | None = None,
+        transport: Any = None,
     ) -> None:
         self._config_dir = config_dir
         self._store = ManagedInventory(data_dir)
@@ -125,6 +133,8 @@ class TargetsService:
         self._audit = audit
         #: Demo lab: show its inventory, refuse edits.
         self._readonly = readonly_inventory
+        #: Tests only: an httpx transport (security.http.replay_transport) for cloud calls.
+        self._transport = transport
 
     @property
     def editable(self) -> bool:
@@ -246,9 +256,12 @@ class TargetsService:
                 host_keys=keys,
             )
             entry = HostEntry(
-                name=form.name, address=form.address, type=form.type,  # type: ignore[arg-type]
-                collectors=tuple(collectors), ssh=ssh,  # type: ignore[arg-type]
-            )  # fmt: skip
+                name=form.name,
+                address=form.address,
+                type=form.type,  # type: ignore[arg-type]
+                collectors=tuple(collectors),  # type: ignore[arg-type]
+                ssh=ssh,
+            )
         except ValidationError as exc:
             raise TargetError(_errors(exc)) from None
         assert self._vault is not None  # noqa: S101 - editable implies a vault
@@ -286,17 +299,24 @@ class TargetsService:
         self._require_editable(form.name, form.kind)
         if form.original and form.original != form.name:
             self._require_editable(form.original, form.kind)
-        url = normalize_url(form.kind, form.url)
+        cloud = form.kind == "unifi" and form.connection == "cloud"
+        url = form.url if cloud else normalize_url(form.kind, form.url)
         existing = self.source(form.kind, form.original or form.name)
-        tls = existing.tls if existing else TlsSettings()
-        if form.cert_pem:
+        tls = existing.tls if existing and not cloud else TlsSettings()
+        if cloud:
+            if not form.console_id or not url.startswith("https://api.ui.com/"):
+                raise TargetError("click “Find my consoles” and pick your gateway first")
+            tls = TlsSettings(public_pki=True)
+        elif tls.public_pki:
+            tls = TlsSettings()
+        if form.cert_pem and not cloud:
             if not form.cert_confirmed:
                 raise TargetError("tick “I checked this fingerprint” to pin the certificate")
             if not re.fullmatch(r"[0-9a-f]{64}", form.cert_sha256):
                 raise TargetError("certificate fingerprint missing; fetch it again")
             ca_file = self._store.save_certificate(form.name, form.cert_pem)
             tls = TlsSettings(ca_file=ca_file, check_hostname=False, sha256_pin=form.cert_sha256)
-        if tls.ca_file is None:
+        if tls.ca_file is None and not tls.public_pki:
             raise TargetError("fetch and confirm the server certificate first")
         cred_name = secret_name(form.kind, form.name)
         if credential is not None:
@@ -310,7 +330,9 @@ class TargetsService:
             raise TargetError("enter the API token / key")
         try:
             model = SOURCE_MODELS[form.kind]
-            extra = {"drive_api": True} if form.kind == "unas" else {}
+            extra: dict[str, Any] = {"drive_api": True} if form.kind == "unas" else {}
+            if cloud:
+                extra = {"connection": "cloud", "console_id": form.console_id}
             source = model(name=form.name, url=url, credential=cred_name, tls=tls, **extra)
         except ValidationError as exc:
             raise TargetError(_errors(exc)) from None
@@ -336,6 +358,68 @@ class TargetsService:
         assert self._vault is not None  # noqa: S101
         self._vault.delete(secret_name(kind, name))
         self._record(f"ui.{kind}.delete", name)
+
+    # ------------------------------------------------------------------ UniFi cloud
+
+    def stored_credential(self, kind: SourceKind, name: str) -> SecretStr | None:
+        src = self.source(kind, name) if name else None
+        if src is None or self._vault is None or not self.has_secret(src.credential):
+            return None
+        return self._vault.resolve(src.credential)
+
+    async def find_unifi_consoles(self, key: SecretStr) -> list[dict[str, str]]:
+        """Consoles the unifi.ui.com key can reach (Site Manager GET /v1/hosts)."""
+        if not self.editable:
+            raise TargetError("read-only here")
+        async with self._site_manager(key) as client:
+            res = await client.get(sm.HOSTS, query={"pageSize": 100})
+        found = sm.consoles(res.json())
+        if not found:
+            raise TargetError("this key sees no UniFi consoles with the Network app")
+        return found
+
+    async def cloud_url(self, key: SecretStr, console_id: str) -> str:
+        """The connector base that answers GET /v1/info for this console (docs disagree)."""
+        if not re.fullmatch(sm.CONSOLE_ID_RE, console_id):
+            raise TargetError("pick a console from the list")
+        last = "no answer"
+        for template in sm.CONNECTOR_BASES:
+            base = template.format(id=console_id)
+            client = ReadOnlyHttpClient(
+                target="unifi-cloud",
+                base_url=base,
+                endpoints={unifi_ep.INFO},
+                audit=self._audit,
+                tls=TlsPolicy(ca_file=None, public_pki=True),
+                auth=AuthHeader("X-API-KEY", key),
+                limits=HttpLimits(min_interval_s=sm.CLOUD_MIN_INTERVAL_S),
+                transport=self._transport,
+            )
+            try:
+                async with client:
+                    await client.get(unifi_ep.INFO)
+            except HttpStatusError as exc:
+                last = f"HTTP {exc.status}"
+                if exc.status in (401, 403):
+                    raise TargetError(
+                        "the key was refused (401/403): check it at unifi.ui.com"
+                    ) from None
+            except TransportError as exc:
+                last = type(exc).__name__
+            else:
+                return base
+        raise TargetError(f"the console did not answer through the cloud connector ({last})")
+
+    def _site_manager(self, key: SecretStr) -> ReadOnlyHttpClient:
+        return ReadOnlyHttpClient(
+            target="unifi-site-manager",
+            base_url=sm.SITE_MANAGER,
+            endpoints={sm.HOSTS},
+            audit=self._audit,
+            tls=TlsPolicy(ca_file=None, public_pki=True),
+            auth=AuthHeader("X-API-KEY", key),
+            transport=self._transport,
+        )
 
     # ------------------------------------------------------------------ identity fetch
 
@@ -376,4 +460,13 @@ def source_form_from(
 ) -> SourceForm:
     if src is None:
         return SourceForm(kind=kind, name="", url="")
+    if isinstance(src, UnifiSource) and src.connection == "cloud":
+        return SourceForm(
+            kind=kind,
+            name=src.name,
+            url=src.url,
+            original=src.name,
+            connection="cloud",
+            console_id=src.console_id or "",
+        )
     return SourceForm(kind=kind, name=src.name, url=src.url or "", original=src.name)

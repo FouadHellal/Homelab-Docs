@@ -6,6 +6,7 @@ same-origin Origin header when one is sent; responses carry a strict nonce CSP. 
 autoescape and never mark target data safe (a test greps for `|safe`).
 """
 
+import re
 import secrets
 import time
 from collections import deque
@@ -30,7 +31,7 @@ from homelab_atlas import __version__
 from homelab_atlas.inventory import annotations as ann
 from homelab_atlas.inventory.managed import SourceKind
 from homelab_atlas.scheduler import Scheduler
-from homelab_atlas.security.errors import SecurityRefusal, TransportError
+from homelab_atlas.security.errors import HttpStatusError, SecurityRefusal, TransportError
 from homelab_atlas.store.tables import Annotation, Entity
 from homelab_atlas.store.tables import User as UserRow
 from homelab_atlas.web import auth, queries, topology
@@ -68,6 +69,8 @@ class WebConfig:
     targets: TargetsService | None = None
     #: First-run setup (ADR-026): while no account exists, /setup creates one with this token.
     setup_token_file: Path | None = None
+    #: Connection test for one API source: (kind, name) -> (ok, message).
+    source_tester: Callable[[str, str], Awaitable[tuple[bool, str]]] | None = None
     #: Quick SSH login test for one host: name -> (ok, message).
     tester: Callable[[str], Awaitable[tuple[bool, str]]] | None = None
 
@@ -405,9 +408,13 @@ def create_app(cfg: WebConfig) -> FastAPI:
                     status=202 if started else 200)  # htmx skips 4xx swaps  # fmt: skip
 
     @app.get("/entities", response_class=HTMLResponse)
-    def entity_list(request: Request, s: DB, user: User,
-                    kind: Annotated[str | None, Query(max_length=32)] = None,
-                    q: Annotated[str | None, Query(max_length=64)] = None) -> Response:  # fmt: skip
+    def entity_list(
+        request: Request,
+        s: DB,
+        user: User,
+        kind: Annotated[str | None, Query(max_length=32)] = None,
+        q: Annotated[str | None, Query(max_length=64)] = None,
+    ) -> Response:
         rows = queries.entities(s, kind, q)
         name = "_entity_rows.html" if partial(request) else "entities.html"
         return page(request, name, user, rows=rows, kinds=queries.kinds(s), kind=kind, q=q or "")
@@ -440,18 +447,39 @@ def create_app(cfg: WebConfig) -> FastAPI:
         return page(request, name, user, rows=queries.port_table(s, q), q=q or "")
 
     @app.get("/changes", response_class=HTMLResponse)
-    def changes(request: Request, s: DB, user: User,
-                severity: Annotated[str | None, Query(max_length=16)] = None,
-                q: Annotated[str | None, Query(max_length=64)] = None,
-                before: Annotated[int | None, Query(ge=1)] = None) -> Response:  # fmt: skip
+    def changes(
+        request: Request,
+        s: DB,
+        user: User,
+        severity: Annotated[str | None, Query(max_length=16)] = None,
+        q: Annotated[str | None, Query(max_length=64)] = None,
+        before: Annotated[int | None, Query(ge=1)] = None,
+    ) -> Response:
         rows = queries.changes(s, severity, q, before)
         name = "_change_rows.html" if partial(request) else "changes.html"
         return page(request, name, user, rows=rows, severity=severity or "", q=q or "")
 
     @app.get("/unknown", response_class=HTMLResponse)
-    def unknown(request: Request, s: DB, user: User, all: bool = False) -> Response:  # noqa: A002
+    def unknown(
+        request: Request,
+        s: DB,
+        user: User,
+        all: bool = False,  # noqa: A002 - query parameter name
+        everything: bool = False,
+    ) -> Response:
+        rows = queries.unknown_devices(s, include_ack=all)
+        # Infrastructure first: phones, TVs and IoT only on request (classify.py, ADR-027).
+        hidden = [r for r in rows if r.get("category") in ("personal", "iot")]
+        shown = rows if everything else [r for r in rows if r not in hidden]
         return page(
-            request, "unknown.html", user, rows=queries.unknown_devices(s, include_ack=all), all=all
+            request,
+            "unknown.html",
+            user,
+            rows=shown,
+            all=all,
+            everything=everything,
+            hidden=len(hidden),
+            can_add=cfg.targets is not None and cfg.targets.editable,
         )
 
     @app.post("/unknown/ack", response_class=HTMLResponse)
@@ -509,7 +537,9 @@ def create_app(cfg: WebConfig) -> FastAPI:
 
     @app.post("/entity/annotation", response_class=HTMLResponse)
     def annotation_save(
-        request: Request, s: DB, user: Csrf,
+        request: Request,
+        s: DB,
+        user: Csrf,
         key: Annotated[str, Form(max_length=256)],
         owner: Annotated[str, Form(max_length=128)] = "",
         purpose: Annotated[str, Form(max_length=512)] = "",
@@ -517,7 +547,7 @@ def create_app(cfg: WebConfig) -> FastAPI:
         tags: Annotated[str, Form(max_length=1024)] = "",
         links: Annotated[str, Form(max_length=8192)] = "",
         notes: Annotated[str, Form(max_length=8192)] = "",
-    ) -> Response:  # fmt: skip
+    ) -> Response:
         if s.get(Entity, key) is None:
             raise HTTPException(404, "no such entity")
         previous = _doc_for(s, key)
@@ -578,18 +608,31 @@ def create_app(cfg: WebConfig) -> FastAPI:
 
     @app.get("/targets/host", response_class=HTMLResponse)
     def target_host_form(
-        request: Request, user: User, name: Annotated[str, Query(max_length=64)] = ""
+        request: Request,
+        user: User,
+        name: Annotated[str, Query(max_length=64)] = "",
+        prefill_name: Annotated[str, Query(max_length=64)] = "",
+        prefill_address: Annotated[str, Query(max_length=255)] = "",
+        prefill_type: Annotated[str, Query(max_length=16)] = "",
     ) -> Response:
         svc = targets_svc()
         inv, _ = svc.inventory()
         entry = svc.host(name) if name else None
         if name and entry is None:
             raise HTTPException(404, "no such host")
+        form = host_form_from(entry, inv)
+        if entry is None:  # "Add as target" from the Unknown devices page
+            form.name = re.sub(r"[^A-Za-z0-9._-]+", "-", prefill_name).strip("-.")[:64]
+            form.address = prefill_address.strip()
+            if prefill_type in HOST_TYPES:
+                form.type = prefill_type
+                if prefill_type == "pi":
+                    form.collectors = ["linux-ssh", "pi"]
         return page(
             request,
             "target_host.html",
             user,
-            f=host_form_from(entry, inv),
+            f=form,
             editable=svc.editable,
             types=HOST_TYPES,
             collectors=HOST_COLLECTORS,
@@ -698,17 +741,19 @@ def create_app(cfg: WebConfig) -> FastAPI:
         )
 
     @app.post("/targets/source", response_class=HTMLResponse)
-    def target_source_save(
+    async def target_source_save(
         request: Request,
         user: Csrf,
         kind: Annotated[str, Form(max_length=8)],
         name: Annotated[str, Form(max_length=64)],
-        url: Annotated[str, Form(max_length=512)],
+        url: Annotated[str, Form(max_length=512)] = "",
         credential: Annotated[str, Form(max_length=4096)] = "",
         cert_pem: Annotated[str, Form(max_length=65536)] = "",
         cert_sha256: Annotated[str, Form(max_length=64)] = "",
         cert_confirmed: Annotated[str, Form(max_length=4)] = "",
         original: Annotated[str, Form(max_length=64)] = "",
+        connection: Annotated[str, Form(max_length=8)] = "local",
+        console_id: Annotated[str, Form(max_length=160)] = "",
     ) -> Response:
         svc = targets_svc()
         form = SourceForm(
@@ -719,8 +764,15 @@ def create_app(cfg: WebConfig) -> FastAPI:
             cert_sha256=cert_sha256.strip(),
             cert_confirmed=bool(cert_confirmed),
             original=original,
+            connection="cloud" if connection == "cloud" and kind == "unifi" else "local",
+            console_id=console_id.strip(),
         )
         try:
+            if form.connection == "cloud":
+                key = _secret(credential) or svc.stored_credential(form.kind, original or form.name)
+                if key is None:
+                    raise TargetError("enter the API key from unifi.ui.com")
+                form.url = await svc.cloud_url(key, form.console_id)
             svc.save_source(form, _secret(credential))
         except TargetError as exc:
             src = svc.source(form.kind, original or form.name)
@@ -736,6 +788,50 @@ def create_app(cfg: WebConfig) -> FastAPI:
                 pinned=src.tls if src else None,
             )
         return RedirectResponse(f"/targets?msg={quote(form.name + ' saved')}", 303)
+
+    @app.post("/targets/unifi/consoles", response_class=HTMLResponse)
+    async def target_unifi_consoles(
+        request: Request,
+        user: Csrf,
+        credential: Annotated[str, Form(max_length=4096)] = "",
+        name: Annotated[str, Form(max_length=64)] = "",
+        original: Annotated[str, Form(max_length=64)] = "",
+    ) -> Response:
+        svc = targets_svc()
+        key = _secret(credential) or svc.stored_credential("unifi", original or name)
+        if key is None:
+            return page(
+                request, "_consoles.html", user, consoles=[], error="enter the API key first"
+            )
+        try:
+            found = await svc.find_unifi_consoles(key)
+        except (TargetError, SecurityRefusal, TransportError, HttpStatusError) as exc:
+            msg = (
+                "the key was refused"
+                if isinstance(exc, HttpStatusError) and exc.status in (401, 403)
+                else _safe_error(exc)
+            )
+            return page(request, "_consoles.html", user, consoles=[], error=msg)
+        return page(request, "_consoles.html", user, consoles=found, error=None)
+
+    @app.post("/targets/source/test", response_class=HTMLResponse)
+    async def target_source_test(
+        request: Request,
+        user: Csrf,
+        kind: Annotated[str, Form(max_length=8)],
+        name: Annotated[str, Form(max_length=64)],
+    ) -> Response:
+        targets_svc()
+        if cfg.source_tester is None:
+            return page(
+                request,
+                "_test_result.html",
+                user,
+                ok=False,
+                text="testing is not available in the demo lab",
+            )
+        ok, text = await cfg.source_tester(_kind(kind), name)
+        return page(request, "_test_result.html", user, ok=ok, text=text)
 
     @app.post("/targets/source/delete")
     def target_source_delete(

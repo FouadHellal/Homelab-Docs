@@ -92,6 +92,14 @@ class TlsSettings(_Strict):
     ca_file: str | None = None
     check_hostname: bool = True
     sha256_pin: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    #: Public CAs instead of a pinned anchor: only for the UniFi cloud connector (ADR-026).
+    public_pki: bool = False
+
+    @model_validator(mode="after")
+    def _pki(self) -> "TlsSettings":
+        if self.public_pki and (self.ca_file or self.sha256_pin or not self.check_hostname):
+            raise ValueError("public_pki: no ca_file/sha256_pin, and host names are checked")
+        return self
 
 
 class ProxmoxSource(_Strict):
@@ -109,7 +117,23 @@ class UnifiSource(_Strict):
     legacy_enrichment: bool = False
     legacy_credential: str | None = None
     tls: TlsSettings = TlsSettings()
+    #: "local": the gateway's own API with a key from the Network app (default, no internet).
+    #: "cloud": a unifi.ui.com (Site Manager) key via Ubiquiti's connector (ADR-026).
+    connection: Literal["local", "cloud"] = "local"
+    console_id: str | None = Field(default=None, pattern=r"^[0-9A-Za-z]{1,128}:[0-9]{1,20}$")
     _cred = field_validator("credential", "legacy_credential")(_secret_name)
+
+    @model_validator(mode="after")
+    def _connection(self) -> "UnifiSource":
+        cloud_url = self.url.startswith("https://api.ui.com/v1/connector/consoles/")
+        if self.connection == "cloud":
+            if not (self.console_id and cloud_url and self.console_id in self.url):
+                raise ValueError(f"{self.name}: cloud needs console_id and its connector URL")
+            if not self.tls.public_pki:
+                raise ValueError(f"{self.name}: cloud connection uses tls.public_pki")
+        elif cloud_url or self.tls.public_pki:
+            raise ValueError(f"{self.name}: api.ui.com / public_pki only with connection: cloud")
+        return self
 
 
 class UnasSource(_Strict):

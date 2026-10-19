@@ -1,0 +1,11 @@
+<div id="consoles">
+{% if error %}<p class="error" role="alert">{{ error }}</p>
+{% else %}
+<p class="small">Consoles this key can reach. Pick the gateway that runs your network:</p>
+{% for c in consoles %}
+<label class="check"><input type="radio" name="console_id" value="{{ c.id }}"{% if loop.first %} checked{% endif %} required>
+  <span><strong>{{ c.name }}</strong> <span class="muted small">{{ c.type }}{% if c.ip %} · public IP {{ c.ip }}{% endif %} · id {{ c.id[:16] }}…</span></span></label>
+{% endfor %}
+{% endif %}
+<button type="button" class="ghost small" hx-post="/targets/unifi/consoles" hx-include="[name=credential],[name=name],[name=original],[name=csrf_token]" hx-target="#consoles">Search again</button>
+</div>

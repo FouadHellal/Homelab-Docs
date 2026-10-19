@@ -55,8 +55,12 @@ Passwords and API keys are stored encrypted and are never shown again.</p>
         {% if s.fixed %}<span class="pill info">hosts.yaml</span>{% endif %}</td>
       <td><code>{{ s.source.url }}</code></td>
       <td>{% if s.secret_set %}<span class="pill ok">set</span>{% else %}<span class="pill failed">missing</span>{% endif %}</td>
-      <td>{% if s.source.tls.sha256_pin %}<span class="pill ok">pinned</span>{% elif s.source.tls.ca_file %}<span class="pill ok">CA</span>{% else %}<span class="pill failed">none</span>{% endif %}</td>
-      <td class="actions">{% if sched %}
+      <td>{% if s.source.tls.public_pki %}<span class="pill info">cloud (api.ui.com)</span>{% elif s.source.tls.sha256_pin %}<span class="pill ok">pinned</span>{% elif s.source.tls.ca_file %}<span class="pill ok">CA</span>{% else %}<span class="pill failed">none</span>{% endif %}</td>
+      <td class="actions">{% if v.editable and kind != "unas" %}
+        <form method="post" action="/targets/source/test" hx-post="/targets/source/test" hx-target="#sres-{{ kind }}-{{ loop.index }}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="name" value="{{ s.source.name }}">
+          <button type="submit" class="small ghost">Test connection</button></form>{% endif %}
+        {% if sched %}
         <form method="post" action="/targets/scan" hx-post="/targets/scan" hx-target="#sres-{{ kind }}-{{ loop.index }}" class="inline">
           <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="name" value="{{ s.source.name }}">
           <button type="submit" class="small">Scan</button></form>{% endif %}
