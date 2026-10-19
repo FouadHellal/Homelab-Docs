@@ -10,6 +10,7 @@ repos:
       - id: check-merge-conflict
       - id: check-toml
       - id: check-yaml
+        exclude: ^docker-compose.proxy.yml$   # uses the compose-only !override tag
       - id: detect-private-key
         exclude: ^tests/security/corpus/
       - id: end-of-file-fixer
