@@ -1,10 +1,18 @@
 [project]
 name = "homelab-atlas"
-version = "0.2.0"
+version = "0.3.0"
 description = "Read-only, agentless auto-discovery and documentation of a homelab."
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
-license = { text = "Proprietary" }
+license = { text = "MIT" }
+keywords = ["homelab", "proxmox", "unifi", "documentation", "inventory", "topology", "self-hosted"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Systems Administration",
+    "Topic :: System :: Networking :: Monitoring",
+]
 authors = [{ name = "Fouad HELLAL" }]
 dependencies = [
     "alembic>=1.14",

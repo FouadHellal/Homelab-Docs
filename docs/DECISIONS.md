@@ -509,3 +509,75 @@ Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a
 - A WebGL or 3D graph library: a bigger vendored surface for little gain.
 - Free-form saved positions: the layout would no longer be reproducible, and they could be added later.
 - Auto-updating from inside the container (watchtower-style): it needs the Docker socket inside atlas.
+
+## ADR-031 Proxmox facts from three sources, one view (v3, supersedes the "API wins, SSH skipped" rule of ADR-028)
+**Context.** On a real lab the owner had configured an API source whose token saw nothing, and ADR-028 then skipped the SSH path entirely. The result was no nodes and no VMs. A node's `/etc/pve` is the cluster file system: one node holds every node's guest configs (pmxcfs, PVE 9.2 admin guide).
+
+**Decisions.**
+- **Three facet names, all kept.**
+  - `proxmox`: the API.
+  - `pve-ssh`: a node about itself and its own guests, with running state from `/run/qemu-server` and the lxc cgroups.
+  - `pve-ssh-peer`: a node's view of the other nodes and their guests. Config only, with status `unknown`.
+  - `FacetResult.store_as` stores a facet under a name other than the collector's. A collector declares its `extra_facets`, so stale facets are removed per target and per facet name.
+- **One view for readers.** `store.facets.facet_views()` collapses the three into a single `proxmox` facet, the strongest present (API > pve-ssh > pve-ssh-peer), with `source` kept for the UI ("from the node over SSH"). The UI, exports and MCP never see duplicates.
+- **Events come from the strongest source only** (`ScanEngine._speaks_for`). Peers never raise events, and pve-ssh doesn't when an API facet exists. The demo lab's A→B golden diff is unchanged.
+- **A token that sees nothing is diagnosed.** If `/cluster/status` and `/cluster/resources` return nothing, the run is `partial` and the error says to give the *token* the PVEAuditor role. The run is not `complete`, so an empty answer never marks guests as removed. Test connection also counts the nodes and guests the token can see.
+
+**Rejected.**
+- Keeping "API wins, SSH skipped": a misconfigured token hides the whole cluster.
+- Writing SSH data under the `proxmox` name: the two sources would overwrite each other on every scan.
+- Inventing running state for peer guests.
+
+## ADR-032 Scans are queued, never dropped; every target shows its latest result (v3)
+**Context.** "I have added all of them as targets, and they were discovered already", yet only 3 of 11 machines were documented. Two causes:
+- `Scheduler.trigger()` returned "already running" and dropped the request, so clicking Scan on several machines scanned one.
+- "Needs attention" only read the last scan, usually a one-collector scheduled run, so the failures were invisible.
+
+**Decisions.**
+- **A manual-scan queue.** Host requests are merged into a set, a full scan absorbs them, and a single worker drains the queue behind the scan lock. When `atlas scan` holds the file lock, the work is put back and retried after 30 s. `trigger()` returns `started` or `queued`.
+- **Saving a host or a source queues its first scan.**
+- **`queries.latest_runs()`**: the newest `CollectorRun` per (target, collector) across scans, with the time of the last good run.
+  - The dashboard lists failed, partial and never-scanned *current* targets with their first error.
+  - Targets has a **Last scan** column: health pill, age, and an expandable error per collector.
+  - The "seen on the network" list leaves out addresses and names that are already targets.
+
+**Rejected.**
+- Running concurrent scans: SQLite has one writer, and the file lock is shared with the CLI.
+- Making the button wait for the scan: scans take minutes.
+
+## ADR-033 UI v3: Proxmox flow topology, Services table, menus, docs, license (v3, owner request)
+**Context.** "pve1 has those VMs inside, pve2 has those VMs inside… like ProxMenux… more and better menus… a documentation page… a star favicon… all the services from all the VMs in a table we can filter… export it as CSV… publish-ready."
+
+**Decisions.**
+- **ProxMenux was studied, not copied.**
+  - ProxMenux is GPL-3.0 and its monitor is Next.js/React/Tailwind; atlas is Jinja, htmx and Cytoscape, MIT. Copying code would force a relicence and doesn't fit the stack.
+  - We reimplemented its ideas: a node → bridge → guest network flow, round kind-coloured nodes, traffic pulses, and KPI cards for guests and allocated vCPU/RAM. The README credits the inspiration.
+- **Proxmox topology.**
+  - Layout:
+    - one compound box per node;
+    - inside it, the hub (the node), its bridges (API `type=bridge` interfaces, or the host's `vmbr*` and `vnet*`), and its guests;
+    - each guest is wired to the bridge its first NIC uses (`nic2` dashed for extra NICs);
+    - a bus under each bridge, odd rows shifted half a column so drops pass between guests;
+    - containers stack under their guest.
+  - Implementation details:
+    - classes are applied before the graph is created, so nothing animates from default sizes;
+    - our own `shown()` replaces Cytoscape's lagging `visible()` in layouts;
+    - node data never carries `source` or `target` keys, which Cytoscape reads as an edge (a test guards this).
+- **Services page (`/services`, `/services.csv`).** One row per systemd unit or container on every documented machine.
+  - Columns: machine, kind, node, IP, type, name, description, state, sub-state, enabled/restart, app, category, image and ports.
+  - Filters are server-side (machine, state, type, text) and shared by the htmx table and the CSV export, so the export is exactly what you see.
+  - CSV cells starting `= + - @` (and the other formula starts) are prefixed with `'`, the same as the exports.
+- **Menus.**
+  - Grouped `<details>` dropdowns (Infrastructure, Network), keyboard-closable, working without JS.
+  - A Ctrl+K quick find over pages, machines and apps (`/api/palette`, same-origin links only).
+  - Topology context menus gain scan-this-machine, copy MAC / SSH command, show only this, all containers on a node, and labels on/off.
+- **In-app docs (`/docs`)** cover onboarding, Proxmox (SSH and token, including the privilege-separation step), UniFi, what is read, pages, shortcuts, updating, troubleshooting and security.
+- **Publishing.**
+  - The MIT license: permissive, and the norm for homelab tools.
+  - CONTRIBUTING (the hard rules from CLAUDE.md, for humans), a short code of conduct, issue forms that warn against pasting secrets, a PR checklist and a CHANGELOG.
+  - Version 0.3.0.
+
+**Rejected.**
+- GPL-3.0 to allow copying ProxMenux code: it would relicense a project whose own code is MIT-compatible, for little gain.
+- Client-side-only filtering of thousands of rows.
+- A separate SPA.

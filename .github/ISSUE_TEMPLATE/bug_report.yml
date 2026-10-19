@@ -1,0 +1,46 @@
+name: Bug report
+description: Something in atlas doesn't work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Never paste real credentials, tokens, keys or unredacted scan
+        output.** Replace IPs and names if you prefer. Security problems: use a private advisory
+        (see SECURITY.md), not an issue.
+  - type: input
+    id: version
+    attributes:
+      label: atlas version
+      description: Footer of any page, or `sudo atlas version`
+      placeholder: "0.3.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [Targets / scanning, Proxmox, UniFi, Linux / Docker over SSH, Topology, Services / tables, Install / update, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Add a proxmox-node target with sudo\n2. Scan\n3. ..."
+  - type: textarea
+    id: status
+    attributes:
+      label: Last scan status
+      description: The "Last scan" line of the target on the Targets page (the error text is already redacted)
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      placeholder: "Proxmox VE 9.x, 2 nodes / UniFi Network 10.x / Debian 13 VM / Docker 28"
