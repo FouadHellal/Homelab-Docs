@@ -170,7 +170,7 @@ def test_auth_header_validation() -> None:
 def test_live_http_requires_pinned_ca(tmp_path: Path) -> None:
     (tmp_path / "proxmox_auditor").write_text("atlas@pve!c=0a1b2c3d-1234-5678-9abc-def012345678")
     inv = load_inventory(LAB / "hosts.yaml")
-    factory = live_http(SecretResolver([SecretDir(tmp_path, False)]), tmp_path)(MemoryAudit())
+    factory = live_http(SecretResolver([SecretDir(tmp_path, False)]), [tmp_path])(MemoryAudit())
     with pytest.raises(SecurityRefusal, match="CA/anchor file missing"):
         factory(ProxmoxCollector.source(inv, "homelab"), ep.COLLECT)
 

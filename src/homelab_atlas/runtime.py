@@ -4,7 +4,7 @@ import os
 import re
 import secrets
 import shutil
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,18 +25,22 @@ from homelab_atlas.collectors.pi import PiCollector
 from homelab_atlas.collectors.proxmox.collector import ProxmoxCollector
 from homelab_atlas.collectors.unifi.collector import UnifiCollector
 from homelab_atlas.engine.scan import ScanEngine
-from homelab_atlas.inventory.hosts import Inventory, load_inventory
+from homelab_atlas.inventory.hosts import Inventory
+from homelab_atlas.inventory.managed import CA_DIR, effective_inventory
 from homelab_atlas.lab import lab_root, load_api_recordings, load_lab
+from homelab_atlas.probe.render import render_probe
 from homelab_atlas.redact import Redactor
 from homelab_atlas.security.allowlist import Endpoint
 from homelab_atlas.security.audit import AuditLog, AuditSink
 from homelab_atlas.security.errors import RefusalReason, SecurityRefusal
 from homelab_atlas.security.http import AuthHeader, ReadOnlyHttpClient, TlsPolicy, replay_transport
 from homelab_atlas.security.secrets import DEFAULT_DIRS, SecretResolver
-from homelab_atlas.security.ssh import AsyncSshTransport, SshRunner, SshTransport
+from homelab_atlas.security.ssh import AsyncSshTransport, SecretSource, SshRunner, SshTransport
+from homelab_atlas.security.vault import ChainedSecrets, Vault, load_master_key
 from homelab_atlas.store.db import make_engine, migrate, session_factory
 
 LAB_DATA_DIR = Path("data/demo-lab")
+VAULT_FILE = "vault.json"
 COLLECTORS: tuple[Collector, ...] = (
     LinuxSshCollector(),
     DockerCollector(),
@@ -141,7 +145,7 @@ def auth_header(scheme: AuthScheme, secret: SecretStr) -> AuthHeader:
     return AuthHeader("X-API-KEY", secret)
 
 
-def live_http(secrets: SecretResolver, cfg_dir: Path) -> Callable[[AuditSink], HttpFactory]:
+def live_http(secrets: SecretSource, ca_dirs: Sequence[Path]) -> Callable[[AuditSink], HttpFactory]:
     def bind(audit: AuditSink) -> HttpFactory:
         def make(source: ApiSource, endpoints: Iterable[Endpoint]) -> ReadOnlyHttpClient:
             if source.tls.ca_file is None or not CA_FILE_RE.fullmatch(source.tls.ca_file):
@@ -150,7 +154,7 @@ def live_http(secrets: SecretResolver, cfg_dir: Path) -> Callable[[AuditSink], H
                     f"{source.name}: tls.ca_file (a file in the config dir) is required",
                 )
             tls = TlsPolicy(
-                ca_file=cfg_dir / source.tls.ca_file,
+                ca_file=_find_ca(ca_dirs, source.tls.ca_file),
                 check_hostname=source.tls.check_hostname,
                 sha256_pin=source.tls.sha256_pin,
             )
@@ -193,8 +197,63 @@ def lab_inputs(state: str) -> Inputs:
     return Inputs(inventory, transport, replay_http(load_api_recordings(state)), lab_root())
 
 
-def live_inputs() -> Inputs:
+def _find_ca(dirs: Sequence[Path], name: str) -> Path:
+    """hosts.yaml CA files live in the config dir, UI-pinned ones in <data>/ca (ADR-025)."""
+    for d in dirs:
+        if (d / name).is_file():
+            return d / name
+    return dirs[0] / name
+
+
+def live_secrets(data_dir: Path) -> ChainedSecrets:
+    """Docker secrets / secrets dir first, then the encrypted UI vault."""
+    operator = SecretResolver(DEFAULT_DIRS)
+    vault = Vault(data_dir / VAULT_FILE, load_master_key(data_dir, operator))
+    return ChainedSecrets(operator, vault)
+
+
+def live_inputs(data_dir: Path | None = None) -> Inputs:
     cfg = config_dir()
-    inventory = load_inventory(cfg / "hosts.yaml")
-    secrets = SecretResolver(DEFAULT_DIRS)
-    return Inputs(inventory, AsyncSshTransport(secrets), live_http(secrets, cfg), cfg)
+    ddir = data_dir or default_data_dir(lab=False)
+    inventory, _ = effective_inventory(cfg, ddir)
+    secrets = live_secrets(ddir)
+    return Inputs(
+        inventory,
+        AsyncSshTransport(secrets, render_probe()),
+        live_http(secrets, [cfg, ddir / CA_DIR]),
+        cfg,
+    )
+
+
+async def test_ssh_login(data_dir: Path, audit: AuditSink, name: str) -> tuple[bool, str]:
+    """Targets page "Test login": one SSH connection running the `version` section."""
+    from homelab_atlas.collectors.linux_ssh.frame import FrameError, parse_frame  # noqa: PLC0415
+    from homelab_atlas.security.allowlist import ProbeSection  # noqa: PLC0415
+    from homelab_atlas.security.errors import TransportError  # noqa: PLC0415
+
+    try:
+        inputs = live_inputs(data_dir)
+        host = inputs.inventory.host(name)
+    except KeyError:
+        return False, f"{name}: not in the inventory"
+    except (ValueError, OSError) as exc:
+        return False, f"inventory or secrets unreadable: {type(exc).__name__}"
+    if not {"linux-ssh", "docker", "pi"} & set(host.collectors):
+        return False, f"{name}: no SSH collectors selected"
+    target = inputs.inventory.ssh_target(host, frozenset({ProbeSection.VERSION}))
+    runner = SshRunner(transport=inputs.ssh, audit=audit)
+    try:
+        out = await runner.run(target, ProbeSection.VERSION)
+    except SecurityRefusal as exc:
+        return False, f"refused: {exc.reason.value}"
+    except TransportError as exc:
+        return False, str(exc)[:200]
+    if out.exit_status != 0:
+        return False, f"logged in, but the probe exited {out.exit_status}"
+    try:
+        frame = parse_frame(out.stdout, ProbeSection.VERSION)
+    except FrameError as exc:
+        return False, f"logged in, but the output was not understood: {exc}"[:200]
+    version = (frame.text("version") or "?").strip()
+    mode = "streamed, nothing installed" if target.auth == "password" else "installed probe"
+    return True, f"logged in as {target.username}; probe {version[:16]} ({mode})"

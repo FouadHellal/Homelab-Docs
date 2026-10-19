@@ -25,7 +25,7 @@ FILE_RE: Final = re.compile(r"audit-(\d{4})-(\d{2})\.jsonl")
 MAX_DETAIL: Final = 200
 
 Outcome = Literal["ok", "refused", "error"]
-Transport = Literal["ssh", "http", "replay"]
+Transport = Literal["ssh", "http", "replay", "ui"]  # ui: config changes from the web UI
 
 
 class AuditEvent(BaseModel):
