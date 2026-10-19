@@ -1,0 +1,11 @@
+ATLAS-PROBE 1 pve 0a6d4ea5681e56b412f3722f
+--0a6d4ea5681e56b412f3722f part pveversion
+
+--0a6d4ea5681e56b412f3722f rc 127
+--0a6d4ea5681e56b412f3722f part qemu-running
+
+--0a6d4ea5681e56b412f3722f rc 2
+--0a6d4ea5681e56b412f3722f part lxc-running
+
+--0a6d4ea5681e56b412f3722f rc 2
+--0a6d4ea5681e56b412f3722f end

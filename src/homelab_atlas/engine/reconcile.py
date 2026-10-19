@@ -71,12 +71,24 @@ def build_index(facets: list[Facet], inventory: Inventory | None, names: dict[st
     for f in by_collector.get("nas", []):
         _claim(idx, [f.data.get("mac")], f.entity_key)
     for f in by_collector.get("linux-ssh", []):
+        # Guests anywhere in the cluster, as a PVE node's /etc/pve sees them (ADR-028).
+        pve = f.data.get("pve") if isinstance(f.data.get("pve"), dict) else None
+        cname = (pve.get("cluster") or pve.get("node")) if pve else None
+        for g in (pve.get("cluster_guests") or []) if pve else []:
+            gkey = f"pve:{'vm' if g.get('type') == 'qemu' else 'lxc'}:{cname}/{g.get('vmid')}"
+            idx.names.setdefault(
+                gkey,
+                f"{g.get('name')} ({'VM' if g.get('type') == 'qemu' else 'LXC'} {g.get('vmid')})",
+            )
+            _claim(idx, g.get("macs") or [], gkey)
         for iface in f.data.get("interfaces") or []:
             _claim(idx, [iface.get("mac")], f.entity_key)
             idx.ips.update(
                 ip for a in iface.get("addresses") or [] if (ip := _ip(a.get("address")))
             )
-    for f in by_collector.get("proxmox", []):
+    for f in facets:  # Proxmox guests, from the API or from a node's /etc/pve
+        if "vmid" not in f.data:
+            continue
         _claim(idx, [n.get("mac") for n in f.data.get("nics") or []], f.entity_key)
         idx.ips.update(ip for a in f.data.get("ips") or [] if (ip := _ip(a.get("address"))))
         if ip := _ip(f.data.get("ip")):
@@ -100,8 +112,8 @@ def network_of(idx: Index, ip: str | None) -> tuple[str | None, int | None]:
 
 
 def _correlate(s: Session, facets: list[Facet], idx: Index) -> None:
-    guests = {f.entity_key: f for f in facets if f.collector == "proxmox" and "vmid" in f.data}
-    nodes = [f for f in facets if f.collector == "proxmox" and "pve_version" in f.data]
+    guests = {f.entity_key: f for f in facets if "vmid" in f.data}
+    nodes = [f for f in facets if "pve_version" in f.data and f.entity_key.startswith("pve:node:")]
     mac_to_guest = {
         n.get("mac"): k for k, f in guests.items() for n in f.data.get("nics") or [] if n.get("mac")
     }
@@ -245,9 +257,11 @@ def _guest_network(
     candidates: dict[str, dict[str, Any]],
 ) -> None:
     """Give Proxmox guests the IP/VLAN/uplink UniFi sees for their NIC MACs."""
+    done: set[str] = set()
     for f in facets:
-        if f.collector != "proxmox" or "vmid" not in f.data:
+        if "vmid" not in f.data or f.entity_key in done:
             continue
+        done.add(f.entity_key)  # API and SSH may both describe the same guest
         seen = []
         for nic in f.data.get("nics") or []:
             obs = candidates.get(str(nic.get("mac") or ""))

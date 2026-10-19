@@ -30,20 +30,20 @@ BASE_PKGS = {
     "systemd": "252.31-1~deb12u1", "unattended-upgrades": "2.9.1+nmu3", "vim-tiny": "2:9.0.1378-2",
     "less": "590-2.1~deb12u2", "rsync": "3.2.7-1+deb12u2", "tzdata": "2024b-0+deb12u1",
     "ca-certificates": "20230311", "qemu-guest-agent": "1:7.2+dfsg-7+deb12u7",
-}  # fmt: skip
+}
 UBUNTU_PKGS = {
     "bash": "5.2.21-2ubuntu4", "curl": "8.5.0-2ubuntu10.4", "libc6": "2.39-0ubuntu8.3",
     "openssh-server": "1:9.6p1-3ubuntu13.5", "openssl": "3.0.13-0ubuntu3.4", "sudo": "1.9.15p5-3ubuntu5",
     "systemd": "255.4-1ubuntu8.4", "unattended-upgrades": "2.9.1+nmu4ubuntu1", "less": "590-2ubuntu2.1",
     "tzdata": "2024a-3ubuntu1.1", "ca-certificates": "20240203",
-}  # fmt: skip
+}
 BASE_SERVICES = [
     ("ssh.service", "active", "running", "enabled", "OpenBSD Secure Shell server"),
     ("cron.service", "active", "running", "enabled", "Regular background program processing daemon"),
     ("systemd-journald.service", "active", "running", "static", "Journal Service"),
     ("systemd-timesyncd.service", "active", "running", "enabled", "Network Time Synchronization"),
     ("unattended-upgrades.service", "active", "running", "enabled", "Unattended Upgrades Shutdown"),
-]  # fmt: skip
+]
 BASE_USERS = [
     ("root", 0, 0, "/root", "/bin/bash"),
     ("daemon", 1, 1, "/usr/sbin", "/usr/sbin/nologin"),
@@ -53,7 +53,7 @@ BASE_USERS = [
     ("ops", 1000, 1000, "/home/ops", "/bin/bash"),
 ]
 BASE_GROUPS = {"root": 0, "daemon": 1, "adm": 4, "sudo": 27, "www-data": 33, "atlas-ro": 998,
-               "ops": 1000, "docker": 999, "nogroup": 65534}  # fmt: skip
+               "ops": 1000, "docker": 999, "nogroup": 65534}
 
 
 def mac(name: str, n: int = 0) -> str:
@@ -85,7 +85,7 @@ def host(name: str, ip: str, **kw: Any) -> dict[str, Any]:
         "nameservers": ["10.0.20.1"],
         "search": ["lab.example"],
         "sockets": [("tcp", "0.0.0.0", 22, "sshd", 812), ("tcp", "[::]", 22, "sshd", 812),
-                    ("udp", "127.0.0.53%lo", 53, "systemd-resolve", 600)],  # fmt: skip
+                    ("udp", "127.0.0.53%lo", 53, "systemd-resolve", 600)],
         "disks": [("sda", 34359738368, "QEMU HARDDISK", [("sda1", 33285996544, "ext4", "/")])],
         "mounts": [("/", "/dev/sda1", "ext4", 33285996544, 9123456789)],
         "services": list(BASE_SERVICES),
@@ -96,14 +96,14 @@ def host(name: str, ip: str, **kw: Any) -> dict[str, Any]:
         "packages": dict(UBUNTU_PKGS if ubuntu else BASE_PKGS),
         "probe": (PROBE_VER, PROBE_SHA),
         "broken": set(),
-    }  # fmt: skip
+    }
     h.update(kw)
     return h
 
 
 def state_a() -> list[dict[str, Any]]:
     pve = {"virt": "none", "kernel": "6.14.8-2-pve", "packages": {**BASE_PKGS, "proxmox-ve": "9.2.0",
-           "pve-manager": "9.2.1", "proxmox-kernel-6.14": "6.14.8-2"}}  # fmt: skip
+           "pve-manager": "9.2.1", "proxmox-kernel-6.14": "6.14.8-2"}}
     hosts = [
         host("pve1", "10.0.10.11", **copy.deepcopy(pve),
              ifaces=[{"name": "eno1", "mac": mac("pve1"), "addrs": [], "kind": None},
@@ -169,7 +169,7 @@ def state_a() -> list[dict[str, Any]]:
              nameservers=["2001:db8:20::1"],
              sockets=[("tcp", "[::]", 22, "sshd", 812), ("tcp", "[::]", 443, "caddy", 1300),
                       ("udp", "[fe80::be24:11ff:fe00:80%eth0]", 546, "systemd-network", 400)]),
-    ]  # fmt: skip
+    ]
     return hosts
 
 
@@ -210,7 +210,7 @@ def state_b(a: list[dict[str, Any]]) -> list[dict[str, Any]]:
     db = by["db01"]
     db["probe"] = (PROBE_VER, PROBE_SHA)
     db["services"] = [s if s[0] != "postgresql@15-main.service" else (s[0], "failed", "failed", s[3], s[4])
-                      for s in db["services"]]  # fmt: skip
+                      for s in db["services"]]
 
     bk = by["backup01"]
     bk["cron"]["/etc/cron.d/restic"][0] = "RESTIC_PASSWORD=rp-ATLASFAKE-2026b"
@@ -253,7 +253,7 @@ def render(h: dict[str, Any]) -> dict[str, bytes]:
     lo = {"ifindex": 1, "ifname": "lo", "mtu": 65536, "operstate": "UNKNOWN", "link_type": "loopback",
           "address": "00:00:00:00:00:00", "addr_info": [
               {"family": "inet", "local": "127.0.0.1", "prefixlen": 8, "scope": "host"},
-              {"family": "inet6", "local": "::1", "prefixlen": 128, "scope": "host"}]}  # fmt: skip
+              {"family": "inet6", "local": "::1", "prefixlen": 128, "scope": "host"}]}
     addr.append(lo)
     link.append({"ifname": "lo"})
     for i, iface in enumerate(h["ifaces"], start=2):
@@ -264,7 +264,7 @@ def render(h: dict[str, Any]) -> dict[str, bytes]:
             scope = "link" if ip.startswith("fe80") else "global"
             infos.append({"family": fam, "local": ip, "prefixlen": int(plen), "scope": scope})
         addr.append({"ifindex": i, "ifname": iface["name"], "mtu": 1500, "operstate": "UP",
-                     "link_type": "ether", "address": iface["mac"], "addr_info": infos})  # fmt: skip
+                     "link_type": "ether", "address": iface["mac"], "addr_info": infos})
         li: dict[str, Any] = {"ifname": iface["name"]}
         if iface["kind"]:
             li["linkinfo"] = {"info_kind": iface["kind"]}
@@ -274,14 +274,14 @@ def render(h: dict[str, Any]) -> dict[str, bytes]:
     for v in range(h["veth"]):
         vname = f"veth{hashlib.sha256(f'{n}{v}{h["uptime"]}'.encode()).hexdigest()[:7]}"
         addr.append({"ifindex": 100 + v, "ifname": vname, "mtu": 1500, "operstate": "UP",
-                     "address": mac(n, 50 + v), "addr_info": [], "master": "docker0"})  # fmt: skip
+                     "address": mac(n, 50 + v), "addr_info": [], "master": "docker0"})
         link.append({"ifname": vname, "linkinfo": {"info_kind": "veth"}})
     r4 = [{"dst": d, **({"gateway": g} if g else {}), "dev": dev, "protocol": "static" if g else "kernel"}
-          for d, g, dev in h["routes4"]]  # fmt: skip
+          for d, g, dev in h["routes4"]]
     r6 = [{"dst": d, **({"gateway": g} if g else {}), "dev": dev, "protocol": "ra" if g else "kernel", "metric": 1024}
-          for d, g, dev in h["routes6"]]  # fmt: skip
+          for d, g, dev in h["routes6"]]
     neigh = [{"dst": "10.0.20.1", "dev": "eth0", "lladdr": "e4:38:83:00:00:01", "state": ["REACHABLE"]},
-             {"dst": "10.0.20.99", "dev": "eth0", "lladdr": "aa:bb:cc:00:00:99", "state": ["STALE"]}]  # fmt: skip
+             {"dst": "10.0.20.99", "dev": "eth0", "lladdr": "aa:bb:cc:00:00:99", "state": ["STALE"]}]
     resolv = "\n".join(
         [f"nameserver {x}" for x in h["nameservers"]] + [f"search {' '.join(h['search'])}"]
     )
@@ -297,20 +297,20 @@ def render(h: dict[str, Any]) -> dict[str, bytes]:
          "children": [{"name": p, "type": "part", "size": ps, "fstype": fs, "mountpoint": mp, "model": None}
                       for p, ps, fs, mp in parts]}
         for d, size, model, parts in h["disks"]] + [
-        {"name": "loop0", "type": "loop", "size": 1, "fstype": None, "mountpoint": None, "model": None}]}  # fmt: skip
+        {"name": "loop0", "type": "loop", "size": 1, "fstype": None, "mountpoint": None, "model": None}]}
     mnts = [{"target": t, "source": s, "fstype": f, "size": size, "used": used, "avail": size - used}
-            for t, s, f, size, used in h["mounts"]]  # fmt: skip
+            for t, s, f, size, used in h["mounts"]]
     fm = {"filesystems": [{**mnts[0], "children": [
         {"target": "/proc", "source": "proc", "fstype": "proc", "size": 0, "used": 0, "avail": 0},
         {"target": "/run", "source": "tmpfs", "fstype": "tmpfs", "size": 1, "used": 1, "avail": 0},
-        *mnts[1:]]}]}  # fmt: skip
+        *mnts[1:]]}]}
     units = [
         {"unit": u, "load": "loaded", "active": a, "sub": s, "description": d}
         for u, a, s, _, d in h["services"]
     ]
     files_ = [{"unit_file": u, "state": e, "preset": "enabled"} for u, _, _, e, _ in h["services"]]
     timers = [{"next": 1760850000000000, "left": 3600000000, "last": None, "passed": None,
-               "unit": t, "activates": act} for t, act in h["timers"]]  # fmt: skip
+               "unit": t, "activates": act} for t, act in h["timers"]]
     groups = {k: v for k, v in h["groups"].items() if k != "members"}
     members = h["groups"]["members"]
     passwd = "\n".join(
@@ -341,7 +341,71 @@ def render(h: dict[str, Any]) -> dict[str, bytes]:
         "cron": frame(n, "cron", [(f"cron:{src}", "\n".join(lines), 0) for src, lines in sorted(h["cron"].items())]),
         "users": frame(n, "users", [("passwd", passwd, 0), ("group", group, 0)]),
         "packages": frame(n, "packages", [("dpkg", dpkg, 0)]),
-    }  # fmt: skip
+    }
+
+
+def procs_frame(h: dict[str, Any]) -> bytes:
+    """ps -eo pid=,ppid=,user=,pcpu=,pmem=,rss=,etimes=,comm=,args= (top CPU first)."""
+    rows = [(1, 0, "root", 0.0, 0.1, 12000, "systemd", "/sbin/init")]
+    pid = 300
+    for unit, active, _sub, _en, _desc in h["services"]:
+        if active != "active":
+            continue
+        pid += 37
+        comm = unit.removesuffix(".service").split("@")[0][:15]
+        rows.append((pid, 1, "root", 0.1, 0.2, 9000 + pid, comm, f"/usr/sbin/{comm}"))
+    for _proto, _ad, port, proc, ppid in h["sockets"]:
+        args = f"{proc} worker" if proc.startswith("pve") else f"/usr/bin/{proc} --port {port}"
+        rows.append((ppid, 1, "root" if port < 1024 else "app", 0.3, 0.5, 20000 + port, proc[:15], args))
+    if h["name"] in DOCKER_HOSTS:
+        rows.append((900, 1, "root", 1.2, 2.5, 80000, "dockerd", "/usr/bin/dockerd -H fd://"))
+        rows.append((901, 900, "root", 0.4, 0.8, 30000, "containerd", "/usr/bin/containerd"))
+    rows.append((50, 2, "root", 0.0, 0.0, 0, "kworker/0:1", "[kworker/0:1-events]"))  # kernel thread
+    seen, lines = set(), []
+    for r in sorted(rows, key=lambda r: (-r[3], r[0])):
+        if r[0] in seen:
+            continue
+        seen.add(r[0])
+        lines.append(f"{r[0]:>7} {r[1]:>7} {r[2]:<8} {r[3]:>4} {r[4]:>4} {r[5]:>8} {864000 - r[0]:>8} {r[7]}")
+    return frame(h["name"], "procs", [("ps", "\n".join(lines), 0)])
+
+
+def pve_frame(h: dict[str, Any]) -> bytes:
+    """/etc/pve as a cluster node sees it (cluster-wide configs, own running state)."""
+    s = h.get("pve")
+    if s is None:  # not a Proxmox VE node
+        return frame(h["name"], "pve", [("pveversion", "", 127), ("qemu-running", "", 2),
+                                        ("lxc-running", "", 2)])
+    nodes = s["nodes"]
+    members = {"nodename": h["name"], "version": 7,
+               "cluster": {"name": "homelab", "version": 2, "nodes": len(nodes), "quorate": 1},
+               "nodelist": {n: {"id": i + 1, "online": 1, "ip": v["ip"]}
+                            for i, (n, v) in enumerate(sorted(nodes.items()))}}
+    guests = sorted(s["guests"].values(), key=lambda g: g[0])
+    vmlist = {"version": 9, "ids": {str(g[0]): {"node": g[3], "type": g[1], "version": 1} for g in guests}}
+    parts = [("pveversion", f"pve-manager/{nodes[h['name']]['pve']}/abc123 (running kernel: {h['kernel']})", 0),
+             ("pve:/etc/pve/.members", json.dumps(members, indent=1), 0),
+             ("pve:/etc/pve/.vmlist", json.dumps(vmlist, indent=1), 0)]
+    for vmid, kind, name, node, _status, cores, mem, tags, _ips in guests:
+        m = _proxmox.mac(name).upper()
+        if kind == "qemu":
+            body = [f"name: {name}", f"cores: {cores}", f"memory: {mem}", "ostype: l26", "agent: 1",
+                    f"net0: virtio={m},bridge=vmbr0,tag=20,firewall=1", "scsi0: local-lvm:vm-disk-0,size=32G",
+                    "onboot: 1", "cipassword: $5$ATLASFAKEsalt$ATLASFAKEhashATLASFAKEhashATLASFAKEhash0000"]
+            path = f"/etc/pve/nodes/{node}/qemu-server/{vmid}.conf"
+        else:
+            body = [f"hostname: {name}", f"cores: {cores}", f"memory: {mem}", "ostype: debian", "unprivileged: 1",
+                    f"net0: name=eth0,bridge=vmbr0,hwaddr={m},ip=dhcp,tag=20,type=veth",
+                    "rootfs: local-lvm:vm-disk-0,size=8G"]
+            path = f"/etc/pve/nodes/{node}/lxc/{vmid}.conf"
+        if tags:
+            body.append(f"tags: {tags}")
+        body += ["", "[before-upgrade]", f"name: {name}-old", "memory: 1"]  # snapshot section is ignored
+        parts.append((f"pve:{path}", "\n".join(body), 0))
+    own = [g for g in guests if g[3] == h["name"] and g[4] == "running"]
+    parts.append(("qemu-running", "\n".join(f"{g[0]}.pid\n{g[0]}.qmp" for g in own if g[1] == "qemu"), 0))
+    parts.append(("lxc-running", "\n".join(str(g[0]) for g in own if g[1] == "lxc"), 0))
+    return frame(h["name"], "pve", parts)
 
 
 DOCKER_HOSTS = {"docker01", "docker02", "media01"}
@@ -355,7 +419,7 @@ def pi_frame(label: str) -> bytes:
         ("temp", f"temp={temp}'C", 0),
         ("throttled", f"throttled={throttled}", 0),
         ("thermal", str(int(float(temp) * 1000)), 0),
-    ])  # fmt: skip
+    ])
 
 
 def hosts_yaml(hosts: list[dict[str, Any]]) -> str:
@@ -420,6 +484,9 @@ def main() -> None:
             d.mkdir(parents=True)
             for section, data in render(h).items():
                 (d / f"{section}.out").write_bytes(data)
+            h["pve"] = pve[label] if h["name"] in ("pve1", "pve2") else None
+            (d / "procs.out").write_bytes(procs_frame(h))
+            (d / "pve.out").write_bytes(pve_frame(h))
             if h["name"] in docker[label]:
                 (d / "docker.out").write_bytes(_docker.render(h["name"], docker[label][h["name"]], frame))
             if h["name"] == "pi-garage":
