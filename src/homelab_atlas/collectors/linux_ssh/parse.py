@@ -100,6 +100,12 @@ def parse_version(frame: Frame, expected_sha256: str) -> Parsed:
     out = Parsed()
     version = (frame.text("version") or "").strip()
     sha = (frame.text("sha256") or "").split(" ", 1)[0].strip()
+    if version and sha == "inline":
+        # Password mode: atlas streamed its own bundled probe, so there is nothing to pin.
+        out.values["probe"] = ProbeInfo(
+            version=version[:32], sha256="inline", expected_sha256=expected_sha256, matches=True
+        )
+        return out
     if not version or not re.fullmatch(r"[0-9a-f]{64}", sha):
         out.errors.append("version: unreadable")
         return out
