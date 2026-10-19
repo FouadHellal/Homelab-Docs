@@ -6,7 +6,8 @@
   file lock); a job that finds the file lock held by `atlas scan` retries shortly.
 * A collector whose every target failed backs off exponentially (interval * 2^n, at most 6 h)
   so an unreachable target is not hammered; one success resets it.
-* `trigger()` is the manual "scan now" (full scan, all collectors).
+* `trigger()` is the manual "scan now" (full scan, or some hosts). Requests are queued and
+  merged, never dropped, so clicking Scan on five machines scans all five.
 * Retention runs after each scheduled scan.
 Nothing here reaches a target directly: every scan goes through ScanEngine and so through
 the same read-only choke points as `atlas scan`.
@@ -76,6 +77,7 @@ class CollectorState:
 @dataclass(slots=True)
 class ScanStatus:
     running: str | None = None  # label of the scan in progress
+    queued: list[str] = field(default_factory=list)  # manual requests waiting their turn
     last_manual: datetime | None = None
     collectors: dict[str, CollectorState] = field(default_factory=dict)
 
@@ -88,6 +90,7 @@ class Scheduler:
         intervals: Mapping[str, int] | None = None,
         retention: Callable[[], Any] | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        locked_retry_s: float = 30.0,
     ) -> None:
         self._engine = engine
         self._retention = retention
@@ -95,6 +98,10 @@ class Scheduler:
         self._lock = asyncio.Lock()
         self._aps: AsyncIOScheduler | None = None
         self._tasks: set[asyncio.Task[Any]] = set()
+        self._worker: asyncio.Task[Any] | None = None
+        self._queue_full = False
+        self._queue_hosts: set[str] = set()
+        self._locked_retry_s = locked_retry_s
         chosen = intervals_from_env() if intervals is None else dict(intervals)
         self.status = ScanStatus(
             collectors={n: CollectorState(n, s) for n, s in chosen.items() if s > 0}
@@ -169,16 +176,47 @@ class Scheduler:
                 log.warning("retention.failed", error=type(exc).__name__)
         return summary
 
-    def trigger(self, hosts: list[str] | None = None) -> bool:
-        """Manual scan in the background (all targets, or just `hosts`). False if busy."""
-        if self._lock.locked():
-            return False
+    def trigger(self, hosts: list[str] | None = None) -> str:
+        """Queue a manual scan (all targets, or just `hosts`) and return "started" or "queued".
+
+        Nothing is dropped: requests made while a scan runs are merged (a full scan absorbs
+        host scans) and run as soon as the current scan ends.
+        """
+        busy = self._lock.locked() or self._draining()
+        if hosts:
+            self._queue_hosts.update(hosts)
+        else:
+            self._queue_full = True
         self.status.last_manual = self._clock()
-        label = "manual" if not hosts else f"manual:{','.join(hosts)}"[:64]
-        task = asyncio.get_running_loop().create_task(self._run(label=label, hosts=hosts))
-        self._tasks.add(task)
-        task.add_done_callback(self._done)
-        return True
+        self._publish_queue()
+        if not self._draining():
+            task = asyncio.get_running_loop().create_task(self._drain())
+            self._worker = task
+            self._tasks.add(task)
+            task.add_done_callback(self._done)
+        return "queued" if busy else "started"
+
+    def _draining(self) -> bool:
+        return self._worker is not None and not self._worker.done()
+
+    def _publish_queue(self) -> None:
+        self.status.queued = ["everything"] if self._queue_full else sorted(self._queue_hosts)
+
+    async def _drain(self) -> None:
+        while self._queue_full or self._queue_hosts:
+            hosts = None if self._queue_full else sorted(self._queue_hosts)
+            self._queue_full = False
+            self._queue_hosts.clear()
+            self._publish_queue()
+            label = "manual" if not hosts else f"manual:{','.join(hosts)}"[:64]
+            if await self._run(label=label, hosts=hosts) is None:
+                # `atlas scan` holds the file lock: put the work back and try again shortly.
+                if hosts is None:
+                    self._queue_full = True
+                else:
+                    self._queue_hosts.update(hosts)
+                self._publish_queue()
+                await asyncio.sleep(self._locked_retry_s)
 
     def _done(self, task: "asyncio.Task[Any]") -> None:
         self._tasks.discard(task)

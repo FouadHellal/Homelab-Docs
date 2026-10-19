@@ -298,3 +298,12 @@ def detect(
         (f.as_dict() for f in found.values()),
         key=lambda a: (a["category"] == "system", a["name"].lower()),
     )
+
+
+def app_for_unit(unit: str) -> App | None:
+    """The catalog app a systemd unit belongs to (`pihole-FTL.service` -> Pi-hole), if any."""
+    base = _unit_base(unit)
+    for app in CATALOG:
+        if any(base == u or base.startswith((u + "-", u + "@")) for u in app.units):
+            return app
+    return None

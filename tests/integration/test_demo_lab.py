@@ -57,8 +57,11 @@ async def test_rescan_same_state_is_quiet_and_deduplicated(rt: Runtime) -> None:
     with rt.sessions() as s:
         blobs = s.scalar(select(func.count()).select_from(Blob))
         snaps = s.scalar(select(func.count()).select_from(Snapshot))
-    assert blobs == 41  # 12 linux + 3 docker + pi + cluster + 2 nodes + 14 guests + site + 6 + nas
-    assert snaps == 82
+    # 12 linux + 3 docker + pi + cluster + 2 nodes + 14 guests + site + 6 + nas = 41, plus the
+    # same 2 nodes + 14 guests read over SSH from /etc/pve, by their own node (pve-ssh) and by
+    # the other node (pve-ssh-peer): 41 + 16 + 16 (ADR-031).
+    assert blobs == 73
+    assert snaps == 146
 
 
 async def test_no_secret_reaches_storage_or_audit(rt: Runtime) -> None:

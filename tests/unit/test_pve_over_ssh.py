@@ -10,7 +10,9 @@ from homelab_atlas.collectors.linux_ssh.parse import parse_procs, parse_pve, pve
 from homelab_atlas.lab import load_api_recordings, load_lab
 from homelab_atlas.runtime import Inputs, Runtime, replay_http
 from homelab_atlas.security.allowlist import ProbeSection
+from homelab_atlas.store.facets import facet_views
 from homelab_atlas.store.tables import Entity, Facet
+from homelab_atlas.web.views import machines
 
 LAB = Path(__file__).resolve().parents[2] / "fixtures" / "demo-lab"
 
@@ -40,10 +42,23 @@ def test_nodes_guests_and_links_from_ssh(tmp_path: Path) -> None:
         assert (
             ents["pve:vm:homelab/103"].parent_key == "pve:node:homelab/pve2"
         )  # web01 migrated in B
-        ct = s.get(Facet, ("pve:lxc:homelab/201", "linux-ssh"))
+        ct = s.get(Facet, ("pve:lxc:homelab/201", "pve-ssh"))  # from its own node
         assert ct is not None
         assert ct.data["status"] == "running"
         assert ct.data["nics"][0]["mac"]
+        # The other node sees the same guest through the shared /etc/pve, state unknown.
+        peer = s.get(Facet, ("pve:lxc:homelab/201", "pve-ssh-peer"))
+        assert peer is not None
+        assert peer.data["status"] == "unknown"
+        # Nothing Proxmox-shaped is stored under linux-ssh (that is the host inside the guest).
+        assert not [f for f in s.scalars(select(Facet).where(Facet.collector == "linux-ssh"))
+                    if f.entity_key.startswith("pve:")]  # fmt: skip
+        # Readers get one "proxmox" view per guest, from the strongest source.
+        views = [v for v in facet_views(s.scalars(select(Facet)))
+                 if v.entity_key == "pve:lxc:homelab/201"]  # fmt: skip
+        assert [(v.collector, v.source) for v in views if v.collector != "reconcile"] == [
+            ("proxmox", "pve-ssh")
+        ]
         # The SSH host inside VM 101 is the same machine; the PVE1 host is the node.
         docker01 = next(
             e for e in ents.values() if e.kind == "linux-host" and e.display_name == "docker01"
@@ -60,8 +75,14 @@ def test_api_source_wins(tmp_path: Path) -> None:
 
     rt = scanned_lab(tmp_path / "d")  # lab inventory has a Proxmox API source
     with rt.sessions() as s:
-        assert not [f for f in s.scalars(select(Facet).where(Facet.collector == "linux-ssh"))
-                    if f.entity_key.startswith("pve:")]  # fmt: skip
+        # SSH data is kept as a fallback, but the API is what readers see.
+        assert s.get(Facet, ("pve:vm:homelab/101", "pve-ssh")) is not None
+        guests = [v for v in facet_views(s.scalars(select(Facet))) if v.collector == "proxmox"
+                  and "vmid" in v.data]  # fmt: skip
+        assert guests
+        assert {v.source for v in guests} == {"proxmox"}
+        cards = {m["short"]: m for m in machines(s)}
+        assert cards["docker01"]["node"] == "pve1"
 
 
 def test_pve_parser_reads_cluster_and_ignores_snapshots() -> None:

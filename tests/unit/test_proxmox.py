@@ -138,6 +138,19 @@ async def test_optional_calls_degrade_to_partial() -> None:
     assert result.complete is True
 
 
+async def test_token_that_sees_nothing_is_explained_and_removes_nothing() -> None:
+    """Privilege separation without a token ACL: 200 OK, empty lists (the classic mistake)."""
+
+    def blind(r: dict[str, Any]) -> None:
+        r["/api2/json/cluster/status"] = (200, b'{"data":[]}')
+        r["/api2/json/cluster/resources"] = (200, b'{"data":[]}')
+
+    result, _ = await collect("A", blind)
+    assert result.status == "partial"
+    assert any("give the TOKEN itself the PVEAuditor role" in e for e in result.errors)
+    assert result.complete is False  # an empty answer must not mark every guest removed
+
+
 async def test_hostile_node_names_cannot_reach_other_paths() -> None:
     def evil(r: dict[str, Any]) -> None:
         body = json.loads(r["/api2/json/cluster/resources"][1])
