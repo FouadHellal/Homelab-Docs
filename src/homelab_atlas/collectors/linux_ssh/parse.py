@@ -23,6 +23,10 @@ from homelab_atlas.models.linux import (
     OsInfo,
     Package,
     ProbeInfo,
+    Process,
+    PveGuestRef,
+    PveMember,
+    PveNodeSummary,
     Route,
     Service,
     Timer,
@@ -361,6 +365,10 @@ def parse_services(frame: Frame) -> Parsed:
             if isinstance(f, dict) and isinstance(f.get("unit_file"), str):
                 enabled[f["unit_file"]] = _str(f.get("state"), 32) or "?"
     services = []
+    if not isinstance(units, list):
+        units = _units_text(frame.text("units-text"))
+        if units:
+            out.errors = [e for e in out.errors if not e.startswith("units:")]
     if isinstance(units, list):
         for u in units[:MAX_ITEMS]:
             if not isinstance(u, dict) or not isinstance(u.get("unit"), str):
@@ -379,6 +387,180 @@ def parse_services(frame: Frame) -> Parsed:
             if isinstance(t, dict) and isinstance(t.get("unit"), str):
                 timers.append(Timer(unit=t["unit"][:256], activates=_str(t.get("activates"), 256)))
     out.values["timers"] = timers
+    return out
+
+
+def _units_text(text: str | None) -> list[dict[str, str]] | None:
+    """`systemctl list-units --plain --no-legend`: UNIT LOAD ACTIVE SUB DESCRIPTION."""
+    if not text:
+        return None
+    units = []
+    for raw in text.splitlines()[:MAX_ITEMS]:
+        cols = raw.split(None, 4)
+        if len(cols) >= 4 and cols[0].endswith(".service"):
+            units.append(
+                {
+                    "unit": cols[0],
+                    "load": cols[1],
+                    "active": cols[2],
+                    "sub": cols[3],
+                    "description": cols[4] if len(cols) > 4 else "",
+                }
+            )
+    return units or None
+
+
+# ------------------------------------------------------------------ processes
+
+MAX_PROCS: Final = 600
+
+
+def parse_procs(frame: Frame) -> Parsed:
+    """`ps -eo pid=,ppid=,user=,pcpu=,pmem=,rss=,etimes=,args=`; args last (it has spaces)."""
+    out = Parsed()
+    text = frame.text("ps")
+    if text is None:
+        out.errors.append("ps: missing or failed")
+        return out
+    procs = []
+    for raw in text.splitlines():
+        cols = raw.split(None, 7)
+        if len(cols) < 8 or not cols[0].isdigit():
+            continue
+        pid, ppid = int(cols[0]), int(cols[1]) if cols[1].isdigit() else None
+        args = cols[7]
+        if pid == 2 or ppid == 2 or args.startswith("["):
+            continue  # kernel threads
+        comm = args.split()[0].rsplit("/", 1)[-1].rstrip(":")[:64] or "?"
+        procs.append(
+            Process(
+                pid=pid,
+                ppid=ppid,
+                user=cols[2][:32],
+                comm=comm,
+                args=args[:512],
+                cpu_pct=_float(cols[3]),
+                mem_pct=_float(cols[4]),
+                rss_kb=int(cols[5]) if cols[5].isdigit() else None,
+                elapsed_s=int(cols[6]) if cols[6].isdigit() else None,
+            )
+        )
+        if len(procs) >= MAX_PROCS:
+            break
+    out.values["processes"] = procs
+    return out
+
+
+def _float(v: str) -> float | None:
+    try:
+        return round(float(v), 1)
+    except ValueError:
+        return None
+
+
+# ------------------------------------------------------------------ Proxmox VE node (ADR-028)
+
+PVE_CONF_RE: Final = re.compile(
+    r"/etc/pve/nodes/([A-Za-z0-9._-]{1,64})/(qemu-server|lxc)/(\d{1,9})\.conf"
+)
+PVE_VERSION_RE: Final = re.compile(r"pve-manager/([0-9][0-9A-Za-z.~+-]{0,31})")
+PVE_NIC_MAC_RE: Final = re.compile(
+    r"(?:^|,)(?:[a-z0-9]+=|hwaddr=)([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})"
+)
+
+
+def pve_conf(text: str) -> dict[str, str]:
+    """`key: value` lines of a guest config, current section only (snapshots follow `[name]`)."""
+    cfg: dict[str, str] = {}
+    for raw in text.splitlines()[:2000]:
+        line = raw.strip()
+        if line.startswith("["):
+            break
+        if not line or line.startswith("#"):
+            continue
+        key, sep, value = line.partition(":")
+        if sep and re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", key):
+            cfg[key] = value.strip()[:2048]
+    return cfg
+
+
+def parse_pve(frame: Frame) -> Parsed:
+    """Values: `pve` (PveNodeSummary or None) and `_pve_guests` (this node's own guests)."""
+    out = Parsed()
+    members_text = frame.text("pve:/etc/pve/.members")
+    confs = {
+        m.groups(): part.content
+        for name, part in frame.parts.items()
+        if part.rc == 0 and (m := PVE_CONF_RE.fullmatch(name.removeprefix("pve:")))
+    }
+    if members_text is None and not confs:
+        out.values["pve"] = None  # not a Proxmox VE node
+        return out
+    try:
+        members = json.loads(members_text) if members_text else {}
+    except json.JSONDecodeError:
+        out.errors.append(".members: invalid JSON")
+        members = {}
+    members = members if isinstance(members, dict) else {}
+    node = _str(members.get("nodename"), 64) or next((n for n, _, _ in confs), None)
+    if node is None:
+        out.values["pve"] = None
+        return out
+    cl_raw, nl_raw = members.get("cluster"), members.get("nodelist")
+    cluster: dict[str, Any] = cl_raw if isinstance(cl_raw, dict) else {}
+    nodelist: dict[str, Any] = nl_raw if isinstance(nl_raw, dict) else {}
+    member_rows = [
+        PveMember(name=str(n)[:64], ip=_str(v.get("ip"), 64), online=bool(v.get("online")))
+        for n, v in sorted(nodelist.items())
+        if isinstance(v, dict)
+    ]
+    running_qemu = {
+        x.split(".")[0] for x in (frame.text("qemu-running") or "").split() if x.endswith(".pid")
+    }
+    running_lxc = {x for x in (frame.text("lxc-running") or "").split() if x.isdigit()}
+    refs, own = [], []
+    for (gnode, kind_dir, vmid), text in sorted(confs.items(), key=lambda kv: int(kv[0][2])):
+        cfg = pve_conf(text)
+        kind: Literal["qemu", "lxc"] = "qemu" if kind_dir == "qemu-server" else "lxc"
+        name = _str(cfg.get("name") or cfg.get("hostname"), 128) or f"{kind}-{vmid}"
+        macs = sorted(
+            {
+                m.lower()
+                for k, v in cfg.items()
+                if re.fullmatch(r"net\d{1,2}", k)
+                for m in PVE_NIC_MAC_RE.findall(v)
+            }
+        )
+        running = None
+        if gnode == node:
+            running = vmid in (running_qemu if kind == "qemu" else running_lxc)
+            own.append(
+                {
+                    "vmid": int(vmid),
+                    "type": kind,
+                    "name": name,
+                    "node": gnode,
+                    "running": running,
+                    "template": cfg.get("template") == "1",
+                    "cfg": cfg,
+                }
+            )
+        refs.append(
+            PveGuestRef(
+                vmid=int(vmid), type=kind, name=name, node=gnode, macs=macs, running=running
+            )
+        )
+    version = PVE_VERSION_RE.search(frame.text("pveversion") or "")
+    self_ip = next((m.ip for m in member_rows if m.name == node), None)
+    out.values["pve"] = PveNodeSummary(
+        node=node,
+        cluster=_str(cluster.get("name"), 64),
+        version=version.group(1) if version else None,
+        ip=self_ip,
+        members=member_rows,
+        cluster_guests=refs[:2000],
+    )
+    out.values["_pve_guests"] = own
     return out
 
 

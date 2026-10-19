@@ -120,6 +120,48 @@ class Package(Fact):
     version: str
 
 
+class Process(Fact):
+    """A running process (snapshot; never diffed: PIDs and CPU change all the time)."""
+
+    pid: int
+    ppid: int | None = None
+    user: str | None = None
+    comm: str
+    args: str | None = None  # redacted before storage
+    cpu_pct: float | None = None
+    mem_pct: float | None = None
+    rss_kb: int | None = None
+    elapsed_s: int | None = None
+
+
+class PveMember(Fact):
+    name: str
+    ip: str | None = None
+    online: bool | None = None
+
+
+class PveGuestRef(Fact):
+    """A guest anywhere in the cluster, as this node's /etc/pve sees it."""
+
+    vmid: int
+    type: Literal["qemu", "lxc"]
+    name: str
+    node: str
+    macs: list[str] = Field(default_factory=list)
+    running: bool | None = None  # only known for this node's own guests
+
+
+class PveNodeSummary(Fact):
+    """This host is a Proxmox VE node (probe section `pve`, ADR-028)."""
+
+    node: str
+    cluster: str | None = None
+    version: str | None = volatile()  # upgrades are reported once, on the PVE node entity
+    ip: str | None = None
+    members: list[PveMember] = volatile(factory=list)
+    cluster_guests: list[PveGuestRef] = volatile(factory=list)
+
+
 class LinuxHostFacts(Fact):
     probe: ProbeInfo | None = None
     os: OsInfo | None = None
@@ -137,4 +179,6 @@ class LinuxHostFacts(Fact):
     cron: list[CronEntry] = keyed("source", "line")
     users: list[LocalUser] = keyed("name")
     packages: list[Package] = keyed("name")
+    processes: list[Process] = volatile(factory=list)
+    pve: PveNodeSummary | None = None
     section_errors: dict[str, list[str]] = volatile(factory=dict)

@@ -30,6 +30,8 @@ class ProbeSection(StrEnum):
     PACKAGES = "packages"
     DOCKER = "docker"
     PI = "pi"
+    PROCS = "procs"
+    PVE = "pve"
     VERSION = "version"
 
 

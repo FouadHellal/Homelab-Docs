@@ -1,0 +1,316 @@
+ATLAS-PROBE 1 pve 2697c5545ab5ade7e6ec77ae
+--2697c5545ab5ade7e6ec77ae part pveversion
+pve-manager/9.2.2/abc123 (running kernel: 6.14.11-1-pve)
+--2697c5545ab5ade7e6ec77ae rc 0
+--2697c5545ab5ade7e6ec77ae part pve:/etc/pve/.members
+{
+ "nodename": "pve2",
+ "version": 7,
+ "cluster": {
+  "name": "homelab",
+  "version": 2,
+  "nodes": 2,
+  "quorate": 1
+ },
+ "nodelist": {
+  "pve1": {
+   "id": 1,
+   "online": 1,
+   "ip": "10.0.10.11"
+  },
+  "pve2": {
+   "id": 2,
+   "online": 1,
+   "ip": "10.0.10.12"
+  }
+ }
+}
+--2697c5545ab5ade7e6ec77ae rc 0
+--2697c5545ab5ade7e6ec77ae part pve:/etc/pve/.vmlist
+{
+ "version": 9,
+ "ids": {
+  "101": {
+   "node": "pve1",
+   "type": "qemu",
+   "version": 1
+  },
+  "102": {
+   "node": "pve2",
+   "type": "qemu",
+   "version": 1
+  },
+  "103": {
+   "node": "pve2",
+   "type": "qemu",
+   "version": 1
+  },
+  "104": {
+   "node": "pve2",
+   "type": "qemu",
+   "version": 1
+  },
+  "105": {
+   "node": "pve1",
+   "type": "qemu",
+   "version": 1
+  },
+  "106": {
+   "node": "pve2",
+   "type": "qemu",
+   "version": 1
+  },
+  "110": {
+   "node": "pve2",
+   "type": "qemu",
+   "version": 1
+  },
+  "111": {
+   "node": "pve1",
+   "type": "qemu",
+   "version": 1
+  },
+  "201": {
+   "node": "pve1",
+   "type": "lxc",
+   "version": 1
+  },
+  "202": {
+   "node": "pve2",
+   "type": "lxc",
+   "version": 1
+  },
+  "203": {
+   "node": "pve1",
+   "type": "lxc",
+   "version": 1
+  },
+  "204": {
+   "node": "pve2",
+   "type": "lxc",
+   "version": 1
+  },
+  "9000": {
+   "node": "pve1",
+   "type": "qemu",
+   "version": 1
+  }
+ }
+}
+--2697c5545ab5ade7e6ec77ae rc 0
+--2697c5545ab5ade7e6ec77ae part pve:/etc/pve/nodes/pve1/qemu-server/101.conf
+name: docker01
+cores: 4
+memory: 8192
+ostype: l26
+agent: 1
+net0: virtio=BC:24:11:46:66:CA,bridge=vmbr0,tag=20,firewall=1
+scsi0: local-lvm:vm-disk-0,size=32G
+onboot: 1
+cipassword: $5$ATLASFAKEsalt$ATLASFAKEhashATLASFAKEhashATLASFAKEhash0000
+tags: docker;prod
+
+[before-upgrade]
+name: docker01-old
+memory: 1
+--2697c5545ab5ade7e6ec77ae rc 0
+--2697c5545ab5ade7e6ec77ae part pve:/etc/pve/nodes/pve2/qemu-server/102.conf
+name: docker02
+cores: 4
+memory: 8192
+ostype: l26
+agent: 1
+net0: virtio=BC:24:11:7D:A6:CF,bridge=vmbr0,tag=20,firewall=1
+scsi0: local-lvm:vm-disk-0,size=32G
+onboot: 1
+cipassword: $5$ATLASFAKEsalt$ATLASFAKEhashATLASFAKEhashATLASFAKEhash0000
+tags: docker
+
+[before-upgrade]
+name: docker02-old
+memory: 1
+--2697c5545ab5ade7e6ec77ae rc 0
+--2697c5545ab5ade7e6ec77ae part pve:/etc/pve/nodes/pve2/qemu-server/103.conf
+name: web01
+cores: 2
+memory: 2048
+ostype: l26
+agent: 1
+net0: virtio=BC:24:11:3B:46:9E,bridge=vmbr0,tag=20,firewall=1
+scsi0: local-lvm:vm-disk-0,size=32G
+onboot: 1
+cipassword: $5$ATLASFAKEsalt$ATLASFAKEhashATLASFAKEhashATLASFAKEhash0000
+tags: prod;web
+
+[before-upgrade]
+name: web01-old
+memory: 1
+--2697c5545ab5ade7e6ec77ae rc 0
+--2697c5545ab5ade7e6ec77ae part pve:/etc/pve/nodes/pve2/qemu-server/104.conf
+name: db01
+cores: 2
+memory: 8192
+ostype: l26
+agent: 1
+net0: virtio=BC:24:11:57:01:46,bridge=vmbr0,tag=20,firewall=1
+scsi0: local-lvm:vm-disk-0,size=32G
+onboot: 1
+cipassword: $5$ATLASFAKEsalt$ATLASFAKEhashATLASFAKEhashATLASFAKEhash0000
+tags: db;prod
+
+[before-upgrade]
+name: db01-old
+memory: 1
+--2697c5545ab5ade7e6ec77ae rc 0
+--2697c5545ab5ade7e6ec77ae part pve:/etc/pve/nodes/pve1/qemu-server/105.conf
+name: legacy01
+cores: 1
+memory: 1024
+ostype: l26
+agent: 1
+net0: virtio=BC:24:11:48:E4:A6,bridge=vmbr0,tag=20,firewall=1
+scsi0: local-lvm:vm-disk-0,size=32G
+onboot: 1
+cipassword: $5$ATLASFAKEsalt$ATLASFAKEhashATLASFAKEhashATLASFAKEhash0000
+tags: legacy
+
+[before-upgrade]
+name: legacy01-old
+memory: 1
+--2697c5545ab5ade7e6ec77ae rc 0
+--2697c5545ab5ade7e6ec77ae part pve:/etc/pve/nodes/pve2/qemu-server/106.conf
+name: ipv6only01
+cores: 1
+memory: 1024
+ostype: l26
+agent: 1
+net0: virtio=BC:24:11:9E:71:84,bridge=vmbr0,tag=20,firewall=1
+scsi0: local-lvm:vm-disk-0,size=32G
+onboot: 1
+cipassword: $5$ATLASFAKEsalt$ATLASFAKEhashATLASFAKEhashATLASFAKEhash0000
+
+[before-upgrade]
+name: ipv6only01-old
+memory: 1
+--2697c5545ab5ade7e6ec77ae rc 0
+--2697c5545ab5ade7e6ec77ae part pve:/etc/pve/nodes/pve2/qemu-server/110.conf
+name: win11
+cores: 4
+memory: 8192
+ostype: l26
+agent: 1
+net0: virtio=BC:24:11:AB:93:44,bridge=vmbr0,tag=20,firewall=1
+scsi0: local-lvm:vm-disk-0,size=32G
+onboot: 1
+cipassword: $5$ATLASFAKEsalt$ATLASFAKEhashATLASFAKEhashATLASFAKEhash0000
+tags: windows
+
+[before-upgrade]
+name: win11-old
+memory: 1
+--2697c5545ab5ade7e6ec77ae rc 0
+--2697c5545ab5ade7e6ec77ae part pve:/etc/pve/nodes/pve1/qemu-server/111.conf
+name: homeassistant
+cores: 2
+memory: 4096
+ostype: l26
+agent: 1
+net0: virtio=BC:24:11:6C:FC:FE,bridge=vmbr0,tag=20,firewall=1
+scsi0: local-lvm:vm-disk-0,size=32G
+onboot: 1
+cipassword: $5$ATLASFAKEsalt$ATLASFAKEhashATLASFAKEhashATLASFAKEhash0000
+tags: iot
+
+[before-upgrade]
+name: homeassistant-old
+memory: 1
+--2697c5545ab5ade7e6ec77ae rc 0
+--2697c5545ab5ade7e6ec77ae part pve:/etc/pve/nodes/pve1/lxc/201.conf
+hostname: mediatheque
+cores: 2
+memory: 2048
+ostype: debian
+unprivileged: 1
+net0: name=eth0,bridge=vmbr0,hwaddr=BC:24:11:53:82:AE,ip=dhcp,tag=20,type=veth
+rootfs: local-lvm:vm-disk-0,size=8G
+tags: media
+
+[before-upgrade]
+name: mediatheque-old
+memory: 1
+--2697c5545ab5ade7e6ec77ae rc 0
+--2697c5545ab5ade7e6ec77ae part pve:/etc/pve/nodes/pve2/lxc/202.conf
+hostname: backup01
+cores: 1
+memory: 512
+ostype: debian
+unprivileged: 1
+net0: name=eth0,bridge=vmbr0,hwaddr=BC:24:11:19:ED:28,ip=dhcp,tag=20,type=veth
+rootfs: local-lvm:vm-disk-0,size=8G
+tags: backup
+
+[before-upgrade]
+name: backup01-old
+memory: 1
+--2697c5545ab5ade7e6ec77ae rc 0
+--2697c5545ab5ade7e6ec77ae part pve:/etc/pve/nodes/pve1/lxc/203.conf
+hostname: adguard
+cores: 1
+memory: 512
+ostype: debian
+unprivileged: 1
+net0: name=eth0,bridge=vmbr0,hwaddr=BC:24:11:60:3F:12,ip=dhcp,tag=20,type=veth
+rootfs: local-lvm:vm-disk-0,size=8G
+tags: dns
+
+[before-upgrade]
+name: adguard-old
+memory: 1
+--2697c5545ab5ade7e6ec77ae rc 0
+--2697c5545ab5ade7e6ec77ae part pve:/etc/pve/nodes/pve2/lxc/204.conf
+hostname: media01
+cores: 4
+memory: 4096
+ostype: debian
+unprivileged: 1
+net0: name=eth0,bridge=vmbr0,hwaddr=BC:24:11:6D:A4:EB,ip=dhcp,tag=20,type=veth
+rootfs: local-lvm:vm-disk-0,size=8G
+tags: docker;media
+
+[before-upgrade]
+name: media01-old
+memory: 1
+--2697c5545ab5ade7e6ec77ae rc 0
+--2697c5545ab5ade7e6ec77ae part pve:/etc/pve/nodes/pve1/qemu-server/9000.conf
+name: debian-12-template
+cores: 2
+memory: 2048
+ostype: l26
+agent: 1
+net0: virtio=BC:24:11:F1:1D:C8,bridge=vmbr0,tag=20,firewall=1
+scsi0: local-lvm:vm-disk-0,size=32G
+onboot: 1
+cipassword: $5$ATLASFAKEsalt$ATLASFAKEhashATLASFAKEhashATLASFAKEhash0000
+tags: template
+
+[before-upgrade]
+name: debian-12-template-old
+memory: 1
+--2697c5545ab5ade7e6ec77ae rc 0
+--2697c5545ab5ade7e6ec77ae part qemu-running
+102.pid
+102.qmp
+103.pid
+103.qmp
+104.pid
+104.qmp
+106.pid
+106.qmp
+110.pid
+110.qmp
+--2697c5545ab5ade7e6ec77ae rc 0
+--2697c5545ab5ade7e6ec77ae part lxc-running
+202
+204
+--2697c5545ab5ade7e6ec77ae rc 0
+--2697c5545ab5ade7e6ec77ae end

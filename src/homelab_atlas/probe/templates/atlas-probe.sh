@@ -95,6 +95,20 @@ case "$section" in
         part units systemctl list-units --type=service --all --no-legend --no-pager --output=json
         part unit-files systemctl list-unit-files --type=service --no-legend --no-pager --output=json
         part timers systemctl list-timers --all --no-legend --no-pager --output=json
+        # Plain-text fallback for systemd versions whose list-units lacks --output=json.
+        part units-text systemctl list-units --type=service --all --no-legend --no-pager --plain
+        ;;
+    procs)
+        # What is running right now (top CPU first). Command lines are redacted collector-side.
+        part ps ps -eo pid=,ppid=,user:32=,pcpu=,pmem=,rss=,etimes=,args= --sort=-pcpu
+        ;;
+    pve)
+        # Proxmox VE node: cluster membership and guest configs, read from /etc/pve (pmxcfs).
+        # Read-only file reads; /etc/pve/priv (keys, tokens) is never touched.
+        part pveversion pveversion
+        files pve /etc/pve/.members /etc/pve/.vmlist /etc/pve/nodes/*/qemu-server/*.conf /etc/pve/nodes/*/lxc/*.conf
+        part qemu-running ls -1 /run/qemu-server
+        part lxc-running ls -1 /sys/fs/cgroup/lxc
         ;;
     cron)
         files cron /etc/crontab /etc/cron.d/* /var/spool/cron/crontabs/*
