@@ -284,7 +284,7 @@ def test_pages_render(client: TestClient) -> None:
         ("/vlans", "IoT"),
         ("/ports", "8443"),
         ("/changes", "guest.migrated"),
-        ("/unknown", "esp32-c3-5f2a"),
+        ("/unknown?everything=true", "esp32-c3-5f2a"),  # IoT is hidden by default (ADR-027)
         ("/topology?view=physical", 'data-view="physical"'),
         ("/entity?key=pve:vm:homelab/103", "Public reverse proxy"),
     ]:
@@ -343,8 +343,8 @@ def test_acknowledge_unknown(client: TestClient, ann_dir: Path, lab_runtime: Run
     assert r.status_code == 303
     files = [yaml.safe_load(p.read_text("utf-8")) for p in ann_dir.glob("*.yaml")]
     assert {"entity": key, "acknowledged": True} in files
-    assert "android-7f3a" not in client.get("/unknown").text
-    assert "android-7f3a" in client.get("/unknown?all=true").text
+    assert "android-7f3a" not in client.get("/unknown?everything=true").text
+    assert "android-7f3a" in client.get("/unknown?all=true&everything=true").text
     with lab_runtime.sessions() as s:
         entity = s.get(Entity, key)
         assert entity is not None

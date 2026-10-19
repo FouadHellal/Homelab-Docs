@@ -116,7 +116,14 @@
 
 {% if "reconcile" in f %}{% set r = f["reconcile"] %}
 <section class="card"><h2>Seen on the network</h2>
+  {% if r.category %}<p><span class="pill {{ 'ok' if r.infrastructure else 'partial' }}">{{ r.category }}</span> <span class="muted small">{{ (r.reasons or []) | join("; ") }}</span></p>{% endif %}
+  {% if r.addresses and r.addresses | length > 1 %}
+  <table class="data"><thead><tr><th>MAC</th><th>IP</th><th>Network</th><th>VLAN</th><th>Via</th></tr></thead><tbody>
+  {% for a in r.addresses %}<tr><td><code>{{ a.mac }}</code></td><td><code>{{ a.ip or "" }}</code></td><td>{{ a.network or "" }}</td><td>{{ a.vlan if a.vlan is not none else "" }}</td><td>{{ a.uplink or a.seen_via }}</td></tr>{% endfor %}
+  </tbody></table>
+  {% else %}
   {{ kv([("MAC", r.mac), ("IP", r.ip), ("network", r.network), ("VLAN", r.vlan), ("via", r.uplink or r.seen_via)]) }}
+  {% endif %}
 </section>
 {% endif %}
 
