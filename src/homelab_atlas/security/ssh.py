@@ -1,19 +1,26 @@
-"""SSH runner: the single choke point for target command execution (ADR-002/003).
+"""SSH runner: the single choke point for target command execution (ADR-002/003/025).
 
 Callers pass a `ProbeSection` enum member, never a string. The exec string comes from the
-constant `PROBE_COMMANDS` table. On the target, a forced command re-checks the request
-against its own fixed list, so a bug here still cannot run arbitrary commands.
+constant `PROBE_COMMANDS` table. Two auth modes:
+
+* **key** (default): on the target, a forced command re-checks the request against its own
+  fixed list, so a bug here still cannot run arbitrary commands.
+* **password** (ADR-025): nothing is installed on the target. The transport sends one
+  constant loader per section (`INLINE_COMMANDS`) and streams atlas's own bundled probe on
+  stdin, preceded by the password for sudo. Read-only then rests on this code alone.
 """
 
 import asyncio
 import re
+import shlex
 import time
 from collections.abc import AsyncIterator, Mapping
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Final, Protocol, cast
+from typing import Final, Literal, Protocol, cast
 
 import asyncssh
+from pydantic import SecretStr
 
 from homelab_atlas.security.allowlist import PROBE_COMMAND_RE, PROBE_COMMANDS, ProbeSection
 from homelab_atlas.security.audit import AuditEvent, AuditSink, Outcome
@@ -23,7 +30,7 @@ from homelab_atlas.security.errors import (
     TargetTimeout,
     TransportError,
 )
-from homelab_atlas.security.secrets import SecretResolver, validate_secret_name
+from homelab_atlas.security.secrets import validate_secret_name
 
 TARGET_NAME_RE: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 HOST_RE: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}|\[?[0-9A-Fa-f:.]{2,45}\]?")
@@ -47,10 +54,14 @@ class SshTarget:
     name: str
     host: str
     host_keys: tuple[str, ...]
-    key_secret: str
     sections: frozenset[ProbeSection]
+    key_secret: str | None = None
     port: int = 22
     username: str = "atlas-ro"
+    auth: Literal["key", "password"] = "key"
+    password_secret: str | None = None
+    #: password mode only: pipe the login password to `sudo -S` for root-only sections.
+    sudo: bool = True
 
     def __post_init__(self) -> None:
         if not TARGET_NAME_RE.fullmatch(self.name):
@@ -63,7 +74,16 @@ class SshTarget:
             raise SecurityRefusal(RefusalReason.CONFIG, f"{self.name}: bad port")
         if not self.host_keys:
             raise SecurityRefusal(RefusalReason.HOST_KEY, f"{self.name}: no pinned host key")
-        validate_secret_name(self.key_secret)
+        if self.auth == "key":
+            if self.key_secret is None:
+                raise SecurityRefusal(RefusalReason.CONFIG, f"{self.name}: no key secret")
+            validate_secret_name(self.key_secret)
+        elif self.auth == "password":
+            if self.password_secret is None:
+                raise SecurityRefusal(RefusalReason.CONFIG, f"{self.name}: no password secret")
+            validate_secret_name(self.password_secret)
+        else:
+            raise SecurityRefusal(RefusalReason.CONFIG, f"{self.name}: bad auth mode")
         if not all(isinstance(s, ProbeSection) for s in self.sections):
             raise SecurityRefusal(RefusalReason.BAD_TYPE, f"{self.name}: sections must be enum")
         object.__setattr__(self, "sections", frozenset(self.sections))
@@ -76,6 +96,14 @@ class ProbeOutput:
     exit_status: int
     stdout: bytes = field(repr=False)
     stderr: bytes = field(repr=False)
+
+
+class SecretSource(Protocol):
+    """SecretResolver, or a chain of it and the UI vault (ADR-025)."""
+
+    def resolve(self, name: str) -> SecretStr: ...
+
+    def resolve_bytes(self, name: str) -> bytes: ...
 
 
 class SshSession(Protocol):
@@ -92,6 +120,31 @@ class SshTransport(Protocol):
     def open(
         self, target: SshTarget, limits: SshLimits
     ) -> AbstractAsyncContextManager[SshSession]: ...
+
+
+# Password mode. The loader is a constant: it reads the sudo password (first stdin line, may
+# be empty) and the probe (rest of stdin) and runs the probe for "$1", as root when sudo
+# allows it without a password, or with that password, else as the login user. The
+# password only ever travels through stdin and bash builtins (never argv or env).
+INLINE_LOADER: Final = (
+    "IFS= read -r p; s=$(cat); "
+    'if sudo -n true 2>/dev/null; then printf "%s\\n" "$s" | sudo -n bash -s -- "$1"; '
+    'elif [ -n "$p" ] && printf "%s\\n" "$p" | sudo -S -k -p "" true 2>/dev/null; then '
+    '{ printf "%s\\n" "$p"; printf "%s\\n" "$s"; } | sudo -S -k -p "" bash -s -- "$1"; '
+    'else printf "%s\\n" "$s" | bash -s -- "$1"; fi'
+)
+
+
+def _inline_commands() -> dict[ProbeSection, str]:
+    table = {}
+    for section, command in PROBE_COMMANDS.items():
+        if not PROBE_COMMAND_RE.fullmatch(command):  # pragma: no cover - invariant
+            raise RuntimeError("probe command violates invariant")
+        table[section] = shlex.join(["bash", "-c", INLINE_LOADER, "atlas", section.value])
+    return table
+
+
+INLINE_COMMANDS: Final = _inline_commands()
 
 
 def _section_of(command: str) -> ProbeSection:
@@ -237,17 +290,31 @@ async def _read_capped(stream: asyncssh.SSHReader[bytes], cap: int, *, strict: b
 
 class _AsyncSshSession:
     def __init__(
-        self, target: SshTarget, conn: asyncssh.SSHClientConnection, limits: SshLimits
+        self,
+        target: SshTarget,
+        conn: asyncssh.SSHClientConnection,
+        limits: SshLimits,
+        inline: bytes | None = None,
     ) -> None:
         self._target, self._conn, self._limits = target, conn, limits
+        #: password mode: stdin payload (sudo password line + bundled probe)
+        self._inline = inline
 
     async def exec(self, command: str) -> ProbeOutput:
         limits, name = self._limits, self._target.name
+        section = _section_of(command)
+        wire = command if self._inline is None else INLINE_COMMANDS[section]
         try:
             async with asyncio.timeout(limits.command_s):
                 proc = await self._conn.create_process(
-                    command, stdin=asyncssh.DEVNULL, encoding=None, request_pty=False
+                    wire,
+                    stdin=asyncssh.DEVNULL if self._inline is None else asyncssh.PIPE,
+                    encoding=None,
+                    request_pty=False,
                 )
+                if self._inline is not None:
+                    proc.stdin.write(self._inline)
+                    proc.stdin.write_eof()
                 try:
                     stdout, stderr = await asyncio.gather(
                         _read_capped(proc.stdout, limits.max_stdout, strict=True),
@@ -262,7 +329,7 @@ class _AsyncSshSession:
             raise TransportError(f"{name}: {type(exc).__name__}") from None
         return ProbeOutput(
             target=name,
-            section=_section_of(command),
+            section=section,
             exit_status=result.exit_status if result.exit_status is not None else -1,
             stdout=stdout,
             stderr=stderr,
@@ -274,10 +341,13 @@ class AsyncSshTransport:
 
     name = "ssh"
 
-    def __init__(self, secrets: SecretResolver) -> None:
+    def __init__(self, secrets: SecretSource, inline_probe: bytes | None = None) -> None:
         self._secrets = secrets
+        #: The bundled probe streamed in password mode (homelab_atlas.probe.render_probe()).
+        self._inline_probe = inline_probe
 
     def _client_key(self, target: SshTarget) -> asyncssh.SSHKey:
+        assert target.key_secret is not None  # noqa: S101 - SshTarget validates per mode
         try:
             key = asyncssh.import_private_key(self._secrets.resolve_bytes(target.key_secret))
         except (asyncssh.KeyImportError, ValueError):
@@ -299,20 +369,32 @@ class AsyncSshTransport:
             keys.append(key)
         return keys
 
+    def _password(self, target: SshTarget) -> str:
+        assert target.password_secret is not None  # noqa: S101 - SshTarget validates per mode
+        try:
+            pw = self._secrets.resolve(target.password_secret).get_secret_value()
+        except UnicodeDecodeError:
+            raise SecurityRefusal(RefusalReason.CLIENT_KEY, "password unreadable") from None
+        if not pw or "\n" in pw or "\r" in pw or "\0" in pw:
+            raise SecurityRefusal(RefusalReason.CLIENT_KEY, "password empty or multi-line")
+        return pw
+
     def options(self, target: SshTarget, limits: SshLimits) -> asyncssh.SSHClientConnectionOptions:
         pins = self._host_keys(target)
+        password_mode = target.auth == "password"
         return asyncssh.SSHClientConnectionOptions(
             username=target.username,
-            client_keys=[self._client_key(target)],
+            client_keys=[] if password_mode else [self._client_key(target)],
+            password=self._password(target) if password_mode else None,
             # Exact keys, no hostname matching, no CAs, no TOFU.
             known_hosts=(pins, [], []),
             server_host_key_algs=sorted({k.get_algorithm() for k in pins}),
             agent_path=None,
             agent_forwarding=False,
             x11_forwarding=False,
-            preferred_auth="publickey",
-            public_key_auth=True,
-            password_auth=False,
+            preferred_auth="password" if password_mode else "publickey",
+            public_key_auth=not password_mode,
+            password_auth=password_mode,
             kbdint_auth=False,
             gss_auth=False,
             gss_kex=False,
@@ -327,6 +409,13 @@ class AsyncSshTransport:
 
     @asynccontextmanager
     async def open(self, target: SshTarget, limits: SshLimits) -> AsyncIterator[SshSession]:
+        # Everything that can refuse happens before a connection exists.
+        inline = None
+        if target.auth == "password":
+            if self._inline_probe is None:
+                raise SecurityRefusal(RefusalReason.CONFIG, f"{target.name}: no bundled probe")
+            pw = self._password(target) if target.sudo else ""
+            inline = pw.encode() + b"\n" + self._inline_probe
         options = self.options(target, limits)
         try:
             async with asyncio.timeout(limits.connect_s):
@@ -342,7 +431,7 @@ class AsyncSshTransport:
         except (OSError, asyncssh.Error) as exc:
             raise TransportError(f"{target.name}: {type(exc).__name__}") from None
         async with conn:
-            yield _AsyncSshSession(target, conn, limits)
+            yield _AsyncSshSession(target, conn, limits, inline)
 
 
 class _ReplaySession:

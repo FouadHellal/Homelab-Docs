@@ -50,7 +50,7 @@
  ["pi.undervoltage", "pi-garage: under-voltage occurred since boot (check the PSU)"],
  ["port.opened", "web01: port tcp/8443 on 0.0.0.0 (nginx) opened"],
  ["port.published", "docker01: container edge/traefik/1 published 0.0.0.0:8443->8443/tcp"],
- ["probe.updated", "db01: probe 0.9.0 -> 1.2.0"],
+ ["probe.updated", "db01: probe 0.9.0 -> 1.3.0"],
  ["pve.upgraded", "pve2 (PVE node): 9.2.1 -> 9.2.2"],
  ["service.failed", "db01: service postgresql@15-main.service failed (was active)"],
  ["storage.state_changed", "pve1 (PVE node): storage nas-nfs available -> unavailable"],
