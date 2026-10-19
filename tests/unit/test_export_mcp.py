@@ -4,6 +4,7 @@ import asyncio
 import ipaddress
 import json
 import re
+from collections.abc import MutableMapping
 from pathlib import Path
 from typing import Any
 
@@ -426,3 +427,35 @@ def test_mkdocs_escapes_and_nav_is_valid_yaml(tmp_path: Path) -> None:
         (tmp_path / "mkdocs.yml").read_text(encoding="utf-8").replace("!!python/name:", "")
     )
     assert cfg["site_name"] == "Homelab inventory"
+
+
+def test_mcp_refuses_oversized_arguments(rt: Runtime) -> None:
+    from mcp.server.mcpserver.exceptions import ToolError  # noqa: PLC0415
+
+    with pytest.raises(ToolError, match="at most 128 characters"):
+        asyncio.run(build_server(rt.sessions).call_tool("get_host", {"name_or_key": "x" * 500}))
+
+
+async def test_bearer_guards_websocket_scopes() -> None:
+    sent: list[MutableMapping[str, Any]] = []
+    reached: list[bool] = []
+
+    async def inner(scope: Any, receive: Any, send: Any) -> None:
+        reached.append(True)
+
+    async def send(msg: MutableMapping[str, Any]) -> None:
+        sent.append(msg)
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "websocket.connect"}
+
+    guard = BearerAuth(inner, "w" * 40)
+    await guard({"type": "websocket", "headers": []}, receive, send)
+    assert sent == [{"type": "websocket.close", "code": 1008}]
+    assert reached == []
+    await guard(
+        {"type": "websocket", "headers": [(b"authorization", b"Bearer " + b"w" * 40)]},
+        receive,
+        send,
+    )
+    assert reached == [True]
