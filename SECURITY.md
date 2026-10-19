@@ -17,7 +17,7 @@ did, and what happened. Never include real credentials, tokens or unredacted sca
 |---|---|---|
 | **No changes to any target** | `ReadOnlyHttpClient`: GET plus a few registered POSTs, each with a schema-checked body (only UniFi Classic login/logout, opt-in), checked against an endpoint-template allowlist. Paths are canonicalised (`..`, `%2e`, `;`, double encoding and backslashes are refused), method-override headers are refused, redirects are off, and `DENIED_SEGMENTS` blocks every `/actions`, `exec`, `file-write`… path. `SshRunner` accepts only `ProbeSection` enum members and sends constant strings with no interpolation, no shell on our side, no agent, no PTY. A ruff `banned-api` rule keeps `subprocess`, `socket`, `httpx` and `asyncssh` out of everything except `homelab_atlas.security`. | Proxmox token with **PVEAuditor** only (`atlas doctor` fails on any non-Audit privilege). SSH user `atlas-ro`: forced command plus an exact-string gate, `restrict`, `from=`, sudo for exactly `atlas-probe <section>`, no docker group. UniFi key minted by a view-only admin (see Limitations). |
 | **No secrets at rest** | The Redactor runs between collector and anything durable: DB, logs, audit, exports, MCP. It covers env values (names only), command-line flags, URL user-info, bearer/basic/PVE tokens, about 20 vendor token formats, PEM keys, WireGuard keys, password hashes, Wi-Fi PSKs and query secrets, with a high-entropy fallback. Markers are keyed HMACs, so equal secrets can be correlated without being stored. A hypothesis-fuzzed corpus guards it. | The probe strips Docker env **values on the target**: only names cross the wire. |
-| **Credentials never leave their secret file** | `SecretResolver` takes secret **names**, which validation enforces in `hosts.yaml`. It reads `/run/secrets` (or a 0600 dev dir) and returns `SecretStr`, which is unwrapped only inside the transport call. Nothing logs or audits values. | |
+| **Credentials are never stored or shown in clear** | `SecretResolver` takes secret **names**, which validation enforces in `hosts.yaml` and `inventory.yaml`. It reads `/run/secrets` (or a 0600 dev dir); credentials typed on the Targets page go to an AES-256-GCM vault (ADR-025) keyed by the `atlas_master_key` Docker secret. Values come back as `SecretStr`, unwrapped only inside the transport call. The UI never renders a stored value. Nothing logs or audits values. | |
 | **Pinned identities** | TLS is always verified, against a CA you pin, optionally plus a SHA-256 leaf pin, and `trust_env=False` ignores proxy env vars. SSH accepts exactly the `host_keys` in `hosts.yaml`: no TOFU, no `known_hosts`, no `~/.ssh/config`. | |
 | **Every outbound call is accountable** | Append-only JSONL audit log, SHA-256 hash chained; `atlas audit verify` detects edits, insertions and truncation. It records the endpoint template or section, target, outcome and size, never query values or payloads. | `atlas-probe-gate` logs every refused command to syslog. |
 | **UI is not a way in** | argon2id local accounts, lockout (5 failures / 15 min), login throttle, server-side sessions (30 min idle / 12 h absolute), `__Host-` Secure HttpOnly SameSite=Strict cookies, synchronizer CSRF token plus Origin check on every POST, strict nonce CSP (no inline script, no `unsafe-*`), TrustedHost, `no-store`, autoescaped templates (a test fails on `\|safe`), vendored JS pinned by SHA-256. | — |
@@ -28,6 +28,8 @@ Refusals (`SecurityRefusal`) are never retried and are always audited. Tests in
 oversized bodies, unknown sections, injected strings, unpinned host keys, agent use, and
 symlinked or world-readable secrets. `atlas selftest security` runs the same guards offline on
 any install.
+
+The latest review pass and its findings are in [docs/SECURITY-REVIEW.md](docs/SECURITY-REVIEW.md).
 
 ## Known limitations (read these)
 
@@ -50,7 +52,8 @@ any install.
    - UniFi port fields from the v9.3.43 sample (ADR-005);
    - the UNAS Drive endpoints, which are community-documented only (ADR-006);
    - Pi `vcgencmd` output;
-   - the probe on every Debian/Ubuntu release.
+   - the probe on every Debian/Ubuntu release;
+   - the password-mode `sudo -S` path (the non-sudo path was run with real bash).
 5. **The UCG's self-signed certificate** usually lacks its hostname, so `check_hostname: false`
    is common there. A pinned CA file (`tls.ca_file`) is always required and an API source
    without one is refused. Adding `sha256_pin` binds the exact leaf certificate too.
@@ -58,8 +61,21 @@ any install.
    on ports, Docker, root crontabs. It is a short bash script that writes nothing, makes no
    network calls and takes no free-form arguments. Review it before installing it
    (`docs/targets/atlas-probe`); its SHA-256 is pinned and checked by `atlas doctor`.
-7. **Single-owner design.** Every UI account has the same rights: read everything, edit
-   annotations, trigger scans. There are no roles.
+7. **Password-mode SSH trades target-side enforcement for convenience** (ADR-025). When a VM
+   is added with a username and password, nothing is installed on it, so there is no forced
+   command and no exact-argv sudoers line. atlas sends a constant loader and its own bundled
+   read-only probe, and the read-only guarantee then rests on atlas's code alone. If that
+   account has sudo, a compromised atlas could act as root on the VM. Use a dedicated,
+   non-admin account where you can, untick "use for sudo" when you don't need Docker or
+   process details, or switch the machine to key mode
+   ([SETUP-TARGETS §2](docs/SETUP-TARGETS.md#2-debianubuntu-hosts-linux-ssh-docker)).
+8. **The vault is only as safe as its key.** UI-entered passwords and API keys are encrypted
+   in the data volume. Keep `atlas_master_key` as a Docker secret outside that volume and out
+   of your volume backups. Without it, atlas generates `<data>/master.key`, which only protects
+   against leaks of the vault file on its own.
+9. **Single-owner design.** Every UI account has the same rights: read everything, edit
+   annotations, add targets and their credentials, trigger scans. There are no roles, so only
+   create accounts for people you would give the SSH passwords to.
 
 ## Operating it safely
 

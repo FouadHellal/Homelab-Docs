@@ -138,7 +138,7 @@ Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a
 **Rejected.** Postgres in v1 (an extra service); SQLCipher (painful wheels on Windows; host-level encryption is enough for this threat model).
 
 ## ADR-013 Web UI and auth
-**Decision.** Server-rendered Jinja2 + HTMX + Cytoscape.js (vendored; SHA-256 of each vendored file checked in a test). Strict CSP with per-request nonce, no inline handlers. Headers: HSTS (via proxy), X-Content-Type-Options, frame-ancestors 'none', Referrer-Policy no-referrer, COOP/CORP.
+**Decision.** Server-rendered Jinja2 + HTMX + Cytoscape.js (vendored; SHA-256 of each vendored file checked in a test). Strict CSP with per-request nonce, no inline handlers. Headers: HSTS (via proxy), X-Content-Type-Options, frame-ancestors 'none', Referrer-Policy same-origin (amended M7: with no-referrer, browsers send `Origin: null` on plain form POSTs, which the Origin check rightly rejects), COOP/CORP.
 - Auth: local users, argon2id (argon2-cffi defaults or stronger), server-side sessions in the DB, cookie `__Host-atlas` with HttpOnly, Secure, SameSite=Strict, rotated on login, idle and absolute timeouts, login rate-limit/lockout.
 - CSRF: synchronizer token per session on every non-GET request.
 - OIDC: later, via authlib.
@@ -308,3 +308,46 @@ Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a
 - **Dependabot** gains the `docker` ecosystem for the base-image digests.
 
 **Rejected.** Distroless (ADR-017); baking the demo lab into the image (fake secrets, dev-only); running MCP-HTTP inside the UI process (ADR-023); signing with cosign keyless (BuildKit provenance and SBOM attestations cover the private-registry use case; revisit if images become public).
+
+## ADR-025 Onboarding from the web UI: Targets page, encrypted vault, password SSH (owner request)
+**Context.** The owner wants to add VMs in the UI, type the SSH login and the UniFi/Proxmox keys there, and have atlas log in and document everything, with no files to hand-write and nothing installed on the VMs. When asked how VMs should be reached, the owner chose **username + password** (2026-10-19).
+
+**Decision.**
+- **Targets page** (`/targets`):
+  - Add, edit or remove machines and Proxmox/UniFi/UNAS sources.
+  - Entries are written to an app-managed `<data>/inventory.yaml`, atomically and validated by the same strict models as `hosts.yaml`. It is merged with an optional `hosts.yaml`; `hosts.yaml` wins on name clashes and those entries are read-only in the UI.
+  - A bare IP becomes the right API URL: `:8006/api2/json` for Proxmox, `/proxy/network/integration` for UniFi.
+  - Each machine has **Test login**, which runs the `version` section, and **Scan**, a scan of that one target through the normal engine.
+  - The scheduler object always exists, so these buttons work without `--schedule`.
+- **Vault** (`security/vault.py`):
+  - AES-256-GCM per secret, with the secret name as associated data. One JSON file, rewritten atomically, mode 0600.
+  - The key comes from the Docker secret `atlas_master_key` (recommended, and required by the compose file). Failing that, a generated `<data>/master.key` is used.
+  - Values are write-only in the UI: a form shows only *stored / missing*, and an empty field keeps the stored value.
+  - Transports resolve secrets through `ChainedSecrets`: operator secrets (`/run/secrets`, `./secrets`) first, then the vault.
+  - UI-entered secrets are named `ui-<kind>-<name>`.
+  - Every change is audited with `transport="ui"`, recording names only.
+- **Identity pinning without trust on first use** (`security/discover.py`):
+  - "Fetch host key" and "Fetch certificate" read only the handshake identity; they neither authenticate nor send a request. They are audited.
+  - The UI shows the fingerprint along with how to check it on the device. Pinning happens only after the owner ticks *I checked this fingerprint*.
+  - Fetched certificates are stored in `<data>/ca/` and pinned as `ca_file` + `sha256_pin`, with `check_hostname: false` because consoles use self-signed IP certificates.
+- **Password-mode SSH** (`SshTarget.auth="password"`):
+  - The runner still accepts only `ProbeSection` enums.
+  - The transport sends one **constant** loader per section, `bash -c '<INLINE_LOADER>' atlas <section>`, and streams atlas's **own bundled probe** (the same reviewed, read-only script as `docs/targets/atlas-probe`) on stdin. The first line of stdin is the sudo password, or empty when sudo is unticked.
+  - The loader tries `sudo -n` first. Otherwise, if the password is accepted by `sudo -S -k true`, it pipes the password plus the probe to `sudo -S -k bash -s`. Otherwise it runs as the login user, so root-only sections degrade to partial.
+  - The password travels only via stdin and bash builtins: never argv, never env, never logs or audit. Passwords containing a newline, a CR or a NUL are refused.
+  - Host keys stay pinned, and every refusal happens before a connection exists, so a password is never offered to an unverified server.
+  - Nothing is written on the target. Probe 1.3.0 reports `inline` instead of a file hash when streamed.
+  - Verified locally against an in-process SSH server (exact wire command, exact stdin) and by running the loader with real bash (non-sudo path).
+  - **Not yet verified on a real host:** the `sudo -S` path. It relies on sudo reading the password line from stdin before `bash -s` reads the rest.
+- **Key mode** (ADR-002) stays available per machine and remains the strictest option.
+
+**Consequences / risk accepted by the owner.**
+- In password mode, read-only rests on atlas's code alone: there is no target-side gate. If the account has sudo, a compromised atlas could act as root on that VM.
+- The vault protects against leaks of the vault file alone. Anyone with the data volume *and* the master key can decrypt it, which is why the master key should come from a Docker secret outside the volume.
+- SECURITY.md lists both.
+
+**Rejected.**
+- Installing the probe over SSH from the UI: a write to the target, which violates "no changes to any target".
+- Trust on first use for host keys and certificates without owner confirmation.
+- Storing secrets in the DB or `inventory.yaml`.
+- Showing stored secrets back.

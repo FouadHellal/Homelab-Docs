@@ -27,6 +27,7 @@ Status: draft for approval (M0a). Method: assets → trust boundaries (ARCHITECT
 | Threat | Example | Controls | Test / check |
 |---|---|---|---|
 | T (tamper target) | bug or injection makes atlas run `docker rm` | enum-only `SshRunner`; constant exec strings; target gate exact-match; sudoers exact argv; probe takes no free args | `tests/security/test_ssh_refusals.py`: injection (`;`, `&&`, `$()`, backticks, newline, NUL, unicode homoglyphs, `IFS` tricks), unknown enum, string instead of enum; gate script tested with bats-style cases on Linux CI |
+| E (**T-PW**, password mode, ADR-025) | no target-side gate: a compromised atlas could run anything the account (and its sudo) allows | runner still enum-only; one constant loader per section; only atlas's bundled read-only probe is streamed; password via stdin only, never argv/env/logs; host key pinned and checked before any password is sent | `test_onboarding_security.py`: exact wire command + stdin, wrong/unsafe passwords, unpinned key never gets the password; owner may use key mode instead (SECURITY.md #7) |
 | E (privilege) | `atlas-ro` escalates via sudo | sudoers lists one root-owned, non-writable binary with exact args; `restrict`; `from=`; no docker group | `atlas doctor` checks probe hash, version, file owner and mode report |
 | S (MITM) | rogue host impersonates a target | pinned `known_hosts`, StrictHostKeyChecking semantics, ed25519 only | refusal test on changed/unknown host key |
 | I (secret exfil) | env values collected | env names only on target; Redactor collector-side | nasty fixtures (ADR-009) must yield 0 leaks: a test scans all persisted output for the fixture secret corpus |
@@ -50,6 +51,8 @@ Status: draft for approval (M0a). Method: assets → trust boundaries (ARCHITECT
 | S | password guessing | argon2id, rate limit + lockout, no default creds (`atlas user add` required) | auth tests |
 | T | CSRF edits annotations / triggers scans | synchronizer token, SameSite=Strict, `__Host-` cookie | CSRF negative tests |
 | I | XSS via target data | autoescape, strict CSP with nonce, no `safe` filter on target data (lint rule) | XSS fixture snapshot test |
+| I (**T-VAULT**) | stored SSH passwords / API keys read from the UI or the data volume | write-only fields (never rendered); AES-256-GCM vault with the name as AAD; master key from a Docker secret outside the volume; audit records names only | `test_targets.py` / `test_onboarding_security.py`: values never in pages, YAML, audit; tamper/wrong-key fail closed |
+| S | fake target captures the password on first add | fingerprint shown with how to check it on the console; pinned only after explicit confirmation; no TOFU | `test_host_validation` (unconfirmed key refused) |
 | I | MCP bearer brute force / leak | 256-bit token, constant-time compare, private bind, rate limit | tests |
 | E | path traversal in annotation editor | entity key → filename by allowlisted slug + hash; writes only under `annotations/` | traversal tests |
 | D | expensive queries | pagination caps; MCP result caps | tests |
@@ -65,7 +68,7 @@ Status: draft for approval (M0a). Method: assets → trust boundaries (ARCHITECT
 ### Repo and supply chain (T-SUPPLY, T-SELF)
 | Threat | Controls |
 |---|---|
-| secrets committed | `.gitignore` for secrets/env/keys/data; gitleaks in pre-commit and CI; Claude deny rules for `.env*`, `secrets/`, `~/.ssh`, keys, `git push` |
+| secrets committed | `.gitignore` for secrets/env/keys/data; gitleaks in pre-commit and CI; Claude deny rules for `.env*`, `secrets/`, `~/.ssh`, keys, force-push |
 | malicious or vulnerable deps | `uv.lock` with hashes, pip-audit, Dependabot, minimal deps, Actions pinned by SHA, Trivy, SBOM |
 | compromised image | GHCR private, provenance attestation, digest-pinned base, non-root, ro rootfs, cap_drop ALL |
 | a future dev bypasses the wrappers | ruff `banned-api` for `httpx`, `asyncssh`, `subprocess`, `os.system`, `socket` outside `security/`; an architecture test walks imports |
