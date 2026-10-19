@@ -1,23 +1,25 @@
-# atlas production stack (docs/DEPLOY.md). Put it behind your TLS reverse proxy; never
-# publish it to the internet. Copy to your deploy host next to ./config and ./secrets.
+# atlas stack. The easy way to use it: deploy/atlas.sh install (see README "Deploy").
 #
-# Simplest setup: add VMs, Proxmox and UniFi on the web UI's Targets page. Their passwords and
-# API keys are kept in an encrypted vault in the atlas-data volume, keyed by:
-#   ./secrets/atlas_master_key     32+ random bytes, chown 10001, mode 0400 (required)
-# Optional, for hand-maintained inventory instead of / in addition to the UI:
-#   ./config/hosts.yaml            inventory (secret *names* only), CA files it references
-#   ./secrets/<name>               one file per secret named in hosts.yaml (add them below)
-#   ./config/annotations/          human layer (YAML, ideally a private git repo)
+# Default = LAN mode: atlas serves HTTPS itself on port 8443 with a generated certificate
+# (your browser warns once). Keep it on your LAN; never port-forward it to the internet.
+# Behind your own TLS reverse proxy instead: docker-compose.proxy.yml (docs/DEPLOY.md).
 #
-# Required env (an .env file next to this one, or the shell):
-#   ATLAS_HOSTNAME   the name your proxy serves atlas under, e.g. atlas.home.arpa
-# Optional: ATLAS_VERSION (image tag), ATLAS_BIND (host IP to publish on, default 127.0.0.1),
-#   ATLAS_PROXY_IP (proxy address for X-Forwarded-*), ATLAS_INTERVAL_<COLLECTOR>, ATLAS_SNAPSHOT_DAYS.
+# Files next to this one (created by deploy/atlas.sh):
+#   .env                      settings below (never commit it)
+#   secrets/atlas_master_key  encrypts the passwords / API keys you type in the UI (uid 10001, 0400)
+#   config/                   optional hosts.yaml + CA files; config/annotations/ (notes from the UI)
+#
+# .env:
+#   ATLAS_HOSTS     names/IPs you will open atlas with, comma-separated (e.g. 192.168.1.50,atlas.lan)
+#   ATLAS_PORT      published port (default 8443)
+#   ATLAS_BIND      host address to publish on (default 0.0.0.0 = every interface of this VM)
+#   ATLAS_VERSION   image tag (default latest)
+#   ATLAS_INTERVAL_<COLLECTOR>, ATLAS_SNAPSHOT_DAYS (optional tuning)
 
 name: atlas
 
 x-hardening: &hardening
-  image: ghcr.io/fouadhellal/homelab-docs:${ATLAS_VERSION:-latest}
+  image: ${ATLAS_IMAGE:-ghcr.io/fouadhellal/homelab-docs}:${ATLAS_VERSION:-latest}
   user: "10001:10001"
   read_only: true
   cap_drop: [ALL]
@@ -34,17 +36,17 @@ x-hardening: &hardening
 services:
   atlas:
     <<: *hardening
+    build: .   # used by `deploy/atlas.sh install --build` when the image can't be pulled
     command:
       - atlas
       - serve
       - --host=0.0.0.0
-      - --port=8080
+      - --port=8443
+      - --self-signed-tls
       - --schedule
-      - --hsts
-      - --allowed-host=${ATLAS_HOSTNAME:?set ATLAS_HOSTNAME}
-      - --forwarded-allow-ips=${ATLAS_PROXY_IP:-127.0.0.1}
+      - --allowed-host=${ATLAS_HOSTS:-localhost}
     ports:
-      - "${ATLAS_BIND:-127.0.0.1}:8080:8080"
+      - "${ATLAS_BIND:-0.0.0.0}:${ATLAS_PORT:-8443}:8443"
     environment:
       ATLAS_SNAPSHOT_DAYS: ${ATLAS_SNAPSHOT_DAYS:-90}
       ATLAS_INTERVAL_UNIFI: ${ATLAS_INTERVAL_UNIFI:-900}
@@ -57,10 +59,9 @@ services:
       - atlas-data:/data
       - ./config:/config:ro
       - ./config/annotations:/config/annotations   # the UI's annotation editor writes here
-    # Add the names used by `credential:` / `key:` in hosts.yaml, if you use one.
     secrets: [atlas_master_key]
 
-  # Optional read-only MCP endpoint: `docker compose --profile mcp up -d`.
+  # Optional read-only MCP endpoint for AI assistants: `docker compose --profile mcp up -d`.
   mcp:
     <<: *hardening
     profiles: [mcp]
@@ -90,6 +91,5 @@ volumes:
 secrets:
   atlas_master_key: { file: ./secrets/atlas_master_key }
   mcp_token: { file: ./secrets/mcp_token }
-  # hosts.yaml users, e.g.:
+  # hosts.yaml users add their secret files here, e.g.:
   # proxmox_auditor: { file: ./secrets/proxmox_auditor }
-  # ssh_atlas_ro: { file: ./secrets/ssh_atlas_ro }
