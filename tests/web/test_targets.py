@@ -1,5 +1,6 @@
 """Targets page (ADR-025): add VMs / Proxmox / UniFi from the UI, credentials write-only."""
 
+import asyncio
 import datetime as dt
 import hashlib
 import re
@@ -429,3 +430,86 @@ def test_unknown_page_hides_personal_devices_and_prefills_targets(
     assert 'value="rpi-dns"' in form
     assert 'value="192.168.1.9"' in form
     assert 'value="pi" selected' in form
+
+
+@pytest.mark.parametrize(
+    ("kind", "value", "expected"),
+    [
+        ("proxmox", "10.0.0.5", "https://10.0.0.5:8006/api2/json"),
+        ("proxmox", "pve:8443", "https://pve:8443/api2/json"),
+        ("unifi", "192.168.1.1", "https://192.168.1.1/proxy/network/integration"),
+        ("unas", "unas.lan", "https://unas.lan"),
+        ("unifi", "https://gw/proxy/network/integration/", "https://gw/proxy/network/integration"),
+    ],
+)
+def test_normalize_url(kind: str, value: str, expected: str) -> None:
+    from homelab_atlas.web.targets import normalize_url  # noqa: PLC0415
+
+    assert normalize_url(kind, value) == expected
+
+
+@pytest.mark.parametrize("value", ["", "http://x", "bad host;rm", "ftp://x/"])
+def test_normalize_url_rejects(value: str) -> None:
+    from homelab_atlas.web.targets import TargetError, normalize_url  # noqa: PLC0415
+
+    with pytest.raises(TargetError):
+        normalize_url("unifi", value)
+
+
+def test_readonly_service_refuses_everything(env: dict[str, Any]) -> None:
+    from homelab_atlas.inventory.hosts import Inventory  # noqa: PLC0415
+    from homelab_atlas.web.targets import HostForm, SourceForm, TargetError  # noqa: PLC0415
+
+    svc = TargetsService(
+        config_dir=env["cfg"],
+        data_dir=env["data"],
+        vault=None,
+        audit=MemoryAudit(),
+        readonly_inventory=Inventory(version=1),
+    )
+    assert not svc.editable
+    assert svc.atlas_public_key(create=True) is None
+    with pytest.raises(TargetError):
+        svc.save_host(HostForm(name="a", address="10.0.0.1"), None)
+    with pytest.raises(TargetError):
+        svc.save_source(SourceForm(kind="unifi", name="u", url="10.0.0.1"), None)
+    with pytest.raises(TargetError):
+        svc.delete_host("a")
+    with pytest.raises(TargetError):
+        asyncio.run(svc.fetch_host_key("a", "127.0.0.1", 22))
+    with pytest.raises(TargetError):
+        asyncio.run(svc.fetch_certificate("unifi", "u", "10.0.0.1"))
+
+
+def test_delete_source_removes_key(client: tuple[TestClient, str], env: dict[str, Any]) -> None:
+    c, csrf = client
+    pem, sha = _cert()
+    r = c.post(
+        "/targets/source",
+        data={
+            "csrf_token": csrf,
+            "kind": "unifi",
+            "name": "ucg",
+            "url": "192.168.1.1",
+            "credential": "k-ATLASFAKE",
+            "cert_pem": pem,
+            "cert_sha256": sha,
+            "cert_confirmed": "1",
+        },
+        follow_redirects=False,
+    )
+    assert r.status_code == 303, r.text
+    assert env["vault"].has("ui-unifi-ucg")
+    form = c.get("/targets/source?kind=unifi&name=ucg").text
+    assert "stored" in form
+    assert "k-ATLASFAKE" not in form
+    r = c.post(
+        "/targets/source/delete",
+        data={"csrf_token": csrf, "kind": "unifi", "name": "ucg"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert not env["vault"].has("ui-unifi-ucg")
+    assert ManagedInventory(env["data"]).load().sources.unifi == ()
+    assert c.get("/targets/source?kind=nope").status_code == 404
+    assert c.get("/targets/source?kind=unifi&name=missing").status_code == 404
