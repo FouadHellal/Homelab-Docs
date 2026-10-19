@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}Documentation{% endblock %}
+{% block main %}
+<div class="docs">
+<aside class="docs-toc" aria-label="On this page">
+  <p class="muted small">On this page</p>
+  <ol>
+    <li><a href="#start">Getting started</a></li>
+    <li><a href="#targets">Add your machines</a></li>
+    <li><a href="#proxmox">Proxmox VE</a></li>
+    <li><a href="#unifi">UniFi</a></li>
+    <li><a href="#collect">What atlas reads</a></li>
+    <li><a href="#pages">The pages</a></li>
+    <li><a href="#keys">Keyboard shortcuts</a></li>
+    <li><a href="#update">Updating</a></li>
+    <li><a href="#trouble">Troubleshooting</a></li>
+    <li><a href="#security">Security</a></li>
+  </ol>
+</aside>
+
+<article class="docs-body">
+<h1>atlas documentation</h1>
+<p class="lead">atlas documents your homelab and only ever <strong>reads</strong>. It logs in to your machines and controllers, records what runs where, links it all into a topology, and keeps a change history. It never changes anything on a target.</p>
+
+<section id="start" class="card">
+  <h2>Getting started</h2>
+  <ol class="steps">
+    <li><strong>Add a Proxmox source or a Proxmox node</strong> on <a href="/targets">Targets</a>, so atlas knows your nodes and every VM and LXC (<a href="#proxmox">how</a>).</li>
+    <li><strong>Add your UniFi gateway</strong>, so atlas knows every device's IP, VLAN and switch port (<a href="#unifi">how</a>).</li>
+    <li><strong>Add your VMs, servers and Pis</strong> with an SSH login, so atlas can see what runs inside them (<a href="#targets">how</a>).</li>
+    <li>Each target is scanned as soon as you save it, then on a schedule. Watch the <em>Last scan</em> column on Targets.</li>
+  </ol>
+</section>
+
+<section id="targets" class="card">
+  <h2>Add your machines</h2>
+  <p>Targets → Machines → <strong>+ add a VM / host</strong>. Pick the type: <code>linux</code>, <code>proxmox-node</code> or <code>pi</code>. Then choose what to collect: <em>linux-ssh</em> for services, processes, ports, packages, users, disks and cron, <em>docker</em> for containers and compose projects, and <em>pi</em> for temperature and throttling.</p>
+  <table class="data">
+    <thead><tr><th>Login</th><th>You do</th><th>Good to know</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Password</strong></td><td>Type the SSH username and password</td><td>Simplest, and nothing is installed. Tick <em>use for sudo</em> to see Docker, port owners and root crontabs.</td></tr>
+      <tr><td><strong>SSH key</strong></td><td>Paste the key line shown on the form into the user's <code>~/.ssh/authorized_keys</code></td><td>No password is stored.</td></tr>
+      <tr><td><strong>Key + installed probe</strong></td><td>Install the read-only probe from <code>docs/targets/</code></td><td>Strictest: the machine itself enforces read-only.</td></tr>
+    </tbody>
+  </table>
+  <p>Press <strong>Fetch host key</strong>, compare the fingerprint with <code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code> on the machine, tick the box, and save. <strong>Test login</strong> checks the login. <strong>Scan</strong> queues a scan; nothing is dropped if another scan is running.</p>
+  <p>The <em>Last scan</em> column shows each target's latest result: <span class="pill ok">ok</span>, <span class="pill partial">partial</span> (usually no sudo), <span class="pill failed">failed</span> (open the line for the reason), or <span class="pill info">not scanned yet</span>.</p>
+  <p><code>root</code> logins are refused. Use a normal user, with sudo if you want Docker details.</p>
+</section>
+
+<section id="proxmox" class="card">
+  <h2>Proxmox VE</h2>
+  <p>There are two ways to document Proxmox. They work together, and you can use both.</p>
+  <h3>A. Over SSH (no token)</h3>
+  <p>Add each Proxmox node on Targets with type <code>proxmox-node</code> and <em>use for sudo</em> ticked. atlas reads the cluster file system <code>/etc/pve</code>: cluster members, every guest's configuration (name, cores, memory, disks, NICs, bridge, VLAN), and which guests are running on that node.</p>
+  <ul>
+    <li><strong>One node is enough to see the whole cluster.</strong> <code>/etc/pve</code> is shared, so every VM and LXC appears under its node. Add every node to also see each guest's running state.</li>
+    <li><code>/etc/pve/priv</code> (keys, API tokens, passwords) is never read.</li>
+  </ul>
+  <h3>B. API token (read-only)</h3>
+  <ol class="steps">
+    <li>Datacenter → Permissions → Users → <strong>Add</strong>, for example <code>atlas@pve</code>.</li>
+    <li>Datacenter → Permissions → API Tokens → <strong>Add</strong> for that user. Keep <em>Privilege Separation</em> ticked.</li>
+    <li>Datacenter → Permissions → <strong>Add → API Token Permission</strong>: path <code>/</code>, the token, role <strong>PVEAuditor</strong>, propagate.
+      <span class="muted">This is the step most people miss. With privilege separation on, the token itself needs the role, not only the user.</span></li>
+    <li>On Targets → Proxmox VE → <strong>+ add</strong>: URL <code>https://&lt;node&gt;:8006/api2/json</code>, the token as <code>user@realm!tokenid=secret</code>, then fetch and confirm the certificate.</li>
+  </ol>
+  <p><strong>Test connection</strong> reports how many nodes and guests the token can see. "sees no nodes" means step 3 is missing. The API adds backups, HA and guest-agent IPs. Where both sources exist, atlas shows the API's data and keeps the SSH data as a fallback.</p>
+</section>
+
+<section id="unifi" class="card">
+  <h2>UniFi</h2>
+  <ul>
+    <li><strong>Local key</strong> (recommended): in the UniFi Network app on your gateway, open its integrations / API key settings and create a key. URL: <code>https://&lt;gateway&gt;/proxy/network/integration</code>. It needs no internet.</li>
+    <li><strong>Cloud key</strong> from unifi.ui.com: pick <em>cloud</em> on the form and atlas finds your console. Requests go through Ubiquiti's connector.</li>
+  </ul>
+  <p>UniFi gives every device's IP, VLAN and uplink. atlas matches Proxmox guests by MAC, so VMs without the QEMU guest agent still get an IP and a switch port.</p>
+</section>
+
+<section id="collect" class="card">
+  <h2>What atlas reads</h2>
+  <div class="cols">
+    <div><h3>Machines (SSH)</h3><p>OS and kernel, interfaces and routes, listening ports, disks, <strong>every systemd service</strong> (running, stopped, failed), running processes, timers, cron, users, packages. With sudo it also reads Docker containers, images, networks, volumes and compose projects.</p></div>
+    <div><h3>Proxmox</h3><p>Nodes, VMs and LXCs, cores, memory, disks, NICs, bridges and VLAN tags, running state. The API also gives backup jobs, guests without a backup, and HA.</p></div>
+    <div><h3>UniFi</h3><p>Gateway, switches, APs, clients, networks and VLANs, Wi-Fi SSIDs (never their keys).</p></div>
+  </div>
+  <p>About 70 common apps are recognised from services, processes, container images and ports, so a Pi-hole installed by its script shows up as Pi-hole. Secrets are removed before anything is stored. Environment variables keep their names only, and passwords, tokens and keys in command lines are redacted.</p>
+</section>
+
+<section id="pages" class="card">
+  <h2>The pages</h2>
+  <dl class="kv wide">
+    <dt><a href="/">Dashboard</a></dt><dd>Totals, your Proxmox nodes with their guests, what needs attention (failed or never-scanned targets), and machines seen on the network that aren't documented yet.</dd>
+    <dt><a href="/topology">Topology</a></dt><dd><strong>Proxmox</strong>: one box per node, containing the node, its bridges and its VMs/LXCs, each wired to the bridge its NIC uses. Pulses show running guests. <strong>Network</strong>: gateway, switches, APs and clients. <strong>VLANs</strong>: members per network. Click for details, right-click for actions, double-click to open.</dd>
+    <dt><a href="/services">Services</a></dt><dd>Every systemd unit and container on every machine in one table. Filter by machine, state, type or text, and <strong>Export CSV</strong> exports exactly what you see.</dd>
+    <dt><a href="/running">Apps</a></dt><dd>Recognised apps by category, with the machines they run on and a link to their web UI.</dd>
+    <dt><a href="/ips">IP addresses</a></dt><dd>One row per device, with all its addresses, MACs and networks. Link-local and Docker-bridge addresses are hidden until you ask for them.</dd>
+    <dt><a href="/changes">Changes</a></dt><dd>Typed events: port opened, image updated, guest migrated, new device on a VLAN, and so on.</dd>
+    <dt><a href="/unknown">Unknown</a></dt><dd>Devices on the network that you haven't added. Infrastructure is listed first; phones and IoT are behind "show everything".</dd>
+  </dl>
+</section>
+
+<section id="keys" class="card">
+  <h2>Keyboard shortcuts</h2>
+  <table class="data narrow"><tbody>
+    <tr><td><kbd>Ctrl</kbd> <kbd>K</kbd></td><td>Quick find: pages, machines, apps</td></tr>
+    <tr><td><kbd>/</kbd></td><td>Topology: search</td></tr>
+    <tr><td><kbd>F</kbd> · <kbd>R</kbd> · <kbd>C</kbd></td><td>Topology: fit · re-arrange · show/hide containers</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>Close menus and panels</td></tr>
+  </tbody></table>
+</section>
+
+<section id="update" class="card">
+  <h2>Updating</h2>
+  <pre><code>sudo atlas update</code></pre>
+  <p>This pulls the new code (<code>git pull --ff-only</code>), writes a backup to <code>/opt/atlas/backups</code> (the last five are kept), pulls the new image and restarts. Your targets, stored passwords and keys, accounts, notes and history are kept. Database changes are applied automatically. The first time, if the shortcut doesn't exist yet, run <code>git pull &amp;&amp; sudo ./deploy/atlas.sh update</code> in your clone.</p>
+</section>
+
+<section id="trouble" class="card">
+  <h2>Troubleshooting</h2>
+  <dl class="kv wide">
+    <dt>A machine stays "not scanned yet"</dt><dd>Press <strong>Scan</strong> on its row. Scans are queued, so pressing it on several machines scans them all, one after the other.</dd>
+    <dt>A machine is "failed"</dt><dd>Open the line under its status for the reason. <em>authentication refused</em>: the username or password is wrong, or the machine refuses password logins (<code>PasswordAuthentication no</code>). <em>host key</em>: fetch and confirm it again. <em>timeout</em>: atlas can't reach port 22.</dd>
+    <dt>Partial scans</dt><dd>No sudo: Docker, port owners and root crontabs are missing. Tick <em>use for sudo</em>.</dd>
+    <dt>No Proxmox nodes or VMs</dt><dd>Add a node as <code>proxmox-node</code> with sudo, or fix the API token's permission (<a href="#proxmox">step 3</a>).</dd>
+    <dt>A VM shows "state unknown"</dt><dd>atlas saw it in another node's configuration. Add the node it runs on, or the API.</dd>
+    <dt>A Pi-hole shows no services</dt><dd>It isn't a target yet. Add it as a machine (type <code>pi</code> or <code>linux</code>) and scan.</dd>
+  </dl>
+</section>
+
+<section id="security" class="card">
+  <h2>Security</h2>
+  <ul>
+    <li>Read-only by construction:
+      <ul>
+        <li>HTTP is GET-only and checked against an allowlist;</li>
+        <li>SSH runs a fixed set of read-only probe sections;</li>
+        <li>every call is written to a hash-chained audit log.</li>
+      </ul></li>
+    <li>Credentials are encrypted at rest (AES-256-GCM) and never shown again. Back up <code>/opt/atlas/secrets/atlas_master_key</code>.</li>
+    <li>Keep atlas on your LAN or VPN. Don't expose it to the internet.</li>
+  </ul>
+  <p>Details are in <code>SECURITY.md</code> in the repository.</p>
+</section>
+</article>
+</div>
+{% endblock %}

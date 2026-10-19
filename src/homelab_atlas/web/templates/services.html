@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Services{% endblock %}
+{% block main %}
+<header class="page-head">
+  <div>
+    <h1>Services</h1>
+    <p class="muted">Every systemd unit and Docker container on every machine atlas logs in to, in one table. Filter it, then export what you see.</p>
+  </div>
+</header>
+
+<form class="filter-bar card" method="get" action="/services" hx-get="/services" hx-target="#svc-results"
+      hx-trigger="change, keyup changed delay:250ms from:#svc-q" hx-push-url="true" role="search">
+  <label class="field"><span>Machine</span>
+    <select name="machine">
+      <option value="">All machines</option>
+      {% for m in t.machines %}<option value="{{ m }}"{% if m == machine %} selected{% endif %}>{{ m }}</option>{% endfor %}
+    </select></label>
+  <fieldset class="seg-radio" aria-label="State">
+    {% for st, lbl in [("running", "Running"), ("failed", "Failed"), ("inactive", "Stopped"), ("all", "All")] %}
+    <label class="{{ 'on' if st == state }}"><input type="radio" name="state" value="{{ st }}"{% if st == state %} checked{% endif %}>{{ lbl }}
+      {% if st != "all" %}<span class="count">{{ t.counts[st] }}</span>{% else %}<span class="count">{{ t.total }}</span>{% endif %}</label>
+    {% endfor %}
+  </fieldset>
+  <label class="field"><span>Type</span>
+    <select name="kind">
+      <option value="">systemd + containers</option>
+      <option value="systemd"{% if kind == "systemd" %} selected{% endif %}>systemd services</option>
+      <option value="container"{% if kind == "container" %} selected{% endif %}>Docker containers</option>
+    </select></label>
+  <label class="field grow"><span>Search</span>
+    <input id="svc-q" type="search" name="q" value="{{ q }}" placeholder="pihole, postgres, failed, 8080, docker01…" maxlength="64" autocomplete="off"></label>
+  <noscript><button type="submit">Filter</button></noscript>
+</form>
+
+{% if t.undocumented %}
+<p class="card warn small">Not documented yet, so not in this table: {{ t.undocumented | join(", ") }}.
+  <a href="/targets">Check Targets</a>: each needs a working SSH login and one scan.</p>
+{% endif %}
+
+<div id="svc-results">{% include "_services_rows.html" %}</div>
+{% endblock %}

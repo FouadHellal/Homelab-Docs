@@ -18,7 +18,7 @@
 
 {% set f = d.facets %}
 {% if "proxmox" in f %}{% set p = f["proxmox"] %}
-<section class="card"><h2>Proxmox</h2>
+<section class="card"><h2>Proxmox{% if d.pve_source %} <span class="muted small">from {{ d.pve_source }}</span>{% endif %}</h2>
   {% if "vmid" in p %}
   {{ kv([("type", p.type), ("node", p.node), ("status", p.status), ("cores", p.cores), ("memory MiB", p.memory_mb), ("OS (agent)", p.agent_os), ("tags", p.tags | join(", ")), ("on boot", p.onboot), ("HA", p.ha_state), ("backed up", p.backed_up), ("template", p.template)]) }}
   {% if p.backed_up is false %}<p class="warn">Not covered by any backup job.</p>{% endif %}

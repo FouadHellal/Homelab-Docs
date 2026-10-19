@@ -1,0 +1,25 @@
+<div class="section-head">
+  <p class="muted small">{{ t.rows | length }} of {{ t.total }} rows{% if machine %} · {{ machine }}{% endif %}</p>
+  <a class="btn ghost small" id="svc-csv" href="/services.csv{{ '?' ~ query if query }}" download>Export CSV</a>
+</div>
+<div class="table-scroll">
+<table class="data svc-table">
+  <thead><tr><th>Machine</th><th>Type</th><th>Name</th><th>App</th><th>Description</th><th>State</th><th>At boot / restart</th><th>Image · ports</th></tr></thead>
+  <tbody>
+  {% for r in t.rows %}
+  <tr>
+    <td><a href="/entity?key={{ r.key | urlencode }}">{{ r.machine }}</a> <span class="kind-tag">{{ r.kind }}</span>{% if r.node %}<div class="muted small">on {{ r.node }}</div>{% endif %}</td>
+    <td><span class="type-tag {{ r.type }}">{{ "unit" if r.type == "systemd" else "container" }}</span></td>
+    <td><code>{{ r.name }}</code></td>
+    <td>{% if r.app %}<span class="chip" title="{{ r.category }}">{{ r.app }}</span>{% endif %}</td>
+    <td class="muted">{{ r.description }}</td>
+    <td><span class="pill {{ 'ok' if r.state == 'running' else 'failed' if r.state == 'failed' else 'partial' }}">{{ r.state }}</span>{% if r.sub and r.sub != "running" %} <span class="muted small">{{ r.sub }}</span>{% endif %}</td>
+    <td class="small">{{ r.enabled }}</td>
+    <td class="small">{% if r.image %}<code>{{ r.image }}</code>{% endif %}{% if r.ports %}<div class="muted">{{ r.ports }}</div>{% endif %}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="8" class="muted">Nothing matches.{% if not t.total %} No machine is documented yet: add one on <a href="/targets">Targets</a>.{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
