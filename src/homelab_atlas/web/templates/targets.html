@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Targets{% endblock %}
+{% block main %}
+<h1>Targets</h1>
+{% if message %}<p class="card" role="status">{{ message }}</p>{% endif %}
+{% if not v.editable %}<p class="card warn">Read-only here{% if lab %} (demo lab: targets come from fixtures){% endif %}.</p>{% endif %}
+<p class="muted">Add your machines and controllers here. atlas only <strong>reads</strong>: it logs in, collects, and never changes anything.
+Passwords and API keys are stored encrypted and are never shown again.</p>
+
+<section class="card">
+  <h2>Machines (SSH){% if v.editable %} <a class="more" href="/targets/host">+ add a VM / host</a>{% endif %}</h2>
+  <table class="data">
+    <thead><tr><th>Name</th><th>Address</th><th>Type</th><th>Collects</th><th>Login</th><th>Host key</th><th></th></tr></thead>
+    <tbody>
+    {% for h in v.hosts %}
+    <tr>
+      <td>{% if h.fixed or not v.editable %}{{ h.entry.name }}{% else %}<a href="/targets/host?name={{ h.entry.name | urlencode }}">{{ h.entry.name }}</a>{% endif %}
+        {% if h.fixed %}<span class="pill info">hosts.yaml</span>{% endif %}</td>
+      <td>{{ h.entry.address }}{% if h.entry.ssh.port %}:{{ h.entry.ssh.port }}{% endif %}</td>
+      <td>{{ h.entry.type }}</td>
+      <td>{{ h.entry.collectors | join(", ") or "—" }}</td>
+      <td>{% if h.entry.collectors %}{{ h.auth }} {% if h.secret_set %}<span class="pill ok">set</span>{% else %}<span class="pill failed">missing</span>{% endif %}{% else %}—{% endif %}</td>
+      <td>{% if h.pinned %}<span class="pill ok">pinned</span>{% elif h.entry.collectors %}<span class="pill failed">none</span>{% else %}—{% endif %}</td>
+      <td class="actions">
+        {% if h.entry.collectors and v.editable %}
+        <form method="post" action="/targets/test" hx-post="/targets/test" hx-target="#result-{{ loop.index }}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="name" value="{{ h.entry.name }}">
+          <button type="submit" class="small ghost">Test login</button></form>
+        {% endif %}
+        {% if sched %}
+        <form method="post" action="/targets/scan" hx-post="/targets/scan" hx-target="#result-{{ loop.index }}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="name" value="{{ h.entry.name }}">
+          <button type="submit" class="small">Scan</button></form>
+        {% endif %}
+        <span id="result-{{ loop.index }}"></span>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" class="muted">No machines yet.{% if v.editable %} <a href="/targets/host">Add your first VM</a>.{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small">VMs and containers on Proxmox are discovered automatically from the Proxmox API. Add a VM here to also collect what runs <em>inside</em> it: services, listening ports, Docker containers, packages, cron jobs, users, disks.</p>
+</section>
+
+{% for kind, title, hint in [("proxmox", "Proxmox VE", "API token (PVEAuditor)"), ("unifi", "UniFi gateway", "Integration API key"), ("unas", "UniFi UNAS", "Drive API key")] %}
+<section class="card">
+  <h2>{{ title }}{% if v.editable %} <a class="more" href="/targets/source?kind={{ kind }}">+ add</a>{% endif %}</h2>
+  <table class="data">
+    <thead><tr><th>Name</th><th>URL</th><th>{{ hint }}</th><th>Certificate</th><th></th></tr></thead>
+    <tbody>
+    {% for s in v.sources[kind] %}
+    <tr>
+      <td>{% if s.fixed or not v.editable %}{{ s.source.name }}{% else %}<a href="/targets/source?kind={{ kind }}&amp;name={{ s.source.name | urlencode }}">{{ s.source.name }}</a>{% endif %}
+        {% if s.fixed %}<span class="pill info">hosts.yaml</span>{% endif %}</td>
+      <td><code>{{ s.source.url }}</code></td>
+      <td>{% if s.secret_set %}<span class="pill ok">set</span>{% else %}<span class="pill failed">missing</span>{% endif %}</td>
+      <td>{% if s.source.tls.sha256_pin %}<span class="pill ok">pinned</span>{% elif s.source.tls.ca_file %}<span class="pill ok">CA</span>{% else %}<span class="pill failed">none</span>{% endif %}</td>
+      <td class="actions">{% if sched %}
+        <form method="post" action="/targets/scan" hx-post="/targets/scan" hx-target="#sres-{{ kind }}-{{ loop.index }}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="name" value="{{ s.source.name }}">
+          <button type="submit" class="small">Scan</button></form>{% endif %}
+        <span id="sres-{{ kind }}-{{ loop.index }}"></span></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="muted">None.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{{ f.original or "Add host" }}{% endblock %}
+{% block main %}
+<p class="crumbs"><a href="/targets">Targets</a> /</p>
+<h1>{{ "Edit " ~ f.original if f.original else "Add a VM / host" }}</h1>
+<form class="card target-form" method="post" action="/targets/host">
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <input type="hidden" name="original" value="{{ f.original }}">
+  <div class="grid two">
+    <label>Name <input name="name" value="{{ f.name }}" required maxlength="64" placeholder="docker01"></label>
+    <label>IP address or DNS name <input name="address" value="{{ f.address }}" required maxlength="255" placeholder="192.168.1.20"></label>
+    <label>Type
+      <select name="type">{% for t in types %}<option value="{{ t }}"{% if f.type == t %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></label>
+    <label>SSH port <input name="ssh_port" type="number" min="1" max="65535" value="{{ f.port }}"></label>
+  </div>
+  <fieldset><legend>What to collect</legend>
+    {% set labels = {"linux-ssh": "Linux: OS, services, listening ports, packages, cron, users, disks", "docker": "Docker: containers, images, ports, networks, volumes, compose", "pi": "Raspberry Pi: temperature, throttling, firmware"} %}
+    {% for c in collectors %}<label class="check"><input type="checkbox" name="collectors" value="{{ c }}"{% if c in f.collectors %} checked{% endif %}> {{ labels[c] }}</label>{% endfor %}
+  </fieldset>
+  <fieldset><legend>SSH login</legend>
+    <label>Username <input name="ssh_user" value="{{ f.user }}" maxlength="32" placeholder="e.g. admin (root is refused)" autocomplete="off"></label>
+    <label class="check"><input type="radio" name="auth" value="password"{% if f.auth == "password" %} checked{% endif %}> Password: nothing is installed on the VM</label>
+    <label>Password {% if secret_set %}<span class="pill ok">stored</span> <span class="muted small">leave empty to keep it</span>{% endif %}
+      <input name="password" type="password" maxlength="1024" autocomplete="new-password"></label>
+    <label class="check"><input type="checkbox" name="sudo" value="1"{% if f.sudo %} checked{% endif %}> Also use it for sudo (Docker details, process owners of ports, root crontabs)</label>
+    <label class="check"><input type="radio" name="auth" value="key"{% if f.auth == "key" %} checked{% endif %}> SSH key with the installed read-only probe (strictest, see docs/SETUP-TARGETS.md)</label>
+    <label>Key secret name (key mode only) <input name="key_name" value="{{ f.key_name }}" maxlength="64" placeholder="ssh_atlas_ro"></label>
+  </fieldset>
+  <fieldset><legend>Host key: protects your password from a fake server</legend>
+    {% if pinned %}<p>Pinned: <code>{{ (pinned | first)[:60] }}…</code></p>{% endif %}
+    <div id="hostkey">
+      <button type="button" class="ghost" hx-post="/targets/hostkey" hx-include="[name=address],[name=ssh_port],[name=name],[name=csrf_token]" hx-target="#hostkey">{{ "Re-fetch host key" if pinned else "Fetch host key" }}</button>
+    </div>
+  </fieldset>
+  <div class="actions">
+    <button type="submit"{% if not editable %} disabled{% endif %}>Save</button>
+    <a href="/targets">Cancel</a>
+  </div>
+</form>
+{% if f.original and editable %}
+<form method="post" action="/targets/host/delete" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="name" value="{{ f.original }}">
+  <button type="submit" class="ghost">Remove {{ f.original }}</button>
+  <span class="muted small">Removes it from the targets and deletes its stored password. Collected history stays.</span>
+</form>
+{% endif %}
+{% endblock %}

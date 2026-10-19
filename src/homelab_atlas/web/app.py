@@ -15,20 +15,33 @@ from dataclasses import dataclass, field
 from importlib.resources import files
 from pathlib import Path
 from typing import Annotated, Any, Final
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import SecretStr
 from sqlalchemy.orm import Session
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from homelab_atlas import __version__
 from homelab_atlas.inventory import annotations as ann
+from homelab_atlas.inventory.managed import SourceKind
 from homelab_atlas.scheduler import Scheduler
+from homelab_atlas.security.errors import SecurityRefusal, TransportError
 from homelab_atlas.store.tables import Annotation, Entity
 from homelab_atlas.web import auth, queries, topology
+from homelab_atlas.web.targets import (
+    HOST_COLLECTORS,
+    HOST_TYPES,
+    HostForm,
+    SourceForm,
+    TargetError,
+    TargetsService,
+    host_form_from,
+    source_form_from,
+)
 
 SESSION_COOKIE: Final = "__Host-atlas"
 LOGIN_COOKIE: Final = "__Host-atlas-login"
@@ -47,6 +60,12 @@ class WebConfig:
     lab: bool = False
     #: Periodic scans + "Scan now"; None = read-only viewer (scans run via `atlas scan`).
     scheduler: Scheduler | None = None
+    #: Start the periodic jobs (else the scheduler only serves "Scan now").
+    schedule: bool = True
+    #: Targets page (ADR-025); None hides it.
+    targets: TargetsService | None = None
+    #: Quick SSH login test for one host: name -> (ok, message).
+    tester: Callable[[str], Awaitable[tuple[bool, str]]] | None = None
 
 
 class LoginThrottle:
@@ -90,6 +109,13 @@ def safe_next(target: str | None) -> str:
     return "/" if parts.scheme or parts.netloc else target
 
 
+def _safe_error(exc: Exception) -> str:
+    """Errors from the security layer are already secret-free; keep them short."""
+    if isinstance(exc, SecurityRefusal):
+        return f"refused: {exc.reason.value}"
+    return str(exc)[:200] or type(exc).__name__
+
+
 def create_app(cfg: WebConfig) -> FastAPI:
     templates = Jinja2Templates(directory=str(PKG / "templates"))
     templates.env.autoescape = True
@@ -102,7 +128,7 @@ def create_app(cfg: WebConfig) -> FastAPI:
             errors = ann.sync(s, cfg.annotations_dir)
             s.commit()
         _app.state.annotation_errors = errors
-        if cfg.scheduler is not None:
+        if cfg.scheduler is not None and cfg.schedule:
             cfg.scheduler.start()
         try:
             yield
@@ -124,7 +150,9 @@ def create_app(cfg: WebConfig) -> FastAPI:
         h["Content-Security-Policy"] = csp(request.state.nonce)
         h["X-Content-Type-Options"] = "nosniff"
         h["X-Frame-Options"] = "DENY"
-        h["Referrer-Policy"] = "no-referrer"
+        h["Referrer-Policy"] = (
+            "same-origin"  # no-referrer would make browsers send Origin: null on form POSTs
+        )
         h["Cross-Origin-Opener-Policy"] = "same-origin"
         h["Cross-Origin-Resource-Policy"] = "same-origin"
         h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), usb=(), payment=()"
@@ -277,6 +305,7 @@ def create_app(cfg: WebConfig) -> FastAPI:
             d=queries.dashboard(s),
             annotation_errors=app.state.annotation_errors,
             sched=cfg.scheduler,
+            scheduled=cfg.schedule,
         )
 
     @app.post("/scan", response_class=HTMLResponse)
@@ -440,5 +469,249 @@ def create_app(cfg: WebConfig) -> FastAPI:
         ann.save(cfg.annotations_dir, doc)
         ann.sync(s, cfg.annotations_dir)
         return page(request, "_annotation.html", user, a=s.get(Annotation, key), key=key)
+
+    # ------------------------------------------------------------------ targets (ADR-025)
+
+    def targets_svc() -> TargetsService:
+        if cfg.targets is None:
+            raise HTTPException(404, "targets page disabled")
+        return cfg.targets
+
+    def _kind(kind: str) -> SourceKind:
+        if kind not in ("proxmox", "unifi", "unas"):
+            raise HTTPException(404, "unknown source kind")
+        return kind  # type: ignore[return-value]
+
+    def _secret(value: str) -> SecretStr | None:
+        return SecretStr(value) if value.strip() else None
+
+    @app.get("/targets", response_class=HTMLResponse)
+    def targets_page(
+        request: Request, user: User, msg: Annotated[str, Query(max_length=200)] = ""
+    ) -> Response:
+        svc = targets_svc()
+        return page(request, "targets.html", user, v=svc.view(), message=msg, sched=cfg.scheduler)
+
+    @app.get("/targets/host", response_class=HTMLResponse)
+    def target_host_form(
+        request: Request, user: User, name: Annotated[str, Query(max_length=64)] = ""
+    ) -> Response:
+        svc = targets_svc()
+        inv, _ = svc.inventory()
+        entry = svc.host(name) if name else None
+        if name and entry is None:
+            raise HTTPException(404, "no such host")
+        return page(
+            request,
+            "target_host.html",
+            user,
+            f=host_form_from(entry, inv),
+            editable=svc.editable,
+            types=HOST_TYPES,
+            collectors=HOST_COLLECTORS,
+            error=None,
+            secret_set=bool(entry and svc.has_secret(entry.ssh.password)),
+            pinned=entry.ssh.host_keys if entry else (),
+        )
+
+    @app.post("/targets/host", response_class=HTMLResponse)
+    def target_host_save(
+        request: Request,
+        user: Csrf,
+        name: Annotated[str, Form(max_length=64)],
+        address: Annotated[str, Form(max_length=255)],
+        type: Annotated[str, Form(max_length=16)] = "linux",  # noqa: A002
+        collectors: Annotated[list[str] | None, Form()] = None,
+        ssh_user: Annotated[str, Form(max_length=32)] = "",
+        ssh_port: Annotated[int, Form(ge=1, le=65535)] = 22,
+        auth: Annotated[str, Form(max_length=8)] = "password",
+        password: Annotated[str, Form(max_length=1024)] = "",
+        sudo: Annotated[str, Form(max_length=4)] = "",
+        key_name: Annotated[str, Form(max_length=64)] = "",
+        host_key: Annotated[str, Form(max_length=2048)] = "",
+        host_key_confirmed: Annotated[str, Form(max_length=4)] = "",
+        original: Annotated[str, Form(max_length=64)] = "",
+    ) -> Response:
+        svc = targets_svc()
+        form = HostForm(
+            name=name.strip(),
+            address=address.strip(),
+            type=type,
+            collectors=list(collectors or []),
+            user=ssh_user.strip(),
+            port=ssh_port,
+            auth="key" if auth == "key" else "password",
+            sudo=bool(sudo),
+            key_name=key_name.strip(),
+            host_key=host_key.strip(),
+            host_key_confirmed=bool(host_key_confirmed),
+            original=original,
+        )
+        try:
+            svc.save_host(form, _secret(password))
+        except TargetError as exc:
+            entry = svc.host(original or form.name)
+            return page(
+                request,
+                "target_host.html",
+                user,
+                422,
+                f=form,
+                editable=svc.editable,
+                types=HOST_TYPES,
+                collectors=HOST_COLLECTORS,
+                error=str(exc)[:300],
+                secret_set=bool(entry and svc.has_secret(entry.ssh.password)),
+                pinned=entry.ssh.host_keys if entry else (),
+            )
+        return RedirectResponse(f"/targets?msg={quote(form.name + ' saved')}", 303)
+
+    @app.post("/targets/host/delete")
+    def target_host_delete(user: Csrf, name: Annotated[str, Form(max_length=64)]) -> Response:
+        try:
+            targets_svc().delete_host(name)
+        except TargetError as exc:
+            return RedirectResponse(f"/targets?msg={quote(str(exc)[:150])}", 303)
+        return RedirectResponse(f"/targets?msg={quote(name + ' removed')}", 303)
+
+    @app.post("/targets/hostkey", response_class=HTMLResponse)
+    async def target_hostkey(
+        request: Request,
+        user: Csrf,
+        address: Annotated[str, Form(max_length=255)],
+        ssh_port: Annotated[int, Form(ge=1, le=65535)] = 22,
+        name: Annotated[str, Form(max_length=64)] = "",
+    ) -> Response:
+        try:
+            hk = await targets_svc().fetch_host_key(name.strip(), address.strip(), ssh_port)
+        except (TargetError, SecurityRefusal, TransportError) as exc:
+            return page(request, "_hostkey.html", user, hk=None, error=_safe_error(exc))
+        return page(request, "_hostkey.html", user, hk=hk, error=None)
+
+    @app.get("/targets/source", response_class=HTMLResponse)
+    def target_source_form(
+        request: Request,
+        user: User,
+        kind: Annotated[str, Query(max_length=8)],
+        name: Annotated[str, Query(max_length=64)] = "",
+    ) -> Response:
+        svc = targets_svc()
+        k = _kind(kind)
+        src = svc.source(k, name) if name else None
+        if name and src is None:
+            raise HTTPException(404, "no such source")
+        return page(
+            request,
+            "target_source.html",
+            user,
+            f=source_form_from(k, src),
+            editable=svc.editable,
+            error=None,
+            secret_set=bool(src and svc.has_secret(src.credential)),
+            pinned=src.tls if src else None,
+        )
+
+    @app.post("/targets/source", response_class=HTMLResponse)
+    def target_source_save(
+        request: Request,
+        user: Csrf,
+        kind: Annotated[str, Form(max_length=8)],
+        name: Annotated[str, Form(max_length=64)],
+        url: Annotated[str, Form(max_length=512)],
+        credential: Annotated[str, Form(max_length=4096)] = "",
+        cert_pem: Annotated[str, Form(max_length=65536)] = "",
+        cert_sha256: Annotated[str, Form(max_length=64)] = "",
+        cert_confirmed: Annotated[str, Form(max_length=4)] = "",
+        original: Annotated[str, Form(max_length=64)] = "",
+    ) -> Response:
+        svc = targets_svc()
+        form = SourceForm(
+            kind=_kind(kind),
+            name=name.strip(),
+            url=url.strip(),
+            cert_pem=cert_pem,
+            cert_sha256=cert_sha256.strip(),
+            cert_confirmed=bool(cert_confirmed),
+            original=original,
+        )
+        try:
+            svc.save_source(form, _secret(credential))
+        except TargetError as exc:
+            src = svc.source(form.kind, original or form.name)
+            return page(
+                request,
+                "target_source.html",
+                user,
+                422,
+                f=form,
+                editable=svc.editable,
+                error=str(exc)[:300],
+                secret_set=bool(src and svc.has_secret(src.credential)),
+                pinned=src.tls if src else None,
+            )
+        return RedirectResponse(f"/targets?msg={quote(form.name + ' saved')}", 303)
+
+    @app.post("/targets/source/delete")
+    def target_source_delete(
+        user: Csrf,
+        kind: Annotated[str, Form(max_length=8)],
+        name: Annotated[str, Form(max_length=64)],
+    ) -> Response:
+        try:
+            targets_svc().delete_source(_kind(kind), name)
+        except TargetError as exc:
+            return RedirectResponse(f"/targets?msg={quote(str(exc)[:150])}", 303)
+        return RedirectResponse(f"/targets?msg={quote(name + ' removed')}", 303)
+
+    @app.post("/targets/cert", response_class=HTMLResponse)
+    async def target_cert(
+        request: Request,
+        user: Csrf,
+        kind: Annotated[str, Form(max_length=8)],
+        url: Annotated[str, Form(max_length=512)],
+        name: Annotated[str, Form(max_length=64)] = "",
+    ) -> Response:
+        try:
+            cert = await targets_svc().fetch_certificate(_kind(kind), name.strip(), url.strip())
+        except (TargetError, SecurityRefusal, TransportError) as exc:
+            return page(request, "_cert.html", user, cert=None, error=_safe_error(exc))
+        return page(request, "_cert.html", user, cert=cert, error=None)
+
+    @app.post("/targets/test", response_class=HTMLResponse)
+    async def target_test(
+        request: Request, user: Csrf, name: Annotated[str, Form(max_length=64)]
+    ) -> Response:
+        targets_svc()
+        if cfg.tester is None:
+            return page(
+                request,
+                "_test_result.html",
+                user,
+                ok=False,
+                text="testing is not available in the demo lab",
+            )
+        ok, text = await cfg.tester(name)
+        return page(request, "_test_result.html", user, ok=ok, text=text)
+
+    @app.post("/targets/scan", response_class=HTMLResponse)
+    async def target_scan(
+        request: Request, user: Csrf, name: Annotated[str, Form(max_length=64)]
+    ) -> Response:
+        targets_svc()
+        if cfg.scheduler is None:
+            return page(
+                request,
+                "_test_result.html",
+                user,
+                ok=False,
+                text="scanning from the UI is off (atlas serve without a scheduler)",
+            )
+        started = cfg.scheduler.trigger(hosts=[name])
+        text = (
+            f"Scan of {name} started; results appear on the dashboard and its page."
+            if started
+            else "A scan is already running."
+        )
+        return page(request, "_test_result.html", user, ok=started, text=text)
 
     return app

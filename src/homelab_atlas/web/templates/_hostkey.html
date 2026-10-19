@@ -1,0 +1,11 @@
+<div id="hostkey">
+{% if error %}<p class="error" role="alert">Could not fetch the host key: {{ error }}</p>
+<button type="button" class="ghost" hx-post="/targets/hostkey" hx-include="[name=address],[name=ssh_port],[name=name],[name=csrf_token]" hx-target="#hostkey">Try again</button>
+{% else %}
+<p>The server presented a <code>{{ hk.line.split()[0] }}</code> key with fingerprint</p>
+<p><code class="fp">{{ hk.fingerprint }}</code></p>
+<p class="muted small">Check it on the VM's console: <code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code></p>
+<input type="hidden" name="host_key" value="{{ hk.line }}">
+<label class="check"><input type="checkbox" name="host_key_confirmed" value="1" required> I checked this fingerprint</label>
+{% endif %}
+</div>

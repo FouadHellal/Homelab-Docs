@@ -68,3 +68,9 @@ details { margin-top: 8px; } summary { cursor: pointer; color: var(--accent); }
 .cy { position: relative; height: 72vh; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
 .notes { margin-top: 8px; }
 .actions { display: flex; gap: 8px; }
+fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 12px 0; padding: 8px 12px; }
+legend { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; padding: 0 4px; }
+label.check { display: flex; gap: 8px; align-items: baseline; } label.check input { display: inline; width: auto; margin: 0; }
+code.fp { word-break: break-all; font-size: 13px; }
+.target-form { max-width: 900px; }
+td.actions { white-space: nowrap; }

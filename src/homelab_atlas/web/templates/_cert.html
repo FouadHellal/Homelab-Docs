@@ -1,0 +1,12 @@
+<div id="cert">
+{% if error %}<p class="error" role="alert">Could not fetch the certificate: {{ error }}</p>
+<button type="button" class="ghost" hx-post="/targets/cert" hx-include="[name=url],[name=kind],[name=name],[name=csrf_token]" hx-target="#cert">Try again</button>
+{% else %}
+<p>Subject <code>{{ cert.subject }}</code>, SHA-256 fingerprint</p>
+<p><code class="fp">{{ cert.sha256 }}</code></p>
+<p class="muted small">Compare it with what the device shows (browser padlock → certificate → SHA-256). atlas will trust exactly this certificate.</p>
+<input type="hidden" name="cert_pem" value="{{ cert.pem }}">
+<input type="hidden" name="cert_sha256" value="{{ cert.sha256 }}">
+<label class="check"><input type="checkbox" name="cert_confirmed" value="1" required> I checked this fingerprint</label>
+{% endif %}
+</div>

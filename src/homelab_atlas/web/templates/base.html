@@ -15,7 +15,7 @@
 <header class="top">
   <a class="brand" href="/">atlas{% if lab %} <span class="badge lab">demo lab</span>{% endif %}</a>
   <nav>
-    {% for href, label in [("/", "Dashboard"), ("/entities", "Inventory"), ("/topology", "Topology"), ("/ips", "IPs"), ("/vlans", "VLANs"), ("/ports", "Ports"), ("/changes", "Changes"), ("/unknown", "Unknown")] %}
+    {% for href, label in [("/", "Dashboard"), ("/entities", "Inventory"), ("/topology", "Topology"), ("/ips", "IPs"), ("/vlans", "VLANs"), ("/ports", "Ports"), ("/changes", "Changes"), ("/unknown", "Unknown"), ("/targets", "Targets")] %}
     <a href="{{ href }}"{% if path == href or (href != "/" and path.startswith(href)) %} aria-current="page"{% endif %}>{{ label }}</a>
     {% endfor %}
   </nav>

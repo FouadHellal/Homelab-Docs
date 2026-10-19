@@ -1,5 +1,6 @@
 <div id="scan-status">
   {% if message %}<p class="muted">{{ message }}</p>{% endif %}
+  {% if scheduled is defined and not scheduled %}<p class="muted small">Periodic scans are off (start with <code>atlas serve --schedule</code>); "Scan now" still works.</p>{% endif %}
   {% if sched.status.running %}<p><span class="pill partial">running</span> {{ sched.status.running }}</p>{% endif %}
   <table><thead><tr><th>Collector</th><th>Every</th><th>Last</th><th>Next</th></tr></thead><tbody>
   {% set nxt = sched.next_runs() %}
