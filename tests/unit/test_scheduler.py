@@ -175,22 +175,66 @@ def test_retention_runs_after_scan_and_errors_are_contained() -> None:
 # ------------------------------------------------------------------ trigger / APScheduler
 
 
-def test_manual_trigger_is_exclusive() -> None:
+async def _idle(s: Scheduler) -> None:
+    for _ in range(300):
+        await asyncio.sleep(0.01)
+        if s.status.running is None and not s.status.queued and not s._draining():
+            return
+    raise AssertionError("scheduler did not go idle")
+
+
+def test_manual_triggers_queue_and_merge_instead_of_dropping() -> None:
     async def scenario() -> None:
         eng = FakeEngine()
         eng.gate = threading.Event()
         s = make(eng)
-        assert s.trigger() is True
+        assert s.trigger(hosts=["web01"]) == "started"
         await asyncio.sleep(0.05)
-        assert s.status.running == "manual"
-        assert s.trigger() is False  # already running
+        assert s.status.running == "manual:web01"
+        # Clicking Scan on more machines while one runs: queued, merged, none lost.
+        assert s.trigger(hosts=["db01"]) == "queued"
+        assert s.trigger(hosts=["pi-garage", "db01"]) == "queued"
+        assert s.status.queued == ["db01", "pi-garage"]
         eng.gate.set()
+        await _idle(s)
+        assert eng.calls == [(None, "manual:web01"), (None, "manual:db01,pi-garage")]
+
+    asyncio.run(scenario())
+
+
+def test_full_scan_absorbs_queued_host_scans() -> None:
+    async def scenario() -> None:
+        eng = FakeEngine()
+        eng.gate = threading.Event()
+        s = make(eng)
+        assert s.trigger() == "started"
+        await asyncio.sleep(0.05)
+        assert s.trigger(hosts=["web01"]) == "queued"
+        assert s.trigger() == "queued"
+        assert s.status.queued == ["everything"]
+        eng.gate.set()
+        await _idle(s)
+        assert eng.calls == [(None, "manual"), (None, "manual")]
+
+    asyncio.run(scenario())
+
+
+def test_queued_scan_waits_for_an_external_lock() -> None:
+    async def scenario() -> None:
+        eng = FakeEngine(locked=True)
+        s = Scheduler(lambda: cast(ScanEngine, eng), intervals={"unifi": 900},
+                      locked_retry_s=0.01)  # fmt: skip
+        s.trigger(hosts=["web01"])
         for _ in range(100):
             await asyncio.sleep(0.01)
-            if getattr(s.status, "running") is None:  # noqa: B009 - defeats mypy narrowing
+            if len(eng.calls) >= 2:
                 break
-        assert getattr(s.status, "running") is None  # noqa: B009 - defeats mypy narrowing
-        assert eng.calls == [(None, "manual")]
+        assert len(eng.calls) >= 2  # retried, not dropped
+        assert all(c == (None, "manual:web01") for c in eng.calls)
+        eng.locked = False
+        await _idle(s)
+        assert s.status.queued == []
+        s.shutdown()
 
     asyncio.run(scenario())
 

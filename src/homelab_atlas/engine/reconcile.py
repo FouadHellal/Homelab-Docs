@@ -12,7 +12,7 @@ Passive only (ADR-016): nothing here sends a packet.
 """
 
 import ipaddress
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final
 
@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from homelab_atlas.engine.classify import classify
 from homelab_atlas.engine.events import EventSpec
 from homelab_atlas.inventory.hosts import Inventory
+from homelab_atlas.store.facets import FacetView
 from homelab_atlas.store.tables import CollectorRun, Entity, Facet, utcnow
 
 MISSING_AFTER: Final = 3
@@ -53,9 +54,11 @@ def _claim(idx: Index, macs: Iterable[Any], key: str) -> None:
             idx.mac_owner.setdefault(mac, key)
 
 
-def build_index(facets: list[Facet], inventory: Inventory | None, names: dict[str, str]) -> Index:
+def build_index(
+    facets: Sequence[Facet | FacetView], inventory: Inventory | None, names: dict[str, str]
+) -> Index:
     idx = Index(names=names)
-    by_collector: dict[str, list[Facet]] = {}
+    by_collector: dict[str, list[Facet | FacetView]] = {}
     for f in facets:
         by_collector.setdefault(f.collector, []).append(f)
     # Identity owners first (devices with their own MAC), then hosts, then guests.

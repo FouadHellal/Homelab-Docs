@@ -290,9 +290,21 @@ async def test_source(data_dir: Path, audit: AuditSink, kind: str, name: str) ->
         return False, f"{name}: not in the inventory"
     except (KeyError, ValueError, OSError) as exc:
         return False, f"{name}: not usable ({type(exc).__name__})"
+    visible: int | None = None
     try:
-        async with inputs.http(audit)(source, {ep}) as client:
-            res = await client.get(ep)
+        if kind == "proxmox":
+            async with inputs.http(audit)(source, {ep, pve_ep.RESOURCES}) as client:
+                res = await client.get(ep)
+                rows = (await client.get(pve_ep.RESOURCES)).json()
+            data_rows = rows.get("data") if isinstance(rows, dict) else None
+            visible = sum(
+                1
+                for r in data_rows or []
+                if isinstance(r, dict) and r.get("type") in ("node", "qemu", "lxc")
+            )
+        else:
+            async with inputs.http(audit)(source, {ep}) as client:
+                res = await client.get(ep)
     except SecurityRefusal as exc:
         return False, f"refused: {exc.reason.value} {exc.detail or ''}"[:200]
     except HttpStatusError as exc:
@@ -307,4 +319,9 @@ async def test_source(data_dir: Path, audit: AuditSink, kind: str, name: str) ->
         if isinstance(data, dict)
         else "?"
     )
-    return True, f"connected; {kind} version {str(version)[:24]}"
+    if visible == 0:
+        from homelab_atlas.collectors.proxmox.collector import NO_VISIBILITY  # noqa: PLC0415
+
+        return False, f"connected (version {str(version)[:24]}), but {NO_VISIBILITY}"
+    seen = f"; sees {visible} nodes and guests" if visible else ""
+    return True, f"connected; {kind} version {str(version)[:24]}{seen}"

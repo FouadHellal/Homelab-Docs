@@ -17,6 +17,7 @@ from homelab_atlas.engine.events import EventSpec
 from homelab_atlas.engine.reconcile import reconcile
 from homelab_atlas.models.base import canonical
 from homelab_atlas.redact import Redactor
+from homelab_atlas.store.facets import PVE_FACETS, PVE_SSH_PEER
 from homelab_atlas.store.tables import (
     Blob,
     CollectorRun,
@@ -193,14 +194,16 @@ class ScanEngine:
                 EventSpec(known_key, "host.recovered", "info", f"{r.target}: reachable again")
             )
         collector = self._collectors[r.collector]
-        seen: set[str] = set()
+        seen: set[tuple[str, str]] = set()
         for facet in r.facets:
-            if facet.entity_key in seen:
+            pair = (facet.entity_key, facet.store_as or r.collector)
+            if pair in seen:
                 continue  # first report wins; collectors should not duplicate keys
-            seen.add(facet.entity_key)
+            seen.add(pair)
             events.extend(self._persist_facet(s, scan_id, r, facet, collector))
         if r.complete:
-            events.extend(self._removed(s, r, seen))
+            stores = {r.collector} | set(getattr(collector, "extra_facets", ()))
+            events.extend(self._removed(s, r, seen, stores))
         return events
 
     def _persist_facet(
@@ -208,6 +211,7 @@ class ScanEngine:
     ) -> list[EventSpec]:
         now = utcnow()
         key = f.entity_key
+        store = f.store_as or r.collector
         entity = s.get(Entity, key)
         is_new = entity is None
         if entity is None:
@@ -218,12 +222,12 @@ class ScanEngine:
         if f.parent_key is not None:
             entity.parent_key = f.parent_key
         data: dict[str, Any] = f.model.model_dump(mode="json") if f.model is not None else {}
-        facet = s.get(Facet, (key, r.collector))
+        facet = s.get(Facet, (key, store))
         if facet is None:
             s.add(
                 Facet(
                     entity_key=key,
-                    collector=r.collector,
+                    collector=store,
                     target=r.target,
                     scan_id=scan_id,
                     data=data,
@@ -242,11 +246,11 @@ class ScanEngine:
         prev = s.execute(
             select(Blob.body)
             .join(Snapshot, Snapshot.sha256 == Blob.sha256)
-            .where(Snapshot.entity_key == key, Snapshot.collector == r.collector)
+            .where(Snapshot.entity_key == key, Snapshot.collector == store)
             .order_by(Snapshot.scan_id.desc())
             .limit(1)
         ).scalar_one_or_none()
-        s.add(Snapshot(scan_id=scan_id, entity_key=key, collector=r.collector, sha256=sha))
+        s.add(Snapshot(scan_id=scan_id, entity_key=key, collector=store, sha256=sha))
         s.flush()
         if prev is None:
             if not is_new:
@@ -259,22 +263,42 @@ class ScanEngine:
                     f"{f.display_name}: new {f.kind} discovered ({r.collector})",
                 )
             ]
-        if body_sha256(prev) != sha:
+        if body_sha256(prev) != sha and self._speaks_for(s, key, store):
             return collector.events(key, f.display_name, diff(prev, body))
         return []
 
-    def _removed(self, s: Session, r: CollectorResult, seen: set[str]) -> list[EventSpec]:
+    @staticmethod
+    def _speaks_for(s: Session, key: str, store: str) -> bool:
+        """Changes are reported by the strongest source of a Proxmox fact only, so a guest
+        seen by the API and over SSH does not raise every event twice (ADR-031)."""
+        if store not in PVE_FACETS:
+            return True
+        if store == PVE_SSH_PEER:
+            return False  # a peer's view: running state unknown, the owner node reports
+        stronger = PVE_FACETS[: PVE_FACETS.index(store)]
+        return not any(s.get(Facet, (key, c)) is not None for c in stronger)
+
+    def _removed(
+        self, s: Session, r: CollectorResult, seen: set[tuple[str, str]], stores: set[str]
+    ) -> list[EventSpec]:
         events: list[EventSpec] = []
-        stale = s.scalars(
-            select(Facet).where(
-                Facet.collector == r.collector,
-                Facet.target == r.target,
-                Facet.entity_key.not_in(seen),
-            )
-        ).all()
+        stale = [
+            f
+            for f in s.scalars(
+                select(Facet).where(Facet.collector.in_(stores), Facet.target == r.target)
+            ).all()
+            if (f.entity_key, f.collector) not in seen
+        ]
+        still_reported = {key for key, _ in seen}
         for facet in stale:
             entity = s.get(Entity, facet.entity_key)
-            if facet.data and entity is not None:
+            # Moved to another facet name by this same run (e.g. linux-ssh -> pve-ssh): quiet.
+            if (
+                facet.data
+                and entity is not None
+                and facet.entity_key not in still_reported
+                and self._speaks_for(s, facet.entity_key, facet.collector)
+            ):
                 events.append(
                     EventSpec(
                         facet.entity_key,
@@ -287,7 +311,7 @@ class ScanEngine:
                 entity is not None
                 and not s.scalars(
                     select(Facet).where(
-                        Facet.entity_key == facet.entity_key, Facet.collector != r.collector
+                        Facet.entity_key == facet.entity_key, Facet.collector != facet.collector
                     )
                 ).first()
             ):

@@ -27,6 +27,11 @@ from homelab_atlas.security.errors import (
 from homelab_atlas.security.http import ReadOnlyHttpClient
 
 PER_GUEST_CONCURRENCY = 4
+NO_VISIBILITY = (
+    "the token works but sees no nodes or guests: give the TOKEN itself the PVEAuditor role "
+    "on / (Datacenter > Permissions > Add > API Token Permission), or untick privilege "
+    "separation"
+)
 
 
 class ProxmoxCollector:
@@ -169,7 +174,11 @@ class _Run:
                     f"pve:node:{cname}/{g.node}",
                 )
             )
-        self.r.complete = True
+        if not node_rows and not guest_rows:
+            # The API answered, but the token sees nothing: the classic privilege-separation
+            # mistake (the role was given to the user, not to the token).
+            self.r.errors.append(NO_VISIBILITY)
+        self.r.complete = bool(node_rows)  # never "remove" guests on an empty answer
         self.r.status = "partial" if self.r.errors else "ok"
 
     async def node(self, name: str, row: dict[str, Any], storages: list[Storage]) -> PveNodeFacts:

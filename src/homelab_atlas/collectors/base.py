@@ -31,6 +31,8 @@ class FacetResult:
     display_name: str
     model: BaseModel | None = None
     parent_key: str | None = None
+    #: Store the facet under this name instead of the collector's (e.g. `pve-ssh`).
+    store_as: str | None = None
 
 
 @dataclass(slots=True)

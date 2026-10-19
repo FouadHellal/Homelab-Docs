@@ -17,6 +17,7 @@ from homelab_atlas.models.proxmox import PveGuestFacts, PveNodeFacts
 from homelab_atlas.probe.render import probe_sha256
 from homelab_atlas.security.allowlist import Endpoint, ProbeSection
 from homelab_atlas.security.errors import SecurityRefusal, TransportError
+from homelab_atlas.store.facets import PVE_SSH, PVE_SSH_PEER
 
 S = ProbeSection
 EXIT_HINTS: Final = {
@@ -44,7 +45,35 @@ def _parsers(expected_sha: str) -> list[tuple[ProbeSection, Callable[[Frame], pa
     ]
 
 
-def _pve_facets(facts: LinuxHostFacts, guests: list[dict[str, object]]) -> list[FacetResult]:
+def _guest_facet(
+    g: dict[str, object], cname: str, node_key: str, store_as: str, status: str
+) -> FacetResult:
+    kind = "vm" if g["type"] == "qemu" else "lxc"
+    cfg = pve_parse.guest_config(str(g["type"]), g["cfg"])
+    model = PveGuestFacts(
+        vmid=int(str(g["vmid"])),
+        type="qemu" if g["type"] == "qemu" else "lxc",
+        name=str(g["name"]),
+        node=str(g["node"]),
+        template=bool(g["template"]),
+        status=status,
+        **cfg,
+    )
+    return FacetResult(
+        f"pve:{kind}:{cname}/{model.vmid}",
+        f"pve-{kind}",
+        f"{model.name} ({kind.upper()} {model.vmid})",
+        model,
+        node_key,
+        store_as=store_as,
+    )
+
+
+def _pve_facets(
+    facts: LinuxHostFacts, guests: list[dict[str, object]], peers: list[dict[str, object]]
+) -> list[FacetResult]:
+    """This node and its guests (`pve-ssh`), plus the other nodes and their guests as this
+    node's /etc/pve sees them (`pve-ssh-peer`: weaker, running state unknown). ADR-028/031."""
     pve = facts.pve
     assert pve is not None  # noqa: S101 - checked by the caller
     cname = pve.cluster or pve.node
@@ -56,28 +85,25 @@ def _pve_facets(facts: LinuxHostFacts, guests: list[dict[str, object]]) -> list[
         pve_version=pve.version,
         kernel=facts.os.kernel if facts.os else None,
     )
-    out = [FacetResult(node_key, "pve-node", f"{pve.node} (PVE node)", node)]
+    out = [FacetResult(node_key, "pve-node", f"{pve.node} (PVE node)", node, store_as=PVE_SSH)]
     for g in guests:
-        kind = "vm" if g["type"] == "qemu" else "lxc"
-        cfg = pve_parse.guest_config(str(g["type"]), g["cfg"])
-        model = PveGuestFacts(
-            vmid=int(str(g["vmid"])),
-            type="qemu" if g["type"] == "qemu" else "lxc",
-            name=str(g["name"]),
-            node=pve.node,
-            template=bool(g["template"]),
-            status="running" if g["running"] else "stopped",
-            **cfg,
-        )
+        status = "running" if g["running"] else "stopped"
+        out.append(_guest_facet(g, cname, node_key, PVE_SSH, status))
+    members = {m.name: m for m in pve.members}
+    for name in sorted({str(g["node"]) for g in peers} | (set(members) - {pve.node})):
+        m = members.get(name)
+        peer = PveNodeFacts(name=name, online=bool(m and m.online), ip=m.ip if m else None)
         out.append(
             FacetResult(
-                f"pve:{kind}:{cname}/{model.vmid}",
-                f"pve-{kind}",
-                f"{model.name} ({kind.upper()} {model.vmid})",
-                model,
-                node_key,
+                f"pve:node:{cname}/{name}",
+                "pve-node",
+                f"{name} (PVE node)",
+                peer,
+                store_as=PVE_SSH_PEER,
             )
         )
+    for g in peers:
+        out.append(_guest_facet(g, cname, f"pve:node:{cname}/{g['node']}", PVE_SSH_PEER, "unknown"))
     return out
 
 
@@ -105,6 +131,8 @@ class LinuxSshCollector:
         }
     )
     endpoints: frozenset[Endpoint] = frozenset()
+    #: Facet names this collector also stores under (stale ones are removed per target).
+    extra_facets: frozenset[str] = frozenset({PVE_SSH, PVE_SSH_PEER})
 
     def targets(self, inventory: Inventory) -> list[str]:
         return [h.name for h in inventory.hosts if self.name in h.collectors]
@@ -154,7 +182,9 @@ class LinuxSshCollector:
 
         section_errors = {k: v for k, v in section_errors.items() if v}
         raw_guests = values.pop("_pve_guests", [])
+        raw_peers = values.pop("_pve_peers", [])
         pve_guests: list[dict[str, object]] = raw_guests if isinstance(raw_guests, list) else []
+        pve_peers: list[dict[str, object]] = raw_peers if isinstance(raw_peers, list) else []
         if not values:
             result.errors = [f"{k}: {'; '.join(v)}" for k, v in sorted(section_errors.items())]
             return self._done(result, start)
@@ -162,10 +192,11 @@ class LinuxSshCollector:
         mid = facts.os.machine_id if facts.os else None
         key = host_key(mid, host.name)
         result.facets = [FacetResult(key, self.kind, host.name, facts)]
-        # A Proxmox VE node documents itself and its own guests, unless the Proxmox API is
-        # configured: then the API is authoritative and nothing is reported twice (ADR-028).
-        if facts.pve is not None and not ctx.inventory.sources.proxmox:
-            result.facets.extend(_pve_facets(facts, pve_guests))
+        # A Proxmox VE node documents the cluster from /etc/pve. These facets are stored next
+        # to the API's (pve-ssh, pve-ssh-peer): the API wins where it answers, SSH fills in
+        # when it is missing or misconfigured (ADR-031).
+        if facts.pve is not None:
+            result.facets.extend(_pve_facets(facts, pve_guests, pve_peers))
         result.complete = True
         result.status = "partial" if section_errors else "ok"
         result.errors = [f"{k}: {'; '.join(v)}" for k, v in sorted(section_errors.items())]

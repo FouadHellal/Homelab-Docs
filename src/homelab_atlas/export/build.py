@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from homelab_atlas import __version__
 from homelab_atlas.export.sanitize import Sanitizer
+from homelab_atlas.store.facets import facet_views
 from homelab_atlas.store.tables import Annotation, Entity, Facet
 from homelab_atlas.web import queries, topology
 
@@ -48,7 +49,7 @@ def build(s: Session) -> dict[str, Any]:
         if e.status != "gone"
     ]
     facets: dict[str, dict[str, Any]] = {}
-    for f in s.scalars(select(Facet)):
+    for f in facet_views(s.scalars(select(Facet))):
         facets.setdefault(f.entity_key, {})[f.collector] = f.data
     notes = {a.entity_key: a for a in s.scalars(select(Annotation))}
     return {
@@ -170,14 +171,18 @@ def _csv_cell(value: Any) -> Any:
     return value
 
 
+def csv_table(rows: list[dict[str, Any]], cols: list[str]) -> str:
+    """CSV text with a header; formula-looking cells are neutralised (see _csv_cell)."""
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore", lineterminator="\n")
+    w.writeheader()
+    for r in rows:
+        w.writerow({c: _csv_cell(r.get(c)) for c in cols})
+    return buf.getvalue()
+
+
 def to_csv(doc: dict[str, Any]) -> dict[str, str]:
-    def table(rows: list[dict[str, Any]], cols: list[str]) -> str:
-        buf = io.StringIO()
-        w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore", lineterminator="\n")
-        w.writeheader()
-        for r in rows:
-            w.writerow({c: _csv_cell(r.get(c)) for c in cols})
-        return buf.getvalue()
+    table = csv_table
 
     containers = [
         {

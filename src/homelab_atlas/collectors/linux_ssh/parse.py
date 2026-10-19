@@ -485,7 +485,8 @@ def pve_conf(text: str) -> dict[str, str]:
 
 
 def parse_pve(frame: Frame) -> Parsed:
-    """Values: `pve` (PveNodeSummary or None) and `_pve_guests` (this node's own guests)."""
+    """Values: `pve` (PveNodeSummary or None), `_pve_guests` (this node's own guests) and
+    `_pve_peers` (guests of the other cluster nodes: pmxcfs shares every node's configs)."""
     out = Parsed()
     members_text = frame.text("pve:/etc/pve/.members")
     confs = {
@@ -518,7 +519,9 @@ def parse_pve(frame: Frame) -> Parsed:
         x.split(".")[0] for x in (frame.text("qemu-running") or "").split() if x.endswith(".pid")
     }
     running_lxc = {x for x in (frame.text("lxc-running") or "").split() if x.isdigit()}
-    refs, own = [], []
+    refs: list[PveGuestRef] = []
+    own: list[dict[str, Any]] = []
+    peers: list[dict[str, Any]] = []
     for (gnode, kind_dir, vmid), text in sorted(confs.items(), key=lambda kv: int(kv[0][2])):
         cfg = pve_conf(text)
         kind: Literal["qemu", "lxc"] = "qemu" if kind_dir == "qemu-server" else "lxc"
@@ -532,19 +535,19 @@ def parse_pve(frame: Frame) -> Parsed:
             }
         )
         running = None
-        if gnode == node:
+        if gnode == node:  # running state is only visible on the guest's own node
             running = vmid in (running_qemu if kind == "qemu" else running_lxc)
-            own.append(
-                {
-                    "vmid": int(vmid),
-                    "type": kind,
-                    "name": name,
-                    "node": gnode,
-                    "running": running,
-                    "template": cfg.get("template") == "1",
-                    "cfg": cfg,
-                }
-            )
+        (own if gnode == node else peers).append(
+            {
+                "vmid": int(vmid),
+                "type": kind,
+                "name": name,
+                "node": gnode,
+                "running": running,
+                "template": cfg.get("template") == "1",
+                "cfg": cfg,
+            }
+        )
         refs.append(
             PveGuestRef(
                 vmid=int(vmid), type=kind, name=name, node=gnode, macs=macs, running=running
@@ -561,6 +564,7 @@ def parse_pve(frame: Frame) -> Parsed:
         cluster_guests=refs[:2000],
     )
     out.values["_pve_guests"] = own
+    out.values["_pve_peers"] = peers[:2000]
     return out
 
 
