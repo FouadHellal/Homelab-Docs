@@ -25,6 +25,8 @@ hardware is still pending**
 
 ## Deploy
 
+> Deploying with Claude Code on the VM? Paste the prompt from [docs/DEPLOY-WITH-CLAUDE-CODE.md](docs/DEPLOY-WITH-CLAUDE-CODE.md).
+
 **You need:**
 - a small Linux VM or LXC on your LAN, e.g. Debian 12/13 or Ubuntu 22.04/24.04 with 1 vCPU,
   1 GB RAM and 10 GB disk;
