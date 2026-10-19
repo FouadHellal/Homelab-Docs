@@ -119,6 +119,16 @@ pveum acl modify / --tokens 'atlas@pve!collector' --roles PVEAuditor
 
 ## 5. UniFi gateway (UCG, Integration API key)
 
+There are two kinds of key; the Targets page supports both (ADR-026):
+- **Local key**, created in the UniFi Network app on the gateway (its integrations / API key
+  settings). atlas talks to `https://<gateway>/proxy/network/integration` directly, with no
+  internet. Recommended; the steps below are for this one.
+- **unifi.ui.com key**, created in Site Manager (unifi.ui.com → Settings → API Keys). atlas finds
+  your console with Site Manager `GET /v1/hosts` and goes through Ubiquiti's cloud connector
+  (`api.ui.com`, 100 requests/min per console). Choose *unifi.ui.com key* in the form, click
+  **Find my consoles** and pick your gateway. There is no certificate step: `api.ui.com` is
+  verified against the public CAs.
+
 Requires Network ≥ 9.3.
 1. In UniFi OS, create a **local** admin (no cloud SSO), e.g. `atlas-view`, with **Network: View
    Only** and no other app access.

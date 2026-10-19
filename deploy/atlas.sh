@@ -143,6 +143,7 @@ print_access() {
     port="$(env_get ATLAS_PORT)"; port="${port:-8443}"
     host="$(env_get ATLAS_HOSTS | cut -d, -f1)"
     if [ "$mode" = proxy ]; then
+        port="$(env_get ATLAS_PORT)"
         say "atlas listens on http://127.0.0.1:${port:-8080} for your reverse proxy"
         return
     fi
