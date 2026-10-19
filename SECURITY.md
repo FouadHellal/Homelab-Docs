@@ -20,7 +20,7 @@ did, and what happened. Never include real credentials, tokens or unredacted sca
 | **Credentials are never stored or shown in clear** | `SecretResolver` takes secret **names**, which validation enforces in `hosts.yaml` and `inventory.yaml`. It reads `/run/secrets` (or a 0600 dev dir); credentials typed on the Targets page go to an AES-256-GCM vault (ADR-025) keyed by the `atlas_master_key` Docker secret. Values come back as `SecretStr`, unwrapped only inside the transport call. The UI never renders a stored value. Nothing logs or audits values. | |
 | **Pinned identities** | TLS is always verified, against a CA you pin, optionally plus a SHA-256 leaf pin, and `trust_env=False` ignores proxy env vars. SSH accepts exactly the `host_keys` in `hosts.yaml`: no TOFU, no `known_hosts`, no `~/.ssh/config`. | |
 | **Every outbound call is accountable** | Append-only JSONL audit log, SHA-256 hash chained; `atlas audit verify` detects edits, insertions and truncation. It records the endpoint template or section, target, outcome and size, never query values or payloads. | `atlas-probe-gate` logs every refused command to syslog. |
-| **UI is not a way in** | argon2id local accounts, lockout (5 failures / 15 min), login throttle, server-side sessions (30 min idle / 12 h absolute), `__Host-` Secure HttpOnly SameSite=Strict cookies, synchronizer CSRF token plus Origin check on every POST, strict nonce CSP (no inline script, no `unsafe-*`), TrustedHost, `no-store`, autoescaped templates (a test fails on `\|safe`), vendored JS pinned by SHA-256. | — |
+| **UI is not a way in** | no default password (first account via a one-time setup token or the installer), argon2id local accounts, lockout (5 failures / 15 min), login throttle, server-side sessions (30 min idle / 12 h absolute), `__Host-` Secure HttpOnly SameSite=Strict cookies, synchronizer CSRF token plus Origin check on every POST, strict nonce CSP (no inline script, no `unsafe-*`), TrustedHost, `no-store`, autoescaped templates (a test fails on `\|safe`), vendored JS pinned by SHA-256. | — |
 | **MCP is read-only** | Seven query tools annotated read-only/idempotent/closed-world. No scan, write or SQL tool. Results are capped. HTTP uses a constant-time bearer check plus DNS-rebinding protection; `--sanitize` is optional. | — |
 
 Refusals (`SecurityRefusal`) are never retried and are always audited. Tests in
@@ -73,7 +73,15 @@ The latest review pass and its findings are in [docs/SECURITY-REVIEW.md](docs/SE
    in the data volume. Keep `atlas_master_key` as a Docker secret outside that volume and out
    of your volume backups. Without it, atlas generates `<data>/master.key`, which only protects
    against leaks of the vault file on its own.
-9. **Single-owner design.** Every UI account has the same rights: read everything, edit
+9. **UniFi cloud keys add an internet path** (ADR-026). A key made at unifi.ui.com only works
+   through Ubiquiti's cloud connector (`api.ui.com`): your gateway's data then transits
+   Ubiquiti's cloud, and that host is verified against the public CA bundle (the only exception
+   to pinned TLS, enforced in code). Prefer a **local** key from the Network app: no internet
+   involved.
+10. **The built-in HTTPS certificate is self-signed.** Compare its fingerprint (printed by the
+   installer and by `atlas.sh status`) the first time your browser asks. Behind your own TLS
+   proxy (`ATLAS_MODE=proxy`) you get a real certificate and HSTS.
+11. **Single-owner design.** Every UI account has the same rights: read everything, edit
    annotations, add targets and their credentials, trigger scans. There are no roles, so only
    create accounts for people you would give the SSH passwords to.
 

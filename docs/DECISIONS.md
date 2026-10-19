@@ -351,3 +351,77 @@ Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a
 - Trust on first use for host keys and certificates without owner confirmation.
 - Storing secrets in the DB or `inventory.yaml`.
 - Showing stored secrets back.
+
+## ADR-026 Deployable as-is: first-run account, built-in HTTPS, installer, SSH key option, UniFi cloud keys (owner request)
+**Context.** The owner asked for a stack that is ready to deploy from GitHub, with:
+- a script to run after pulling;
+- logins created after cloning;
+- both SSH options (simple username/password for local use, keys for people who want them);
+- a UniFi integration that works with "the API key I have", following https://developer.ui.com/network/v10.6.106/gettingstarted.
+
+**Decisions.**
+- **No default password, ever.**
+  - While no account exists, `serve` writes a one-time setup token to `<data>/setup-token.txt` (0600) and prints it in the log.
+  - `/setup`, protected by login-CSRF, the token (constant-time compare) and the login throttle, creates the first account and logs it in. The token is then deleted and `/setup` closes for good.
+  - `atlas user add --password-stdin` serves scripts, and `deploy/atlas.sh user add` creates accounts at any time.
+- **Built-in HTTPS for LAN use.** The `__Host-` Secure cookies only survive over HTTPS, so on a LAN without a TLS proxy login would silently fail.
+  - `serve --self-signed-tls` generates a per-install ECDSA P-256 certificate (10 years, SANs = `--allowed-host` names plus loopback) under `<data>/tls/` and prints its SHA-256.
+  - HSTS stays off in this mode: it would stop browsers accepting the self-signed certificate after a reinstall.
+  - The compose default is LAN mode on 8443. `docker-compose.proxy.yml` switches to HTTP on 8080 behind your own proxy, with HSTS and `--forwarded-allow-ips`.
+  - `--allowed-host` accepts comma-separated values.
+  - `atlas healthcheck` (security package, loopback only, `http.client`) probes `/healthz` over HTTPS or HTTP for the container HEALTHCHECK.
+- **`deploy/atlas.sh`** provides `install`, `update`, `user add|passwd`, `status`, `logs`, `backup`, `stop|start` and `uninstall`. `install` does the following:
+  - checks for docker and the compose plugin;
+  - writes `/opt/atlas/{docker-compose*.yml,.env,secrets,config}`;
+  - generates `atlas_master_key` (48 random bytes) and `mcp_token`;
+  - detects the host's IPv4 addresses and names for the Host allowlist and the certificate;
+  - `chown`s to uid 10001;
+  - pulls the GHCR image, or builds it from the clone when the pull fails (private package, or no `docker login`);
+  - asks for the first account and starts the stack;
+  - waits for healthy and prints the URL and the certificate fingerprint.
+
+  Passwords reach the container only on stdin. The script is tested against a fake `docker` that records every call (`tests/deploy`), and shellchecked in CI.
+- **SSH options per machine (Targets form):**
+  - *password* (ADR-025);
+  - *atlas SSH key, nothing installed*: atlas generates one ed25519 key into the vault and shows only the public line to paste into `authorized_keys`;
+  - *key + installed forced-command probe* (ADR-002, strictest).
+
+  `SshTarget.probe` is `streamed` or `installed`. Password mode is always streamed.
+- **UniFi: both kinds of key.** Facts were read on 2026-10-19 from developer.ui.com, using the Network v10.6.106 `llms.txt`, its OpenAPI `servers`, the "Connector - GET" page and Site Manager OpenAPI v1.0.0.
+  - **Local key**, created in the Network app on the gateway: `https://<gateway>/proxy/network/integration`, header `X-API-KEY`, no internet needed. This stays the default and the recommendation.
+  - **unifi.ui.com (Site Manager) key**, which is what the getting-started page describes ("Generate keys at unifi.ui.com"). It reaches the console only through Ubiquiti's cloud connector `https://api.ui.com/v1/connector/consoles/{id}/…` (console firmware ≥ 5.0.3, **100 requests/min per console**, 25 s timeout, 10 MB bodies).
+    - The console id comes from Site Manager `GET /v1/hosts`, and consoles without the Network app are filtered out.
+    - **The docs disagree on the proxied path.** The connector page's example is `…/consoles/{id}/network/integration/v1/sites`, and its "request flow" maps to `/proxy/<path>` on the console. The Network OpenAPI `servers` entry says `…/consoles/{consoleId}/proxy/network/integration`. Saving a cloud source therefore calls `GET /v1/info` on each form, connector page's first, and stores the one that answers.
+    - Requests are paced at 0.75 s, under the limit.
+    - This is an **opt-in cloud dependency**, a deliberate exception the owner asked for. Local keys don't touch the internet.
+  - **Public-PKI TLS exception, for `api.ui.com` only** (`PUBLIC_PKI_HOSTS`): certifi bundle, host names always checked, refused for any other host. Every other source still needs a pinned anchor.
+  - The base-path regex now allows `:` inside segments, as the console ids require.
+  - The parser's fields were re-checked against the v10.6.106 OpenAPI: the client discriminator `type` is WIRED/WIRELESS/VPN/TELEPORT, and wired and wireless clients carry `macAddress`, `ipAddress` and `uplinkDeviceId`.
+- **Source "Test connection"** does one GET of `/version` (Proxmox) or `/v1/info` (UniFi) with the stored credential.
+
+**Rejected.**
+- A default admin password, or a password printed in logs: the token proves server access instead.
+- Always requiring a reverse proxy: too much for a single-owner LAN tool.
+- Plain-HTTP cookies without `Secure` (session theft on shared Wi-Fi).
+- Guessing which UniFi key type the owner has.
+- Shipping only cloud mode: it adds an internet dependency that local keys avoid.
+
+## ADR-027 Discovered devices: document infrastructure, not every phone (owner request)
+**Context.** "It will find plenty of devices on the network, but it should only take the VMs, servers, rpi..."
+
+**Decisions.**
+- **Classification** (`engine/classify.py`, purely local heuristics, no lookups). Every unexplained device (UniFi client or ARP neighbour) gets a category: `vm`, `container`, `pi`, `nas`, `server`, `network`, `personal`, `iot` or `unknown`. The reasons are shown in the UI. Signals, strongest first:
+  - **Vendor prefixes (OUI):** Proxmox `bc:24:11`, QEMU, VMware, Hyper-V, VirtualBox and Xen; Raspberry Pi `b8:27:eb dc:a6:32 e4:5f:01 28:cd:c1 d8:3a:dd 2c:cf:67`; Synology and QNAP; Docker `02:42`.
+  - **Randomized MACs** (locally administered bit) mean a personal device.
+  - **Name hints:** consumer words (iphone, android, tv, printer…) vs server words (pve, nas, docker, pihole, homeassistant…).
+  - **Wired on a server/lab/mgmt VLAN** means a server.
+  - **Wireless with no hint** means a personal device. A wired device with no hint stays `unknown` and is listed.
+- **What the UI shows:**
+  - The Unknown page lists infrastructure and `unknown` by default. Phones, TVs and IoT sit behind "show everything".
+  - Infrastructure rows get **Add as target**, which pre-fills the VM form with name, IP and type (Pi → Linux + Pi collectors).
+  - New personal/IoT devices raise `info` events instead of `notice`, so the changelog isn't flooded.
+- **Guest IPs from UniFi:**
+  - Reconciliation writes a "seen on the network" facet onto every Proxmox VM/LXC whose NIC MAC UniFi sees: IP, network/VLAN and uplink switch/AP, with all NICs listed.
+  - VMs without the QEMU guest agent therefore still show IPs, VLANs and their switch on the host page, in the topology, in exports and in MCP answers.
+
+**Rejected.** Active scanning or fingerprinting (ADR-016 passive only); vendor lookups over the internet; hiding devices outright (they're one click away, and the owner decides).

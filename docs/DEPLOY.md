@@ -1,15 +1,25 @@
 # Deploying atlas
 
-One small VM or LXC on Proxmox runs the stack with `docker compose`, behind your existing
-TLS reverse proxy. atlas is a LAN tool: **never publish it to the internet**.
+**Quick path:** `sudo ./deploy/atlas.sh install` from a clone does everything below for you;
+see the README's [Deploy](../README.md#deploy) section. This page explains what it sets up,
+and how to run atlas behind your own reverse proxy instead.
+
+One small VM or LXC runs the stack with `docker compose`. atlas is a LAN tool: **never
+publish it to the internet.** There are two modes (`ATLAS_MODE` in `/opt/atlas/.env`):
+
+| Mode | atlas listens on | TLS | When |
+|---|---|---|---|
+| `lan` (default) | `0.0.0.0:8443` | atlas's own self-signed certificate (`serve --self-signed-tls`) | No reverse proxy; open `https://<vm-ip>:8443` |
+| `proxy` | `127.0.0.1:8080` | your proxy (Caddy/Traefik/nginx, §5) | You already run a TLS proxy; `docker-compose.proxy.yml` is added |
 
 ```
 ┌───────────────── atlas VM/LXC ─────────────────┐
-│ reverse proxy (TLS) ──► atlas :8080  (UI, scheduler)
-│                        mcp   :8765  (optional, bearer)
-│ volume atlas-data: atlas.db (WAL), audit/, redaction.key
-│ ./config (ro): hosts.yaml, CA files; ./config/annotations (rw)
-│ ./secrets → /run/secrets (Docker secrets, uid 10001, 0400)
+│ atlas :8443 (lan, HTTPS)  or  :8080 behind your proxy
+│ mcp   :8765  (optional, bearer)
+│ volume atlas-data: atlas.db, vault.json (encrypted credentials), inventory.yaml,
+│                    audit/, tls/, redaction.key
+│ ./config (ro): optional hosts.yaml + CA files; ./config/annotations (rw)
+│ ./secrets → /run/secrets: atlas_master_key, mcp_token (uid 10001, 0400)
 └────────────────────────────────────────────────┘
 ```
 
@@ -18,7 +28,7 @@ TLS reverse proxy. atlas is a LAN tool: **never publish it to the internet**.
 - **Size:** Debian 13 (or Ubuntu 24.04) VM/LXC with 1 vCPU, 1 GB RAM and 10 GB disk is plenty for about 100 targets.
 - **Docker:** Docker Engine with the compose plugin. For an LXC: unprivileged, with `nesting=1`.
 - **Placement:** a management VLAN that can reach the Proxmox API (8006), the UCG (443) and SSH (22) on the targets. Nothing needs to reach atlas except your proxy.
-- **Firewall:** allow inbound only from the proxy (or put the proxy on the same host). Outbound is only to targets: atlas has no cloud or telemetry dependency, and pulls happen only when you run `docker compose pull`.
+- **Firewall:** allow inbound only from the proxy (or put the proxy on the same host). Outbound is only to targets, plus `api.ui.com` if you choose a unifi.ui.com (cloud) UniFi key. There is no telemetry, and pulls happen only when you run an update.
 
 ## 2. Files
 
@@ -81,7 +91,9 @@ Nothing is installed on the VMs. atlas logs in and runs its own read-only probe 
 
 The schedule starts by itself (`--schedule`): UniFi and Proxmox every 15 min, SSH hosts hourly, the NAS every 6 h, with jitter and backoff. The dashboard's **Scan now** runs a full scan immediately. You can tune the intervals with `ATLAS_INTERVAL_<COLLECTOR>` (seconds; `0` disables a collector).
 
-## 5. Reverse proxy (TLS required)
+## 5. Reverse proxy (`ATLAS_MODE=proxy`)
+
+Set `ATLAS_MODE=proxy`, `ATLAS_HOSTS=<the name your proxy serves>`, `ATLAS_PROXY_IP=<proxy address>` and `ATLAS_PORT=8080` in `/opt/atlas/.env`, then run `sudo ./deploy/atlas.sh start`. atlas then serves plain HTTP on `127.0.0.1:8080` with HSTS, and trusts `X-Forwarded-*` only from the proxy.
 
 The session cookie uses the `__Host-` prefix and is `Secure`, so login only works over HTTPS. Plain HTTP works only on `localhost`, e.g. through an SSH tunnel.
 
