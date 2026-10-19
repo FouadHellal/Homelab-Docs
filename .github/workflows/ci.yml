@@ -29,7 +29,7 @@ jobs:
       - run: uv lock --check
       - run: uv run poe lint
       - name: shellcheck target scripts
-        run: shellcheck -s bash docs/targets/atlas-probe docs/targets/atlas-probe-gate
+        run: shellcheck -s bash docs/targets/atlas-probe docs/targets/atlas-probe-gate deploy/atlas.sh
       - run: uv run poe type
 
   test:

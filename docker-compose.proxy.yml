@@ -1,0 +1,18 @@
+# Override for running atlas behind your own TLS reverse proxy (Caddy, Traefik, nginx):
+#   docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d
+# (deploy/atlas.sh does this when ATLAS_MODE=proxy in .env). Plain HTTP on 8080, published on
+# 127.0.0.1 by default; your proxy terminates TLS. Set ATLAS_PROXY_IP to the proxy's address.
+
+services:
+  atlas:
+    command:
+      - atlas
+      - serve
+      - --host=0.0.0.0
+      - --port=8080
+      - --schedule
+      - --hsts
+      - --allowed-host=${ATLAS_HOSTS:?set ATLAS_HOSTS to the name your proxy serves}
+      - --forwarded-allow-ips=${ATLAS_PROXY_IP:-127.0.0.1}
+    ports: !override
+      - "${ATLAS_BIND:-127.0.0.1}:${ATLAS_PORT:-8080}:8080"

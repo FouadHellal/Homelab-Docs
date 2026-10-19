@@ -41,8 +41,10 @@ ENV PATH=/opt/atlas/bin:$PATH \
 WORKDIR /app
 USER 10001:10001
 VOLUME ["/data"]
-EXPOSE 8080
+EXPOSE 8443 8080
+# Probes /healthz on 127.0.0.1 over HTTPS (8443) or HTTP (8080), whichever the UI serves.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD ["python", "-c", "import sys, urllib.request as u; sys.exit(u.urlopen('http://127.0.0.1:8080/healthz', timeout=3).status != 200)"]
-# Behind your TLS reverse proxy: set --allowed-host and --forwarded-allow-ips (see docs/DEPLOY.md).
-CMD ["atlas", "serve", "--host", "0.0.0.0", "--port", "8080", "--schedule"]
+  CMD ["atlas", "healthcheck"]
+# LAN default: built-in HTTPS with a generated certificate (docs/DEPLOY.md). Behind your own
+# TLS reverse proxy instead: serve --port 8080 --hsts --allowed-host ... --forwarded-allow-ips ...
+CMD ["atlas", "serve", "--host", "0.0.0.0", "--port", "8443", "--self-signed-tls", "--schedule"]
