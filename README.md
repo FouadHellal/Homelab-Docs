@@ -80,16 +80,25 @@ Tools: `list_hosts`, `get_host`, `list_containers`, `search_ip`, `find_service`,
 
 ## Run it for real
 
-1. **Targets:** [docs/SETUP-TARGETS.md](docs/SETUP-TARGETS.md) covers the least-privilege accounts:
-   a PVEAuditor token, a view-only UniFi key, and an SSH forced-command probe with exact-argv sudo.
-2. **Deploy:** [docs/DEPLOY.md](docs/DEPLOY.md) covers `docker compose` on a small VM/LXC behind
+1. **Deploy:** [docs/DEPLOY.md](docs/DEPLOY.md) covers `docker compose` on a small VM/LXC behind
    your TLS reverse proxy (Caddy, Traefik and nginx examples).
-3. **Check and start:**
+2. **Start:**
    ```bash
+   head -c 48 /dev/urandom | base64 > secrets/atlas_master_key
    docker compose run --rm atlas atlas user add admin
-   docker compose run --rm atlas atlas doctor --live
    docker compose up -d
    ```
+3. **Add your targets in the browser** on the **Targets** page:
+   - Proxmox: IP plus a read-only API token. Every VM and LXC then appears.
+   - UniFi gateway: IP plus an API key. Devices, clients, VLANs and Wi-Fi follow.
+   - VMs: IP, SSH username and password, then Linux and/or Docker.
+
+   Each one gets **Fetch fingerprint → confirm → Save → Test login → Scan**. atlas logs in,
+   documents what runs inside, links it all into the topology, and keeps the history. Nothing
+   is installed on your machines.
+
+For the strictest setup (an SSH key with an installed, forced-command probe; a PVEAuditor
+token; a view-only UniFi key), see [docs/SETUP-TARGETS.md](docs/SETUP-TARGETS.md).
 
 ## What it collects
 
@@ -119,5 +128,6 @@ uv run atlas selftest security    # every read-only/redaction guard, offline
 | [docs/SPEC.md](docs/SPEC.md) | Scope, entities, events, interfaces, milestones |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | ADRs, with vendor API facts and their sources |
 | [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) | STRIDE per trust boundary |
+| [docs/SECURITY-REVIEW.md](docs/SECURITY-REVIEW.md) | Latest security review: findings and fixes |
 | [docs/targets/](docs/targets/) | Generated probe, gate and sudoers files (`atlas targets render`) |
 | [CLAUDE.md](CLAUDE.md) | Working rules for AI-assisted development in this repo |

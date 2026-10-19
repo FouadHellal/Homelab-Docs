@@ -4,6 +4,13 @@ atlas never changes a target. Everything below is a one-time setup **you** run o
 It creates an account that *can only read*, so the read-only guarantee does not rest on atlas's
 code alone (THREAT-MODEL §B2/B3; ADR-002, -004, -005, -006).
 
+> **Quick path:** you can skip most of this page. On the web UI's **Targets** page, add a VM
+> with an SSH username and password; atlas then streams its read-only probe over the session
+> and installs nothing (ADR-025). You still need the Proxmox token (§4) and the UniFi key (§5),
+> pasted into the same page. Doing §2 instead, with an SSH key, an installed probe and the
+> forced-command gate, is the strictest setup: read-only is then enforced on the VM itself and
+> not only by atlas.
+
 After each step, run `atlas doctor`. It connects with exactly these credentials and says what
 works, what is missing, and whether anything has **more** privilege than it should.
 

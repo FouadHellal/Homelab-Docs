@@ -26,9 +26,11 @@ TLS reverse proxy. atlas is a LAN tool: **never publish it to the internet**.
 mkdir -p /opt/atlas && cd /opt/atlas
 curl -fsSLO https://raw.githubusercontent.com/FouadHellal/Homelab-Docs/main/docker-compose.yml   # or copy it
 mkdir -p config/annotations secrets && chmod 700 secrets
+head -c 48 /dev/urandom | base64 > secrets/atlas_master_key     # encrypts what you type in the UI
 ```
 
-- **Targets:** follow [SETUP-TARGETS.md](SETUP-TARGETS.md). It covers the SSH key, the Proxmox token, the UniFi key, `config/hosts.yaml` and the CA files.
+- **Targets:** nothing to prepare on disk. After the first start you add VMs, Proxmox and UniFi on the **Targets** page (§4). For the strictest setup, or to keep the inventory in git, see [SETUP-TARGETS.md](SETUP-TARGETS.md): SSH key with an installed probe, `config/hosts.yaml`, CA files.
+- **Master key:** keep `secrets/atlas_master_key` out of your `atlas-data` volume backups. Back it up separately, because without it the stored passwords and keys can't be decrypted. You would then have to re-enter them.
 - **Ownership:** the container runs as **uid 10001**:
   ```bash
   sudo chown -R 10001:10001 secrets config/annotations && sudo chmod 0400 secrets/*
@@ -43,7 +45,7 @@ mkdir -p config/annotations secrets && chmod 700 secrets
   - `ATLAS_HOSTNAME` is the name your proxy serves; it is also the Host-header allowlist.
   - `ATLAS_PROXY_IP` is the proxy address, so X-Forwarded-* headers are trusted only from it.
   - `ATLAS_BIND` is the interface to publish on. The default `127.0.0.1` is right when the proxy runs on this host.
-- **Unused secrets:** remove any secret you don't use from `docker-compose.yml` (`secrets:` under the service and at the bottom).
+- **hosts.yaml secrets:** if you also use `config/hosts.yaml`, add its secret names to `docker-compose.yml` (`secrets:` under the service and at the bottom).
 
 ## 3. Image
 
@@ -60,10 +62,22 @@ Pin a version in `.env` (`ATLAS_VERSION=0.1.0`, or a `sha-xxxxxxx` tag) rather t
 
 ```bash
 docker compose run --rm atlas atlas user add admin     # prompts; argon2id; 12+ characters
-docker compose run --rm atlas atlas doctor --live      # fix everything it reports first
 docker compose up -d
 docker compose ps                                     # atlas should become "healthy"
 ```
+
+Then open `https://atlas.home.arpa`, log in, and go to **Targets**:
+
+1. **Proxmox VE → + add.** Enter the node IP and an API token (`user@realm!tokenid=secret`, PVEAuditor role; SETUP-TARGETS §4 has the two `pveum` commands). Click **Fetch certificate**, compare the fingerprint, tick it and save. Every VM and LXC then shows up automatically.
+2. **UniFi gateway → + add.** Enter the gateway IP and an Integration API key, created as a **View Only** local admin. Then fetch the certificate, tick and save. Switches, APs, clients, VLANs, SSIDs and firewall policies follow.
+3. **Machines → + add a VM / host**, for each VM whose *inside* you want documented:
+   - enter its IP, an SSH username and password;
+   - choose what to collect: Linux and/or Docker;
+   - click **Fetch host key** and compare the fingerprint (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the VM);
+   - tick it and save.
+4. Press **Test login** and then **Scan** on the row, or let the schedule run.
+
+Nothing is installed on the VMs. atlas logs in and runs its own read-only probe over the session. SECURITY.md (limitation 7) explains the trade-off versus key mode.
 
 The schedule starts by itself (`--schedule`): UniFi and Proxmox every 15 min, SSH hosts hourly, the NAS every 6 h, with jitter and backoff. The dashboard's **Scan now** runs a full scan immediately. You can tune the intervals with `ATLAS_INTERVAL_<COLLECTOR>` (seconds; `0` disables a collector).
 

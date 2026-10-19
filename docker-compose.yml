@@ -1,9 +1,13 @@
 # atlas production stack (docs/DEPLOY.md). Put it behind your TLS reverse proxy; never
 # publish it to the internet. Copy to your deploy host next to ./config and ./secrets.
 #
+# Simplest setup: add VMs, Proxmox and UniFi on the web UI's Targets page. Their passwords and
+# API keys are kept in an encrypted vault in the atlas-data volume, keyed by:
+#   ./secrets/atlas_master_key     32+ random bytes, chown 10001, mode 0400 (required)
+# Optional, for hand-maintained inventory instead of / in addition to the UI:
 #   ./config/hosts.yaml            inventory (secret *names* only), CA files it references
+#   ./secrets/<name>               one file per secret named in hosts.yaml (add them below)
 #   ./config/annotations/          human layer (YAML, ideally a private git repo)
-#   ./secrets/<name>               one file per secret named in hosts.yaml, chown 10001, mode 0400
 #
 # Required env (an .env file next to this one, or the shell):
 #   ATLAS_HOSTNAME   the name your proxy serves atlas under, e.g. atlas.home.arpa
@@ -53,8 +57,8 @@ services:
       - atlas-data:/data
       - ./config:/config:ro
       - ./config/annotations:/config/annotations   # the UI's annotation editor writes here
-    # Names must match `credential:` / `key:` in hosts.yaml. Remove the ones you do not use.
-    secrets: [proxmox_auditor, unifi_api_key, ssh_atlas_ro]
+    # Add the names used by `credential:` / `key:` in hosts.yaml, if you use one.
+    secrets: [atlas_master_key]
 
   # Optional read-only MCP endpoint: `docker compose --profile mcp up -d`.
   mcp:
@@ -84,7 +88,8 @@ volumes:
   atlas-data:
 
 secrets:
-  proxmox_auditor: { file: ./secrets/proxmox_auditor }
-  unifi_api_key: { file: ./secrets/unifi_api_key }
-  ssh_atlas_ro: { file: ./secrets/ssh_atlas_ro }
+  atlas_master_key: { file: ./secrets/atlas_master_key }
   mcp_token: { file: ./secrets/mcp_token }
+  # hosts.yaml users, e.g.:
+  # proxmox_auditor: { file: ./secrets/proxmox_auditor }
+  # ssh_atlas_ro: { file: ./secrets/ssh_atlas_ro }
