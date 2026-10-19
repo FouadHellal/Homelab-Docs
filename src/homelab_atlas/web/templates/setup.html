@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}First-run setup{% endblock %}
+{% block main %}
+<section class="login card">
+  <h1>Welcome to atlas</h1>
+  <p class="muted">Create the first account. There is no default password.</p>
+  <p class="small">Paste the <strong>setup token</strong> printed when atlas started
+    (<code>docker compose logs atlas</code>, or the file <code>setup-token.txt</code> in the data volume).
+    It works once and proves you run this server.</p>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="/setup">
+    <input type="hidden" name="csrf_token" value="{{ login_csrf }}">
+    <label>Setup token <input name="setup_token" required maxlength="128" autocomplete="off" autofocus></label>
+    <label>Username <input name="username" autocomplete="username" required maxlength="64" value="{{ username or 'admin' }}"></label>
+    <label>Password (12+ characters) <input name="password" type="password" autocomplete="new-password" required minlength="12" maxlength="1024"></label>
+    <label>Repeat password <input name="password2" type="password" autocomplete="new-password" required minlength="12" maxlength="1024"></label>
+    <button type="submit">Create account and log in</button>
+  </form>
+</section>
+{% endblock %}

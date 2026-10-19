@@ -120,3 +120,18 @@ def _register_export_commands() -> None:
 
 
 _register_export_commands()
+
+
+@app.command("healthcheck", hidden=True)
+def healthcheck(
+    ports: Annotated[str, typer.Option(help="port:scheme list to try")] = "8443:https,8080:http",
+) -> None:
+    """Container HEALTHCHECK: exit 0 if the UI answers /healthz on loopback."""
+    from homelab_atlas.security.health import probe  # noqa: PLC0415
+
+    pairs = []
+    for item in ports.split(","):
+        port, _, scheme = item.partition(":")
+        if port.isdigit():
+            pairs.append((int(port), scheme == "https"))
+    raise typer.Exit(0 if probe(pairs) else 1)

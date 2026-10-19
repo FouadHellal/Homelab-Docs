@@ -22,6 +22,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import SecretStr
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -31,6 +32,7 @@ from homelab_atlas.inventory.managed import SourceKind
 from homelab_atlas.scheduler import Scheduler
 from homelab_atlas.security.errors import SecurityRefusal, TransportError
 from homelab_atlas.store.tables import Annotation, Entity
+from homelab_atlas.store.tables import User as UserRow
 from homelab_atlas.web import auth, queries, topology
 from homelab_atlas.web.targets import (
     HOST_COLLECTORS,
@@ -64,6 +66,8 @@ class WebConfig:
     schedule: bool = True
     #: Targets page (ADR-025); None hides it.
     targets: TargetsService | None = None
+    #: First-run setup (ADR-026): while no account exists, /setup creates one with this token.
+    setup_token_file: Path | None = None
     #: Quick SSH login test for one host: name -> (ok, message).
     tester: Callable[[str], Awaitable[tuple[bool, str]]] | None = None
 
@@ -226,8 +230,88 @@ def create_app(cfg: WebConfig) -> FastAPI:
 
     # ------------------------------------------------------------------ auth
 
+    def setup_open(s: Session) -> bool:
+        f = cfg.setup_token_file
+        return (
+            f is not None
+            and f.is_file()
+            and not s.scalar(select(func.count()).select_from(UserRow))
+        )
+
+    def login_cookie_page(
+        request: Request, name: str, status: int = 200, **ctx: Any
+    ) -> HTMLResponse:
+        token = secrets.token_urlsafe(32)
+        resp = page(request, name, None, status, login_csrf=token, **ctx)
+        resp.set_cookie(
+            LOGIN_COOKIE,
+            token,
+            max_age=600,
+            secure=True,
+            httponly=True,
+            samesite="strict",
+            path="/",
+        )
+        return resp
+
+    @app.get("/setup", response_class=HTMLResponse)
+    def setup_form(request: Request, s: DB) -> Response:
+        if not setup_open(s):
+            return RedirectResponse("/login", 303)
+        return login_cookie_page(request, "setup.html", error=None, username="admin")
+
+    @app.post("/setup", response_class=HTMLResponse)
+    def setup_submit(
+        request: Request,
+        s: DB,
+        setup_token: Annotated[str, Form(max_length=128)],
+        username: Annotated[str, Form(max_length=64)],
+        password: Annotated[str, Form(max_length=1024)],
+        password2: Annotated[str, Form(max_length=1024)],
+        csrf_token: Annotated[str, Form(max_length=128)],
+    ) -> Response:
+        if not auth.csrf_ok(request.cookies.get(LOGIN_COOKIE) or "", csrf_token):
+            raise HTTPException(403, "setup CSRF token missing or invalid")
+        if not setup_open(s):
+            return RedirectResponse("/login", 303)
+        who = request.client.host if request.client else "?"
+        if not throttle.allow(who):
+            raise HTTPException(429, "too many attempts")
+        assert cfg.setup_token_file is not None  # noqa: S101 - setup_open checked it
+        expected = cfg.setup_token_file.read_text(encoding="utf-8").strip()
+        name = username.strip().lower()
+
+        def again(msg: str, code: int) -> HTMLResponse:
+            return login_cookie_page(request, "setup.html", code, error=msg, username=name)
+
+        if not expected or not auth.csrf_ok(expected, setup_token.strip()):
+            return again("setup token does not match (see the atlas startup log)", 401)
+        if password != password2:
+            return again("the two passwords differ", 422)
+        try:
+            auth.create_user(s, name, password)
+        except auth.AuthError as exc:
+            return again(str(exc), 422)
+        s.commit()
+        cfg.setup_token_file.unlink(missing_ok=True)  # one use only
+        result = auth.login(s, name, password)
+        resp = RedirectResponse("/targets" if cfg.targets is not None else "/", 303)
+        if result.token is not None:
+            resp.set_cookie(
+                SESSION_COOKIE,
+                result.token,
+                secure=True,
+                httponly=True,
+                samesite="strict",
+                path="/",
+            )
+        resp.delete_cookie(LOGIN_COOKIE, path="/", secure=True, httponly=True, samesite="strict")
+        return resp
+
     @app.get("/login", response_class=HTMLResponse)
     def login_form(request: Request, s: DB, next: str = "/") -> Response:  # noqa: A002
+        if setup_open(s):
+            return RedirectResponse("/setup", 303)
         if auth.resolve(s, request.cookies.get(SESSION_COOKIE)) is not None:
             return RedirectResponse(safe_next(next), 303)
         token = secrets.token_urlsafe(32)
@@ -512,6 +596,7 @@ def create_app(cfg: WebConfig) -> FastAPI:
             error=None,
             secret_set=bool(entry and svc.has_secret(entry.ssh.password)),
             pinned=entry.ssh.host_keys if entry else (),
+            atlas_key=svc.atlas_public_key(create=True),
         )
 
     @app.post("/targets/host", response_class=HTMLResponse)
@@ -524,7 +609,7 @@ def create_app(cfg: WebConfig) -> FastAPI:
         collectors: Annotated[list[str] | None, Form()] = None,
         ssh_user: Annotated[str, Form(max_length=32)] = "",
         ssh_port: Annotated[int, Form(ge=1, le=65535)] = 22,
-        auth: Annotated[str, Form(max_length=8)] = "password",
+        auth: Annotated[str, Form(max_length=16)] = "password",
         password: Annotated[str, Form(max_length=1024)] = "",
         sudo: Annotated[str, Form(max_length=4)] = "",
         key_name: Annotated[str, Form(max_length=64)] = "",
@@ -540,7 +625,7 @@ def create_app(cfg: WebConfig) -> FastAPI:
             collectors=list(collectors or []),
             user=ssh_user.strip(),
             port=ssh_port,
-            auth="key" if auth == "key" else "password",
+            auth=auth if auth in ("key", "key-installed") else "password",  # type: ignore[arg-type]
             sudo=bool(sudo),
             key_name=key_name.strip(),
             host_key=host_key.strip(),
@@ -563,6 +648,7 @@ def create_app(cfg: WebConfig) -> FastAPI:
                 error=str(exc)[:300],
                 secret_set=bool(entry and svc.has_secret(entry.ssh.password)),
                 pinned=entry.ssh.host_keys if entry else (),
+                atlas_key=svc.atlas_public_key(create=True),
             )
         return RedirectResponse(f"/targets?msg={quote(form.name + ' saved')}", 303)
 
