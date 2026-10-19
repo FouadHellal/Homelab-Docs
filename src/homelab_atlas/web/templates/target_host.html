@@ -20,12 +20,27 @@
   </fieldset>
   <fieldset><legend>SSH login</legend>
     <label>Username <input name="ssh_user" value="{{ f.user }}" maxlength="32" placeholder="e.g. admin (root is refused)" autocomplete="off"></label>
-    <label class="check"><input type="radio" name="auth" value="password"{% if f.auth == "password" %} checked{% endif %}> Password: nothing is installed on the VM</label>
+    <h3>1 · Password <span class="muted small">(simplest)</span></h3>
+    <label class="check"><input type="radio" name="auth" value="password"{% if f.auth == "password" %} checked{% endif %}> Log in with a password; nothing is installed on the VM</label>
     <label>Password {% if secret_set %}<span class="pill ok">stored</span> <span class="muted small">leave empty to keep it</span>{% endif %}
       <input name="password" type="password" maxlength="1024" autocomplete="new-password"></label>
     <label class="check"><input type="checkbox" name="sudo" value="1"{% if f.sudo %} checked{% endif %}> Also use it for sudo (Docker details, process owners of ports, root crontabs)</label>
-    <label class="check"><input type="radio" name="auth" value="key"{% if f.auth == "key" %} checked{% endif %}> SSH key with the installed read-only probe (strictest, see docs/SETUP-TARGETS.md)</label>
-    <label>Key secret name (key mode only) <input name="key_name" value="{{ f.key_name }}" maxlength="64" placeholder="ssh_atlas_ro"></label>
+
+    <h3>2 · SSH key</h3>
+    <label class="check"><input type="radio" name="auth" value="key"{% if f.auth == "key" %} checked{% endif %}> Log in with atlas's SSH key; nothing is installed on the VM</label>
+    {% if atlas_key %}
+    <p class="small">Add this line to <code>~/.ssh/authorized_keys</code> of the user above on the VM:</p>
+    <pre class="small">{{ atlas_key }}</pre>
+    <p class="muted small">For Docker details without a password, give that user passwordless sudo, or leave them out.</p>
+    {% endif %}
+    <label class="check"><input type="radio" name="auth" value="key-installed"{% if f.auth == "key-installed" %} checked{% endif %}> SSH key + installed read-only probe: strictest, read-only is enforced on the VM itself (docs/SETUP-TARGETS.md §2)</label>
+    {% if atlas_key %}
+    <p class="muted small">authorized_keys line for this mode (user <code>atlas-ro</code>):</p>
+    <pre class="small">restrict,command="/usr/local/libexec/atlas-probe-gate" {{ atlas_key }}</pre>
+    {% endif %}
+    <details><summary class="small">Use a key from a Docker secret instead</summary>
+      <label>Secret name <input name="key_name" value="{{ f.key_name }}" maxlength="64" placeholder="ssh_atlas_ro"></label>
+    </details>
   </fieldset>
   <fieldset><legend>Host key: protects your password from a fake server</legend>
     {% if pinned %}<p>Pinned: <code>{{ (pinned | first)[:60] }}…</code></p>{% endif %}

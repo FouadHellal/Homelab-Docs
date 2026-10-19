@@ -60,6 +60,8 @@ class SshSettings(_Strict):
     password: str | None = None  # secret NAME
     #: password mode: also use the password for sudo (root-only sections).
     sudo: bool | None = None
+    #: key mode: "installed" forced-command probe (default) or "streamed" (nothing installed).
+    probe: Literal["installed", "streamed"] | None = None
     port: int | None = Field(default=None, ge=1, le=65535)
     host_keys: tuple[str, ...] = ()
 
@@ -218,6 +220,7 @@ class Inventory(_Strict):
             key_secret=(host.ssh.key or d.key) if auth == "key" else None,
             password_secret=(host.ssh.password or d.password) if auth == "password" else None,
             sudo=True if sudo is None else sudo,
+            probe=host.ssh.probe or d.probe or ("streamed" if auth == "password" else "installed"),
         )
 
 

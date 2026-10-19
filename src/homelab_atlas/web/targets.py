@@ -36,6 +36,7 @@ from homelab_atlas.inventory.managed import (
 )
 from homelab_atlas.security import discover
 from homelab_atlas.security.audit import AuditEvent, AuditSink
+from homelab_atlas.security.ssh_keys import ATLAS_KEY_SECRET, generate_client_key, public_line
 from homelab_atlas.security.vault import Vault
 
 HOST_TYPES: Final = ("linux", "pi", "proxmox-node", "nas", "manual")
@@ -60,7 +61,8 @@ class HostForm:
     collectors: list[str] = field(default_factory=lambda: ["linux-ssh", "docker"])
     user: str = ""
     port: int = 22
-    auth: Literal["password", "key"] = "password"
+    #: password | key (atlas key, nothing installed) | key-installed (forced-command probe)
+    auth: Literal["password", "key", "key-installed"] = "password"
     sudo: bool = True
     key_name: str = ""
     host_key: str = ""
@@ -147,6 +149,17 @@ class TargetsService:
         except Exception:  # noqa: BLE001 - a status hint only
             return False
 
+    def atlas_public_key(self, *, create: bool = False) -> str | None:
+        """Public half of atlas's own SSH key (generated into the vault on first use)."""
+        if self._vault is None:
+            return None
+        if not self._vault.has(ATLAS_KEY_SECRET):
+            if not create or not self.editable:
+                return None
+            self._vault.put(ATLAS_KEY_SECRET, SecretStr(generate_client_key().decode()))
+            self._record("ui.secret.set", ATLAS_KEY_SECRET)
+        return public_line(self._vault.resolve_bytes(ATLAS_KEY_SECRET))
+
     def view(self) -> dict[str, Any]:
         inv, fixed = self.inventory()
         hosts = [
@@ -210,6 +223,9 @@ class TargetsService:
         if collectors and not keys:
             raise TargetError("fetch and confirm the SSH host key first")
         pw_name = secret_name("ssh", form.name)
+        key_mode = form.auth in ("key", "key-installed")
+        if collectors and key_mode and not form.key_name:
+            self.atlas_public_key(create=True)
         if collectors and form.auth == "password":
             have = self.has_secret(pw_name) or (
                 existing is not None and self.has_secret(existing.ssh.password)
@@ -219,9 +235,12 @@ class TargetsService:
         try:
             ssh = SshSettings(
                 user=form.user or None,
-                auth=form.auth,
+                auth="key" if key_mode else "password",
                 password=pw_name if form.auth == "password" else None,
-                key=(form.key_name or None) if form.auth == "key" else None,
+                key=(form.key_name or ATLAS_KEY_SECRET) if key_mode else None,
+                probe=("installed" if form.auth == "key-installed" else "streamed")
+                if key_mode
+                else None,
                 sudo=form.sudo if form.auth == "password" else None,
                 port=form.port if form.port != 22 else None,
                 host_keys=keys,
@@ -251,7 +270,7 @@ class TargetsService:
         except (ValueError, InventoryError) as exc:
             msg = _errors(exc) if isinstance(exc, ValidationError) else str(exc)
             raise TargetError(msg) from None
-        if form.auth == "key" and self.has_secret(pw_name):
+        if key_mode and self.has_secret(pw_name):
             self._vault.delete(pw_name)
         self._record("ui.host.save", form.name)
         return entry
@@ -334,7 +353,10 @@ class TargetsService:
 def host_form_from(entry: HostEntry | None, inv: Inventory | None = None) -> HostForm:
     if entry is None:
         return HostForm(name="", address="")
-    auth = inv.auth_of(entry) if inv else (entry.ssh.auth or "key")
+    base = inv.auth_of(entry) if inv else (entry.ssh.auth or "key")
+    auth: Literal["password", "key", "key-installed"] = "password"
+    if base == "key":
+        auth = "key" if entry.ssh.probe == "streamed" else "key-installed"
     return HostForm(
         name=entry.name,
         address=entry.address,
@@ -344,7 +366,7 @@ def host_form_from(entry: HostEntry | None, inv: Inventory | None = None) -> Hos
         port=entry.ssh.port or 22,
         auth=auth,
         sudo=entry.ssh.sudo if entry.ssh.sudo is not None else True,
-        key_name=entry.ssh.key or "",
+        key_name="" if entry.ssh.key == ATLAS_KEY_SECRET else (entry.ssh.key or ""),
         original=entry.name,
     )
 

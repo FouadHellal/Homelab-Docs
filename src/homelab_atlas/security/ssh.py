@@ -62,6 +62,9 @@ class SshTarget:
     password_secret: str | None = None
     #: password mode only: pipe the login password to `sudo -S` for root-only sections.
     sudo: bool = True
+    #: "installed": forced-command probe on the target (ADR-002). "streamed": atlas sends its
+    #: bundled probe over the session (ADR-025); always the case in password mode.
+    probe: Literal["installed", "streamed"] = "installed"
 
     def __post_init__(self) -> None:
         if not TARGET_NAME_RE.fullmatch(self.name):
@@ -84,6 +87,10 @@ class SshTarget:
             validate_secret_name(self.password_secret)
         else:
             raise SecurityRefusal(RefusalReason.CONFIG, f"{self.name}: bad auth mode")
+        if self.probe not in ("installed", "streamed"):
+            raise SecurityRefusal(RefusalReason.CONFIG, f"{self.name}: bad probe mode")
+        if self.auth == "password":
+            object.__setattr__(self, "probe", "streamed")
         if not all(isinstance(s, ProbeSection) for s in self.sections):
             raise SecurityRefusal(RefusalReason.BAD_TYPE, f"{self.name}: sections must be enum")
         object.__setattr__(self, "sections", frozenset(self.sections))
@@ -411,10 +418,10 @@ class AsyncSshTransport:
     async def open(self, target: SshTarget, limits: SshLimits) -> AsyncIterator[SshSession]:
         # Everything that can refuse happens before a connection exists.
         inline = None
-        if target.auth == "password":
+        if target.probe == "streamed":
             if self._inline_probe is None:
                 raise SecurityRefusal(RefusalReason.CONFIG, f"{target.name}: no bundled probe")
-            pw = self._password(target) if target.sudo else ""
+            pw = self._password(target) if target.auth == "password" and target.sudo else ""
             inline = pw.encode() + b"\n" + self._inline_probe
         options = self.options(target, limits)
         try:
