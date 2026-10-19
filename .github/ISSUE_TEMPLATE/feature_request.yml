@@ -1,0 +1,20 @@
+name: Feature request
+description: Something atlas should document or show
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What do you want to see, and why?
+      description: The question you want atlas to answer about your homelab
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Where would the data come from?
+      description: An API endpoint (with a link to its docs) or a read-only command. atlas never changes a target.
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else

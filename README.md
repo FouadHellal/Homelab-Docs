@@ -1,27 +1,35 @@
 # Homelab-Docs (`atlas`)
 
+[![CI](https://github.com/FouadHellal/Homelab-Docs/actions/workflows/ci.yml/badge.svg)](https://github.com/FouadHellal/Homelab-Docs/actions/workflows/ci.yml)
+[![Image](https://github.com/FouadHellal/Homelab-Docs/actions/workflows/image.yml/badge.svg)](https://github.com/FouadHellal/Homelab-Docs/actions/workflows/image.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 atlas documents your homelab for you, and only reads. You add your Proxmox, your UniFi
 gateway and your VMs on a web page. atlas then:
 
 - logs in to each of them;
-- records what runs inside (OS, services, listening ports, Docker containers, packages,
-  disks, users, cron jobs);
+- records what runs inside: OS, **every systemd service**, processes, listening ports,
+  Docker containers, packages, disks, users and cron jobs. It recognises about 70 common apps
+  (Pi-hole, Home Assistant, Jellyfin, NetBox…);
+- draws your Proxmox cluster the way you think of it: each node, its bridges, and the VMs and
+  LXCs on it;
 - finds every VM's IP and switch port through UniFi;
 - links everything into a topology;
-- keeps tables (IPs, VLANs, ports), a change history, and exports in Markdown, MkDocs, JSON,
-  CSV and Mermaid;
+- keeps tables (services with CSV export, IPs, VLANs, ports), a change history, and exports
+  in Markdown, MkDocs, JSON, CSV and Mermaid;
 - serves a read-only MCP server so AI assistants can answer questions like *"what changed on
   docker01 this week?"*.
 
 It never changes anything on your machines. See [SECURITY.md](SECURITY.md).
 
-Status: feature-complete and tested against a synthetic demo lab. **The first run against real
-hardware is still pending**
-([known limitations](SECURITY.md#known-limitations-read-these)).
+Status: beta. It runs on a real homelab (two Proxmox nodes, UniFi, a dozen VMs and Pis), and
+every change is tested against a synthetic demo lab. Read the
+[known limitations](SECURITY.md#known-limitations-read-these). The in-app guide is at `/docs`.
 
 - [Deploy](#deploy) · [First login](#first-login) · [Add your homelab](#add-your-homelab) ·
   [Day-to-day](#day-to-day) · [Troubleshooting](#troubleshooting) · [Architecture](#architecture) ·
-  [Try the demo](#try-it-without-a-homelab) · [Development](#development)
+  [Try the demo](#try-it-without-a-homelab) · [Development](#development) ·
+  [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
 ## Deploy
 
@@ -132,26 +140,32 @@ stopped or failed), the running processes, listening ports and timers. atlas the
 Unbound, Tailscale and the rest. Add the Pi-hole (and any other box) as a machine to see this.
 Process command lines are redacted before they are stored.
 
-**Proxmox VMs without an API token.** Add each Proxmox node as a machine (Linux, with sudo).
-atlas reads the cluster's guest list and guest configs from `/etc/pve` over SSH and shows every
-VM and LXC under its node, as the API would. It never reads `/etc/pve/priv`. If you also add a
-Proxmox API token (section 1), the API is used instead.
+**Proxmox VMs without an API token.** Add a Proxmox node as a machine (type
+`proxmox-node`, with sudo). atlas reads `/etc/pve` over SSH: cluster members, every guest's
+configuration (cores, memory, disks, NICs, bridge, VLAN), and what runs on that node.
+**One node is enough to see the whole cluster.** Add every node to also see each guest's running
+state. It never reads `/etc/pve/priv`. If you also add an API token (section 1), the API's data
+is shown and SSH stays as a fallback.
 
 ### What you get
 
 | Page | What's there |
 |---|---|
-| **Dashboard** | Clickable tiles, your Proxmox nodes with their guests, a card per machine with the apps found on it (filter by kind, search), problems, devices seen on the network but not documented yet, recent changes, "Scan now" |
-| **Running** | Everything that runs, on every machine: recognised apps by category (Pi-hole, Unbound, Tailscale, Home Assistant, Jellyfin, NetBox, Grafana…), every systemd service, every container. It is searchable. |
+| **Dashboard** | Clickable tiles, your Proxmox nodes with their guests, a card per machine with the apps found on it (filter by kind, search), **Needs attention** (failed or never-scanned targets, with the reason), devices seen on the network but not documented yet, recent changes, "Scan now" |
+| **Topology** | **Proxmox**: one box per node, holding the node, its bridges, and its VMs and LXCs. Each guest is wired to the bridge its NIC uses, with traffic pulses on running guests. Summary cards show guests and the vCPU and RAM allocated. **Network**: gateway → switches → APs → hosts. **VLANs**. Hover highlights the path, click shows details, **right-click** gives actions (open, web UI, scan this machine, copy IP/MAC/SSH command, show only this, containers), plus search, three layouts and PNG export. Keys: `/` `F` `R` `C` |
+| **Services** | Every systemd unit and Docker container on every machine in one table. Filter by machine, state (running / failed / stopped), type and text, then **Export CSV** |
+| **Apps** | Recognised apps by category (Pi-hole, Unbound, Tailscale, Home Assistant, Jellyfin, NetBox, Grafana…) and where they run, with a link to their web UI |
 | **Inventory** | Every machine. Open one for OS, network, ports, a **Running** panel (services, containers, processes, ports, timers), disks, users, notes and history |
-| **Topology** | **Proxmox**: cluster → nodes → VMs/LXCs, containers on demand. **Network**: gateway → switches → APs → hosts. **VLANs**. Hover to highlight links, click for details, **right-click** for actions (open, open web UI, copy IP, focus, show containers, hide, add as target), search, three layouts, PNG export |
 | **IPs** | One row per device with all its addresses, MACs and networks. Link-local and Docker-bridge addresses are hidden until you ask for them |
 | **VLANs / Ports** | Searchable tables |
 | **Changes** | Typed events: port opened, image updated, container restarted, new device on a VLAN, VM not backed up… |
 | **Unknown** | Devices on the network you haven't added, infrastructure first |
+| **Targets** | Add and edit machines, Proxmox and UniFi. Each row shows its **last scan** (ok / partial / failed and why / not scanned yet) |
+| **Docs** | The in-app guide. **Ctrl+K** jumps to any page, machine or app |
 
-Scans run on their own: UniFi and Proxmox every 15 min, machines hourly. Use **Scan now**
-(dashboard) or **Scan** (per target) for an immediate one.
+Scans run on their own: UniFi and Proxmox every 15 min, machines hourly. A new target is
+scanned as soon as you save it. **Scan now** (dashboard) and **Scan** (per target) are queued,
+so pressing Scan on five machines scans all five, one after the other.
 
 ## Day-to-day
 
@@ -212,7 +226,8 @@ The bearer token is in `/opt/atlas/secrets/mcp_token`. See [docs/DEPLOY.md §6](
 | UniFi cloud: *the key was refused* | The key is from unifi.ui.com but was entered as Local, or the other way round. Pick the other option. |
 | UniFi local: certificate error | Fetch the certificate again (the gateway's certificate changed after an update) and confirm it. |
 | Forgot the password | `sudo atlas user passwd <name>` |
-| Topology/dashboard shows no Proxmox nodes or VMs | Add a Proxmox API token (Targets → Sources), or add each PVE node as a machine with sudo (see *Proxmox VMs without an API token*). |
+| Topology/dashboard shows no Proxmox nodes or VMs | Add a Proxmox node as `proxmox-node` with sudo, or fix the token: **Test connection** says "sees no nodes" when the *token itself* lacks the PVEAuditor role (privilege separation). Run the last `pveum acl modify … --tokens` line of section 1. |
+| A machine never gets documented | Look at its **Last scan** on Targets. *Not scanned yet*: press Scan. *Failed*: open the line for the reason (wrong password, `PasswordAuthentication no`, host key, timeout). |
 | A Pi-hole (or other box) shows no services | It isn't a target yet: add it as a machine, then **Scan**. |
 
 ## Architecture
@@ -270,7 +285,7 @@ uv run atlas serve --lab demo --schedule    # http://127.0.0.1:8080, login in da
 
 ```bash
 uv sync && uv run pre-commit install
-uv run poe check                  # ruff, mypy --strict, pytest (~750 tests), gitleaks
+uv run poe check                  # ruff, mypy --strict, pytest (~820 tests), gitleaks
 uv run atlas selftest security    # every read-only/redaction guard, offline
 ```
 
@@ -282,3 +297,9 @@ uv run atlas selftest security    # every read-only/redaction guard, offline
 | [docs/DECISIONS.md](docs/DECISIONS.md) | ADRs, with vendor API facts and their sources |
 | [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) · [docs/SECURITY-REVIEW.md](docs/SECURITY-REVIEW.md) | Threats and the latest review |
 | [docs/targets/](docs/targets/) | The read-only probe, gate and sudoers files |
+
+## License
+
+[MIT](LICENSE). The topology's node → bridge → guest "flow" view was inspired by
+[ProxMenux](https://github.com/MacRimi/ProxMenux)'s network flow. It is our own implementation:
+no ProxMenux code is included.
