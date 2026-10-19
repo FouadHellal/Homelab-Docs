@@ -1,10 +1,17 @@
 {% extends "base.html" %}
 {% block title %}IP addresses{% endblock %}
 {% block main %}
-<h1>IP addresses</h1>
-<form class="filters" method="get" action="/ips" hx-get="/ips" hx-target="#rows" hx-trigger="input changed delay:300ms from:#q" hx-push-url="true">
-  <input id="q" name="q" value="{{ q }}" placeholder="Filter by IP, MAC, name, VLAN" maxlength="64" type="search">
-</form>
-<table class="data"><thead><tr><th>IP</th><th>Name</th><th>MAC</th><th>Interface</th><th>Network</th><th>VLAN</th><th>Source</th></tr></thead>
-<tbody id="rows">{% include "_ip_rows.html" %}</tbody></table>
+<header class="page-head">
+  <div>
+    <h1>IP addresses</h1>
+    <p class="muted">One row per device: every address, MAC and network it was seen with.
+      {% if g.hidden and not everything %}{{ g.hidden }} link-local / container-network addresses hidden: <a href="/ips?everything=true{{ '&amp;q=' ~ q | urlencode if q }}">show them</a>.{% elif everything %}<a href="/ips{{ '?q=' ~ q | urlencode if q }}">Hide link-local and container networks</a>.{% endif %}</p>
+  </div>
+  <form class="inline" method="get" action="/ips" hx-get="/ips" hx-target="#rows" hx-trigger="input changed delay:300ms from:#q" hx-push-url="true">
+    <input id="q" name="q" value="{{ q }}" placeholder="Filter by IP, MAC, name, VLAN" maxlength="64" type="search" class="wide-search">
+    {% if everything %}<input type="hidden" name="everything" value="true">{% endif %}
+  </form>
+</header>
+<table class="data ip-groups"><thead><tr><th>Device</th><th>Addresses</th><th>MAC</th><th>Network</th><th>Seen by</th></tr></thead>
+<tbody id="rows">{% include "_ip_groups_rows.html" %}</tbody></table>
 {% endblock %}

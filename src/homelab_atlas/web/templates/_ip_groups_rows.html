@@ -1,0 +1,11 @@
+{% for x in g.groups %}
+<tr>
+  <td><a href="/entity?key={{ x.key | urlencode }}"><strong>{{ x.name }}</strong></a></td>
+  <td class="addr">{% for i in x.ips %}<code class="{{ 'internal' if i.internal }}" title="{{ i.iface or '' }}">{{ i.ip }}</code>{% endfor %}</td>
+  <td class="addr">{% for m in x.macs %}<code>{{ m }}</code>{% endfor %}</td>
+  <td>{{ x.networks | join(", ") }}</td>
+  <td>{% for s in x.sources %}<span class="pill src">{{ s }}</span>{% endfor %}</td>
+</tr>
+{% else %}
+<tr><td colspan="5" class="muted">No matches.</td></tr>
+{% endfor %}

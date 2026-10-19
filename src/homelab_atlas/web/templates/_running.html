@@ -1,0 +1,39 @@
+{% from "_macros.html" import app_chips %}
+<section class="card running">
+  <div class="section-head"><h2>Running</h2>
+    <span class="muted small">{{ run.services | length }} services · {{ run.containers | length }} containers · {{ run.process_count }} processes · {{ run.sockets | length }} listening ports</span></div>
+  {% if run.apps %}
+  <div class="app-strip">{% for a in run.apps %}<span class="chip big" data-cat="{{ a.category }}" title="{{ a.evidence | join(', ') }}">{{ a.name }}{% if a.ports %}<span class="chip-port">:{{ a.ports | join(',') }}</span>{% endif %}</span>{% endfor %}</div>
+  {% endif %}
+  {% if run.failed %}<p class="error">Failed: {% for s in run.failed %}<code>{{ s.unit }}</code> {% endfor %}</p>{% endif %}
+  <div class="tabset" data-tabset>
+    <div class="tab-buttons" role="tablist">
+      <button type="button" role="tab" class="tab-btn on" data-tab="t-svc">Services</button>
+      {% if run.containers %}<button type="button" role="tab" class="tab-btn" data-tab="t-ctr">Containers</button>{% endif %}
+      <button type="button" role="tab" class="tab-btn" data-tab="t-proc">Processes</button>
+      <button type="button" role="tab" class="tab-btn" data-tab="t-port">Ports</button>
+      {% if run.timers %}<button type="button" role="tab" class="tab-btn" data-tab="t-timer">Timers</button>{% endif %}
+      <input type="search" class="table-search" placeholder="Filter…" data-search-target=".tab-panel.on table" maxlength="64">
+    </div>
+    <div class="tab-panel on" id="t-svc"><table class="data"><thead><tr><th>Unit</th><th>Description</th><th>At boot</th></tr></thead><tbody>
+      {% for s in run.services %}<tr data-search="{{ s.unit }} {{ s.description or '' }}"><td><code>{{ s.unit }}</code></td><td class="muted">{{ s.description or "" }}</td><td>{{ s.enabled or "" }}</td></tr>
+      {% else %}<tr><td colspan="3" class="muted">No running services reported.</td></tr>{% endfor %}</tbody></table></div>
+    {% if run.containers %}
+    <div class="tab-panel" id="t-ctr"><table class="data"><thead><tr><th>Container</th><th>Image</th><th>State</th><th>Ports</th></tr></thead><tbody>
+      {% for c in run.containers %}<tr data-search="{{ c.name }} {{ c.image }}"><td><strong>{{ c.name }}</strong>{% if c.compose_project %} <span class="muted small">{{ c.compose_project }}</span>{% endif %}</td><td><code>{{ c.image }}</code></td>
+        <td><span class="pill {{ 'ok' if c.status == 'running' else 'failed' }}">{{ c.status }}</span>{% if c.health %} <span class="pill {{ 'ok' if c.health == 'healthy' else 'partial' }}">{{ c.health }}</span>{% endif %}</td>
+        <td class="small">{% for p in c.ports or [] %}{{ p.host_port }}→{{ p.container_port }}/{{ p.proto }} {% endfor %}</td></tr>{% endfor %}</tbody></table></div>
+    {% endif %}
+    <div class="tab-panel" id="t-proc"><table class="data"><thead><tr><th>Process</th><th>User</th><th>CPU %</th><th>Mem %</th><th>Command</th></tr></thead><tbody>
+      {% for p in run.processes %}<tr data-search="{{ p.comm }} {{ p.user }} {{ p.args or '' }}"><td><strong>{{ p.comm }}</strong></td><td>{{ p.user or "" }}</td><td>{{ p.cpu_pct if p.cpu_pct is not none else "" }}</td><td>{{ p.mem_pct if p.mem_pct is not none else "" }}</td><td class="cmd"><code>{{ (p.args or "")[:160] }}</code></td></tr>
+      {% else %}<tr><td colspan="5" class="muted">No process list (needs probe 1.4).</td></tr>{% endfor %}</tbody></table>
+      {% if run.process_count > run.processes | length %}<p class="muted small">Top {{ run.processes | length }} of {{ run.process_count }} by CPU.</p>{% endif %}</div>
+    <div class="tab-panel" id="t-port"><table class="data"><thead><tr><th>Port</th><th>Proto</th><th>Address</th><th>Process</th></tr></thead><tbody>
+      {% for s in run.sockets | sort(attribute="port") %}<tr data-search="{{ s.port }} {{ s.process or '' }}"><td><strong>{{ s.port }}</strong></td><td>{{ s.proto }}</td><td><code>{{ s.address }}</code></td><td>{{ s.process or "" }}</td></tr>
+      {% else %}<tr><td colspan="4" class="muted">None.</td></tr>{% endfor %}</tbody></table></div>
+    {% if run.timers %}
+    <div class="tab-panel" id="t-timer"><table class="data"><tbody>
+      {% for t in run.timers %}<tr data-search="{{ t.unit }}"><td><code>{{ t.unit }}</code></td><td class="muted">{{ t.activates or "" }}</td></tr>{% endfor %}</tbody></table></div>
+    {% endif %}
+  </div>
+</section>

@@ -1,0 +1,8 @@
+{% macro status_dot(status) -%}
+<span class="dot st-{{ status | default('unknown', true) }}" aria-label="{{ status }}"></span>
+{%- endmacro %}
+
+{% macro app_chips(apps, limit=8) -%}
+{% set shown = apps | rejectattr("category", "equalto", "system") | list %}
+{% if shown %}<div class="chips">{% for a in shown[:limit] %}<span class="chip" data-cat="{{ a.category }}" title="{{ a.category_label }}: {{ a.evidence | join(', ') }}">{{ a.name }}</span>{% endfor %}{% if shown | length > limit %}<span class="chip more">+{{ shown | length - limit }}</span>{% endif %}</div>{% endif %}
+{%- endmacro %}

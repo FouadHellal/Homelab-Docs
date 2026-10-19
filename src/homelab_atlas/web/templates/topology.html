@@ -1,13 +1,39 @@
 {% extends "base.html" %}
 {% block title %}Topology{% endblock %}
-{% block head %}<script src="/static/vendor/cytoscape.min.js" nonce="{{ nonce }}" defer></script>{% endblock %}
+{% block head %}<script src="/static/vendor/cytoscape.min.js" nonce="{{ nonce }}" defer></script>
+<script src="/static/topology.js" nonce="{{ nonce }}" defer></script>{% endblock %}
 {% block main %}
-<h1>Topology</h1>
-<nav class="tabs">
-  {% for v, label in [("physical", "Physical (UniFi)"), ("logical", "Logical (Proxmox / Docker)"), ("vlan", "VLAN membership")] %}
-  <a href="/topology?view={{ v }}"{% if v == view %} aria-current="page"{% endif %}>{{ label }}</a>
-  {% endfor %}
-</nav>
-<div id="cy" class="cy" data-src="/api/topology?view={{ view }}" data-view="{{ view }}" role="img" aria-label="{{ view }} topology graph"></div>
-<p class="muted small">Click a node to open it. Scroll to zoom, drag to pan.</p>
+<div class="topo-head">
+  <nav class="tabs">
+    {% for v, label in [("logical", "Proxmox"), ("physical", "Network"), ("vlan", "VLANs")] %}
+    <a href="/topology?view={{ v }}"{% if v == view %} aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+  <div class="topo-tools" role="toolbar" aria-label="Topology tools">
+    <input type="search" id="topo-search" placeholder="Find a machine, IP, app…" maxlength="64" autocomplete="off">
+    {% if view == "logical" %}
+    <label class="toggle"><input type="checkbox" id="topo-containers"> Containers</label>
+    <label class="toggle"><input type="checkbox" id="topo-undocumented" checked> Not documented</label>
+    {% elif view == "physical" %}
+    <label class="toggle"><input type="checkbox" id="topo-everything"> Phones, TVs &amp; IoT</label>
+    {% endif %}
+    <div class="seg" role="group" aria-label="Layout">
+      <button type="button" class="seg-btn on" data-layout="auto" title="Tidy layout">Tidy</button>
+      <button type="button" class="seg-btn" data-layout="organic" title="Force-directed">Organic</button>
+      <button type="button" class="seg-btn" data-layout="circle" title="Concentric">Rings</button>
+    </div>
+    <button type="button" class="ghost small" id="topo-fit" title="Fit to screen">Fit</button>
+    <button type="button" class="ghost small" id="topo-png" title="Download as PNG">PNG</button>
+  </div>
+</div>
+<div class="topo-wrap">
+  <div id="cy" class="cy" data-src="/api/topology?view={{ view }}" data-view="{{ view }}" role="img" aria-label="{{ view }} topology graph"></div>
+  <aside id="topo-panel" class="topo-panel" hidden>
+    <button type="button" class="ghost small panel-close" id="topo-panel-close" aria-label="Close">×</button>
+    <div id="topo-panel-body"></div>
+  </aside>
+  <div id="topo-menu" class="topo-menu" role="menu" hidden></div>
+  <div class="topo-legend" id="topo-legend"></div>
+  <div class="topo-hint muted small">Click: details · Right-click: actions · Double-click: open · Scroll: zoom</div>
+</div>
 {% endblock %}
