@@ -54,11 +54,16 @@ def _secret_name(v: str | None) -> str | None:
 
 class SshSettings(_Strict):
     user: str | None = None
+    #: "key" (forced-command probe, ADR-002) or "password" (streamed probe, ADR-025).
+    auth: Literal["key", "password"] | None = None
     key: str | None = None
+    password: str | None = None  # secret NAME
+    #: password mode: also use the password for sudo (root-only sections).
+    sudo: bool | None = None
     port: int | None = Field(default=None, ge=1, le=65535)
     host_keys: tuple[str, ...] = ()
 
-    _key = field_validator("key")(_secret_name)
+    _key = field_validator("key", "password")(_secret_name)
 
     @field_validator("user")
     @classmethod
@@ -175,13 +180,22 @@ class Inventory(_Strict):
         dupes = sorted({n for n in names if names.count(n) > 1})
         if dupes:
             raise ValueError(f"duplicate host names: {', '.join(dupes)}")
+        lowered = [n.lower() for n in names]
+        if len(set(lowered)) != len(lowered):
+            raise ValueError("host names must be unique ignoring case")
         for h in self.hosts:
             if set(h.collectors) & {"linux-ssh", "docker", "pi"}:
                 if not h.ssh.host_keys:
                     raise ValueError(f"{h.name}: SSH collectors need pinned ssh.host_keys")
-                if (h.ssh.key or self.defaults.ssh.key) is None:
+                if self.auth_of(h) == "password":
+                    if (h.ssh.password or self.defaults.ssh.password) is None:
+                        raise ValueError(f"{h.name}: password auth needs ssh.password (a name)")
+                elif (h.ssh.key or self.defaults.ssh.key) is None:
                     raise ValueError(f"{h.name}: no ssh key secret name (host or defaults)")
         return self
+
+    def auth_of(self, host: HostEntry) -> Literal["key", "password"]:
+        return host.ssh.auth or self.defaults.ssh.auth or "key"
 
     def host(self, name: str) -> HostEntry:
         for h in self.hosts:
@@ -191,17 +205,19 @@ class Inventory(_Strict):
 
     def ssh_target(self, host: HostEntry, sections: frozenset[ProbeSection]) -> SshTarget:
         d = self.defaults.ssh
-        key = host.ssh.key or d.key
-        if key is None:  # pragma: no cover - guaranteed by validation
-            raise InventoryError(f"{host.name}: no ssh key")
+        auth = self.auth_of(host)
+        sudo = host.ssh.sudo if host.ssh.sudo is not None else d.sudo
         return SshTarget(
             name=host.name,
             host=host.address,
             port=host.ssh.port or d.port or 22,
             username=host.ssh.user or d.user or "atlas-ro",
             host_keys=host.ssh.host_keys,
-            key_secret=key,
             sections=sections,
+            auth=auth,
+            key_secret=(host.ssh.key or d.key) if auth == "key" else None,
+            password_secret=(host.ssh.password or d.password) if auth == "password" else None,
+            sudo=True if sudo is None else sudo,
         )
 
 

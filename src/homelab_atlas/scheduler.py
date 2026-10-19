@@ -169,12 +169,13 @@ class Scheduler:
                 log.warning("retention.failed", error=type(exc).__name__)
         return summary
 
-    def trigger(self) -> bool:
-        """Manual full scan in the background. False if a scan is already running."""
+    def trigger(self, hosts: list[str] | None = None) -> bool:
+        """Manual scan in the background (all targets, or just `hosts`). False if busy."""
         if self._lock.locked():
             return False
         self.status.last_manual = self._clock()
-        task = asyncio.get_running_loop().create_task(self._run(label="manual"))
+        label = "manual" if not hosts else f"manual:{','.join(hosts)}"[:64]
+        task = asyncio.get_running_loop().create_task(self._run(label=label, hosts=hosts))
         self._tasks.add(task)
         task.add_done_callback(self._done)
         return True
@@ -184,22 +185,26 @@ class Scheduler:
         if not task.cancelled() and (exc := task.exception()) is not None:
             log.warning("scheduler.manual_error", error=type(exc).__name__)
 
-    async def _run(self, *, collectors: list[str] | None = None, label: str) -> ScanSummary | None:
+    async def _run(
+        self, *, collectors: list[str] | None = None, label: str, hosts: list[str] | None = None
+    ) -> ScanSummary | None:
         async with self._lock:
             self.status.running = label
             try:
                 # The engine's DB work is synchronous: run the whole scan on a worker thread
                 # with its own loop so the web UI's loop never blocks (or deadlocks on a
                 # SQLite write lock held by a request session).
-                return await asyncio.to_thread(self._scan_in_thread, collectors, label)
+                return await asyncio.to_thread(self._scan_in_thread, collectors, label, hosts)
             except ScanLockedError:
                 log.info("scheduler.locked", label=label)
                 return None
             finally:
                 self.status.running = None
 
-    def _scan_in_thread(self, collectors: list[str] | None, label: str) -> ScanSummary:
-        return asyncio.run(self._engine().run(collectors=collectors, label=label))
+    def _scan_in_thread(
+        self, collectors: list[str] | None, label: str, hosts: list[str] | None = None
+    ) -> ScanSummary:
+        return asyncio.run(self._engine().run(hosts=hosts, collectors=collectors, label=label))
 
     def _retry_later(self, name: str) -> None:
         if self._aps is None:

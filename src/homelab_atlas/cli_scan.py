@@ -57,7 +57,7 @@ def _fail(message: str) -> typer.Exit:
     return typer.Exit(2)
 
 
-def _inputs(lab: str | None, live: bool) -> tuple[str, Inputs]:
+def _inputs(lab: str | None, live: bool, data_dir: Path | None = None) -> tuple[str, Inputs]:
     if bool(lab) == live:
         raise _fail("choose exactly one of --lab demo:A or --live")
     try:
@@ -66,9 +66,16 @@ def _inputs(lab: str | None, live: bool) -> tuple[str, Inputs]:
             if state is None:
                 raise _fail("--lab needs a state here, e.g. demo:A")
             return "demo", lab_inputs(state)
-        return "live", live_inputs()
+        inputs = live_inputs(data_dir)
     except (LabError, InventoryError, FileNotFoundError) as exc:
         raise _fail(str(exc)) from None
+    inv = inputs.inventory
+    if not inv.hosts and not (inv.sources.proxmox or inv.sources.unifi or inv.sources.unas):
+        raise _fail(
+            "no targets yet: add them on the web UI's Targets page "
+            "or in $ATLAS_CONFIG_DIR/hosts.yaml"
+        )
+    return "live", inputs
 
 
 def scan(
@@ -80,7 +87,7 @@ def scan(
     fresh: Annotated[bool, typer.Option("--fresh", help="Wipe the lab data dir first.")] = False,
 ) -> None:
     """Run collectors, store redacted snapshots and derive change events."""
-    mode, inputs = _inputs(lab, live)
+    mode, inputs = _inputs(lab, live, data_dir)
     ddir = data_dir or default_data_dir(lab=mode == "demo")
     if fresh:
         try:
@@ -253,7 +260,7 @@ def doctor(
     host: Annotated[list[str] | None, typer.Option("--host")] = None,
 ) -> None:
     """Check inventory and target setup (reachability, pinned keys, gate, sudoers, probe hash)."""
-    mode, inputs = _inputs(lab, live)
+    mode, inputs = _inputs(lab, live, data_dir)
     inventory = inputs.inventory
     rt = Runtime.open(data_dir or default_data_dir(lab=mode == "demo"), mode=mode)
     runner = SshRunner(transport=inputs.ssh, audit=rt.audit)

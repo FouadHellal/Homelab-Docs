@@ -150,6 +150,10 @@ class ChainedSecrets:
     def __init__(self, resolver: SecretResolver, vault: Vault | None) -> None:
         self._resolver, self._vault = resolver, vault
 
+    @property
+    def vault(self) -> Vault | None:
+        return self._vault
+
     def resolve_bytes(self, name: str) -> bytes:
         try:
             return self._resolver.resolve_bytes(name)
