@@ -4,6 +4,9 @@
   or a Proxmox node (shared IP). Topology then reads node > VM (= host) > containers.
 * unknown devices: MACs seen by UniFi (clients) or in ARP/NDP tables of probed hosts that no
   inventory entry, collector facet or hosts.yaml `match.mac` / address accounts for.
+* guest network: a Proxmox VM/LXC whose NIC MAC UniFi sees gets a "seen on the network"
+  facet (IP, network/VLAN, uplink switch/AP), so VMs without the guest agent still have IPs.
+* every unknown device is classified (classify.py): infrastructure vs personal/IoT.
 * missing: inventory hosts whose last MISSING_AFTER runs all failed.
 Passive only (ADR-016): nothing here sends a packet.
 """
@@ -16,6 +19,7 @@ from typing import Any, Final
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from homelab_atlas.engine.classify import classify
 from homelab_atlas.engine.events import EventSpec
 from homelab_atlas.inventory.hosts import Inventory
 from homelab_atlas.store.tables import CollectorRun, Entity, Facet, utcnow
@@ -146,6 +150,7 @@ def _candidates(facets: list[Facet]) -> dict[str, dict[str, Any]]:
                         "name": c.get("name"),
                         "uplink_mac": c.get("uplink_mac"),
                         "seen_via": f"unifi@{f.target}",
+                        "wired": {"WIRED": True, "WIRELESS": False}.get(str(c.get("type"))),
                     }
     return seen
 
@@ -157,7 +162,9 @@ def reconcile(s: Session, scan_id: int, inventory: Inventory) -> list[EventSpec]
     _correlate(s, facets, idx)
     events: list[EventSpec] = []
     now = utcnow()
-    for mac, obs in sorted(_candidates(facets).items()):
+    candidates = _candidates(facets)
+    _guest_network(s, scan_id, facets, idx, candidates)
+    for mac, obs in sorted(candidates.items()):
         key = f"net:mac:{mac}"
         known = mac in idx.mac_owner or (obs["ip"] is not None and obs["ip"] in idx.ips)
         entity = s.get(Entity, key)
@@ -175,7 +182,16 @@ def reconcile(s: Session, scan_id: int, inventory: Inventory) -> list[EventSpec]
             continue
         net, vlan = network_of(idx, obs["ip"])
         uplink = idx.names.get(f"unifi:dev:{obs['uplink_mac']}") if obs["uplink_mac"] else None
-        data = {**obs, "network": net, "vlan": vlan, "uplink": uplink}
+        verdict = classify(mac, obs["name"], wired=obs.get("wired"), network=net)
+        data = {
+            **obs,
+            "network": net,
+            "vlan": vlan,
+            "uplink": uplink,
+            "category": verdict.category,
+            "infrastructure": verdict.infrastructure,
+            "reasons": list(verdict.reasons),
+        }
         label = obs["name"] or mac
         if entity is None:
             s.add(
@@ -204,7 +220,8 @@ def reconcile(s: Session, scan_id: int, inventory: Inventory) -> list[EventSpec]
                 EventSpec(
                     key,
                     "device.unknown_seen",
-                    "notice",
+                    # Phones and TVs coming and going are not news; unexplained servers are.
+                    "notice" if verdict.infrastructure or verdict.category == "unknown" else "info",
                     f"{label}: new unknown device {mac} {obs['ip'] or ''}{where}{via}".replace(
                         "  ", " "
                     ),
@@ -218,6 +235,55 @@ def reconcile(s: Session, scan_id: int, inventory: Inventory) -> list[EventSpec]
     _missing(s, inventory)
     s.flush()
     return events
+
+
+def _guest_network(
+    s: Session,
+    scan_id: int,
+    facets: list[Facet],
+    idx: Index,
+    candidates: dict[str, dict[str, Any]],
+) -> None:
+    """Give Proxmox guests the IP/VLAN/uplink UniFi sees for their NIC MACs."""
+    for f in facets:
+        if f.collector != "proxmox" or "vmid" not in f.data:
+            continue
+        seen = []
+        for nic in f.data.get("nics") or []:
+            obs = candidates.get(str(nic.get("mac") or ""))
+            if obs is None or not obs["seen_via"].startswith("unifi@"):
+                continue
+            net, vlan = network_of(idx, obs["ip"])
+            uplink = idx.names.get(f"unifi:dev:{obs['uplink_mac']}") if obs["uplink_mac"] else None
+            seen.append(
+                {
+                    "mac": obs["mac"],
+                    "ip": obs["ip"],
+                    "name": obs["name"],
+                    "network": net,
+                    "vlan": vlan,
+                    "uplink": uplink,
+                    "seen_via": obs["seen_via"],
+                }
+            )
+        existing = s.get(Facet, (f.entity_key, RECONCILE))
+        if not seen:
+            if existing is not None:
+                s.delete(existing)
+            continue
+        data = {**seen[0], "addresses": seen}
+        if existing is None:
+            s.add(
+                Facet(
+                    entity_key=f.entity_key,
+                    collector=RECONCILE,
+                    target="network",
+                    scan_id=scan_id,
+                    data=data,
+                )
+            )
+        elif existing.data != data:
+            existing.data, existing.scan_id = data, scan_id
 
 
 def _missing(s: Session, inventory: Inventory) -> None:

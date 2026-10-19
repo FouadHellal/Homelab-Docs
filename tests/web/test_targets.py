@@ -383,3 +383,49 @@ def test_add_vm_with_atlas_ssh_key(client: tuple[TestClient, str], env: dict[str
 
     assert public_line(env["vault"].resolve_bytes("ui-atlas-ssh-key")) == m.group(1)
     assert not env["vault"].has("ui-ssh-docker01")  # no password stored in key mode
+
+
+def test_unknown_page_hides_personal_devices_and_prefills_targets(
+    client: tuple[TestClient, str], env: dict[str, Any]
+) -> None:
+    from homelab_atlas.store.tables import Entity, Facet, Scan  # noqa: PLC0415
+
+    c, _ = client
+    with env["rt"].sessions() as s:
+        scan = Scan(mode="live")
+        s.add(scan)
+        s.flush()
+        for key, name, cat in [
+            ("net:mac:aa", "Fouads-iPhone", "personal"),
+            ("net:mac:bb", "rpi-dns", "pi"),
+        ]:
+            s.add(Entity(key=key, kind="unknown-device", display_name=name, status="unknown"))
+            s.add(
+                Facet(
+                    entity_key=key,
+                    collector="reconcile",
+                    target="network",
+                    scan_id=scan.id,
+                    data={
+                        "mac": key[-2:],
+                        "ip": "192.168.1.9",
+                        "name": name,
+                        "category": cat,
+                        "infrastructure": cat == "pi",
+                        "reasons": ["x"],
+                        "seen_via": "unifi@ucg",
+                    },
+                )
+            )
+        s.commit()
+    page = c.get("/unknown").text
+    assert "rpi-dns" in page
+    assert "Fouads-iPhone" not in page
+    assert "show everything" in page
+    assert "Fouads-iPhone" in c.get("/unknown?everything=true").text
+    m = re.search(r'href="(/targets/host\?prefill[^"]+)"', page)
+    assert m is not None
+    form = c.get(m.group(1).replace("&amp;", "&")).text
+    assert 'value="rpi-dns"' in form
+    assert 'value="192.168.1.9"' in form
+    assert 'value="pi" selected' in form
