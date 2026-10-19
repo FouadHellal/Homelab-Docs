@@ -3,6 +3,7 @@
 import os
 import secrets
 import shutil
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Annotated
 
@@ -11,6 +12,7 @@ from rich.console import Console
 from sqlalchemy import func, select
 
 from homelab_atlas.engine.scan import ScanEngine
+from homelab_atlas.lab import load_lab
 from homelab_atlas.runtime import (
     LAB_DATA_DIR,
     Runtime,
@@ -18,11 +20,14 @@ from homelab_atlas.runtime import (
     default_data_dir,
     lab_inputs,
     live_inputs,
+    live_secrets,
+    test_ssh_login,
 )
 from homelab_atlas.scheduler import Scheduler
 from homelab_atlas.store.retention import DEFAULT_SNAPSHOT_DAYS, prune
 from homelab_atlas.store.tables import User
 from homelab_atlas.web import auth
+from homelab_atlas.web.targets import TargetsService
 
 console = Console()
 user_app = typer.Typer(help="Local web accounts (argon2id).", no_args_is_help=True)
@@ -88,12 +93,31 @@ def ensure_demo_login(rt: Runtime) -> Path | None:
     return path
 
 
+def make_targets(
+    rt: Runtime, *, lab: bool
+) -> tuple[TargetsService, Callable[[str], Awaitable[tuple[bool, str]]] | None]:
+    """Targets page: editable in live mode (encrypted vault), read-only on the demo lab."""
+    if lab:
+        inventory, _ = load_lab("B")
+        svc = TargetsService(config_dir=config_dir(), data_dir=rt.data_dir, vault=None,
+                             audit=rt.audit, readonly_inventory=inventory)  # fmt: skip
+        return svc, None
+    secrets = live_secrets(rt.data_dir)
+    svc = TargetsService(config_dir=config_dir(), data_dir=rt.data_dir, vault=secrets.vault,
+                         audit=rt.audit)  # fmt: skip
+
+    async def tester(name: str) -> tuple[bool, str]:
+        return await test_ssh_login(rt.data_dir, rt.audit, name)
+
+    return svc, tester
+
+
 def make_scheduler(rt: Runtime, *, lab: bool) -> Scheduler:
     """Each run rebuilds inputs, so hosts.yaml edits apply without a restart."""
     days = int(os.environ.get("ATLAS_SNAPSHOT_DAYS", str(DEFAULT_SNAPSHOT_DAYS)))
 
     def engine() -> ScanEngine:
-        return rt.scan_engine(lab_inputs("B") if lab else live_inputs())
+        return rt.scan_engine(lab_inputs("B") if lab else live_inputs(rt.data_dir))
 
     def retention() -> None:
         with rt.sessions() as s:
@@ -131,7 +155,9 @@ def serve(
     # Loopback names are always accepted (container healthcheck, SSH tunnels); they cannot
     # be used for DNS rebinding from a browser on another machine.
     hosts = list(dict.fromkeys([*(allowed_host or []), "localhost", "127.0.0.1"]))
-    scheduler = make_scheduler(rt, lab=bool(lab)) if schedule else None
+    # The scheduler always exists so "Scan now" works; --schedule adds the periodic jobs.
+    scheduler = make_scheduler(rt, lab=bool(lab))
+    targets, tester = make_targets(rt, lab=bool(lab))
     app = create_app(
         WebConfig(
             sessions=rt.sessions,
@@ -140,6 +166,9 @@ def serve(
             hsts=hsts,
             lab=bool(lab),
             scheduler=scheduler,
+            schedule=schedule,
+            targets=targets,
+            tester=tester,
         )
     )
     console.print(f"atlas UI on http://{host}:{port} (annotations: {annotations})")

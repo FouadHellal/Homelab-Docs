@@ -6,6 +6,12 @@
       "runtimeExecutable": ".venv/Scripts/atlas.exe",
       "runtimeArgs": ["serve", "--lab", "demo", "--port", "8765", "--schedule"],
       "port": 8765
+    },
+    {
+      "name": "atlas-live-dev",
+      "runtimeExecutable": ".venv/Scripts/atlas.exe",
+      "runtimeArgs": ["serve", "--data-dir", "data/live-dev", "--port", "8766"],
+      "port": 8766
     }
   ]
 }
