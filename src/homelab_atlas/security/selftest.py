@@ -160,8 +160,9 @@ def _redaction_checks() -> list[Check]:
         "URL credentials": "postgres://app:pg-ATLASFAKE@db:5432/app",
         "CLI flag": "cloudflared tunnel run --token tk-ATLASFAKE-0000",
         "bearer header": "Authorization: Bearer ey-ATLASFAKE-0123456789",
-        # Assembled at runtime so no token-shaped literal ships in the image (Trivy secret scan).
-        "GitHub token": "gh" + "p_ATLASFAKE0123456789abcdefghijklmnopq",
+        # Built by a call at runtime (constant "a" + "b" gets folded into the .pyc), so no
+        # token-shaped literal ships in the image (Trivy secret scan).
+        "GitHub token": "_".join(("ghp", "ATLASFAKE0123456789abcdefghijklmnopq")),
         "private key": f"-----BEGIN {_PEM_LABEL}-----\nATLASFAKE\n-----END {_PEM_LABEL}-----",
         "Wi-Fi PSK": "wpa_passphrase=wifi-ATLASFAKE",
     }  # fmt: skip
