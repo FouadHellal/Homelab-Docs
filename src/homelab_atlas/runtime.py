@@ -286,6 +286,8 @@ async def test_source(data_dir: Path, audit: AuditSink, kind: str, name: str) ->
             source, ep = UnifiCollector.source(inputs.inventory, name), unifi_ep.INFO
         else:
             return False, "no connection test for this kind yet; use Scan"
+    except StopIteration:
+        return False, f"{name}: not in the inventory"
     except (KeyError, ValueError, OSError) as exc:
         return False, f"{name}: not usable ({type(exc).__name__})"
     try:
