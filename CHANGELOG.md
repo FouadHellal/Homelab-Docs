@@ -2,6 +2,17 @@
 
 All notable changes. Versions follow [SemVer](https://semver.org/); dates are UTC.
 
+## 0.3.1 (2026-10-19)
+
+### Fixed
+- **`sudo atlas update` could change nothing.** git ran as root, which has no GitHub login for a
+  private repository, so the pull failed, only a warning was printed, and the old code was rebuilt.
+  git now runs as the clone's owner. A failed pull stops the update with the exact commands to run.
+  The container is always recreated, and the update prints `updated: <old> -> <new>`, or a warning
+  if nothing changed.
+- Browsers kept old JavaScript and CSS after an update: static URLs now carry a content hash.
+- `atlas version` also shows the clone's last commit.
+
 ## 0.3.0 (2026-10-19)
 
 ### Fixed

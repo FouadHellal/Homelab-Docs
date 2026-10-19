@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Topology{% endblock %}
 {% block head %}<script src="/static/vendor/cytoscape.min.js" nonce="{{ nonce }}" defer></script>
-<script src="/static/topology.js" nonce="{{ nonce }}" defer></script>{% endblock %}
+<script src="/static/topology.js?v={{ asset_v }}" nonce="{{ nonce }}" defer></script>{% endblock %}
 {% block main %}
 <div class="topo-head">
   <nav class="tabs">

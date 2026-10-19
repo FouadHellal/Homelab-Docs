@@ -216,18 +216,39 @@ link_cli() {  # `atlas` on PATH, so updates are one command
     ln -sfn "$REPO_DIR/deploy/atlas.sh" "$BIN_LINK"
 }
 
-git_pull() {  # fast-forward this clone; never discards local edits
-    [ -d "$REPO_DIR/.git" ] || { warn "$REPO_DIR is not a git clone; skipping the code update"; return 1; }
-    command -v "$GIT" >/dev/null 2>&1 || { warn "git is not installed; skipping the code update"; return 1; }
-    local before after
-    before="$("$GIT" -c safe.directory="$REPO_DIR" -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || true)"
-    say "updating the code in $REPO_DIR"
-    if ! "$GIT" -c safe.directory="$REPO_DIR" -C "$REPO_DIR" pull --ff-only; then
-        warn "git pull failed (local edits or diverged branch?); continuing with the code you have"
-        return 1
+repo_git() {  # git in the clone, as the clone's owner: their credentials reach a private
+              # GitHub repo, root's (under sudo) usually don't
+    local owner
+    owner="$(stat -c %U "$REPO_DIR" 2>/dev/null || echo root)"
+    if [ "$(id -u)" -eq 0 ] && [ "$owner" != root ] && [ "$owner" != UNKNOWN ] \
+        && command -v sudo >/dev/null 2>&1; then
+        sudo -u "$owner" -H "$GIT" -c safe.directory="$REPO_DIR" -C "$REPO_DIR" "$@"
+    else
+        "$GIT" -c safe.directory="$REPO_DIR" -C "$REPO_DIR" "$@"
     fi
-    after="$("$GIT" -c safe.directory="$REPO_DIR" -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || true)"
-    if [ "$before" != "$after" ]; then say "code: ${before:0:7} -> ${after:0:7}"; fi
+}
+
+git_pull() {  # fast-forward this clone; never discards local edits; stops loudly on failure
+    [ -d "$REPO_DIR/.git" ] || { warn "$REPO_DIR is not a git clone; skipping the code update"; return 1; }
+    command -v "$GIT" >/dev/null 2>&1 || die "git is not installed (apt install git), or run: $0 update --no-pull"
+    local before after changed
+    before="$(repo_git rev-parse HEAD 2>/dev/null || true)"
+    changed="$(repo_git status --porcelain --untracked-files=no 2>/dev/null || true)"
+    say "updating the code in $REPO_DIR"
+    if ! repo_git pull --ff-only; then
+        [ -z "$changed" ] || warn "files changed in the clone (git refuses to overwrite them):
+$changed"
+        die "git pull failed, so nothing was updated (atlas still runs the old version).
+  Private repository? git must log in as the clone's owner: run   git -C $REPO_DIR pull   yourself.
+  Local edits? keep them with   git -C $REPO_DIR stash   (or drop them with   git -C $REPO_DIR checkout -- .).
+  Then run   sudo atlas update --no-pull"
+    fi
+    after="$(repo_git rev-parse HEAD 2>/dev/null || true)"
+    if [ "$before" != "$after" ]; then
+        say "code: ${before:0:7} -> ${after:0:7}"
+    else
+        say "code already up to date (${after:0:7})"
+    fi
     return 0
 }
 
@@ -252,6 +273,8 @@ cmd_update() {
         ATLAS_UPDATE_REEXEC=1 exec bash "$REPO_DIR/deploy/atlas.sh" update --no-pull "$@"
     fi
     preflight
+    local was
+    was="$(running_version)"
     if [ "$backup" = 1 ] && [ -n "$(compose ps -q atlas 2>/dev/null || true)" ]; then
         mkdir -p "$ATLAS_DIR/backups" && chmod 700 "$ATLAS_DIR/backups"
         cmd_backup "$ATLAS_DIR/backups/pre-update-$(date +%Y%m%d-%H%M%S).tar.gz"
@@ -261,18 +284,32 @@ cmd_update() {
     sed -i.bak "s|^    build: \\.|    build: $REPO_DIR|" "$ATLAS_DIR/docker-compose.yml" && rm -f "$ATLAS_DIR/docker-compose.yml.bak"
     if [ "$(env_get ATLAS_VERSION)" = local ]; then build=1; fi
     get_image "$build"
-    compose up -d
+    compose up -d --force-recreate  # a new container even if compose thinks nothing changed
     wait_healthy
     link_cli
-    cmd_version
+    local now
+    now="$(running_version)"
+    if [ -n "$was" ] && [ "$was" = "$now" ]; then
+        warn "still running ${now:-an unknown version}: the code and the image did not change"
+    else
+        say "updated: ${was:-unknown} -> ${now:-unknown}"
+    fi
     print_access
     say "your targets, passwords, accounts and history are kept (data volume + $ATLAS_DIR)"
+    say "reload the page in your browser (Ctrl+F5) to get the new interface"
+}
+
+running_version() {  # "atlas 0.3.0" from the running container, empty if none
+    compose exec -T atlas atlas --version 2>/dev/null | tail -n 1 | tr -d '\r' || true
 }
 
 cmd_version() {
     local v
-    v="$(compose exec -T atlas atlas --version 2>/dev/null | tail -n 1 || true)"
+    v="$(running_version)"
     say "running: ${v:-unknown}"
+    if [ -d "$REPO_DIR/.git" ] && command -v "$GIT" >/dev/null 2>&1; then
+        say "code in $REPO_DIR: $(repo_git log -1 --format='%h %s (%cr)' 2>/dev/null || echo unknown)"
+    fi
 }
 
 cmd_backup() {

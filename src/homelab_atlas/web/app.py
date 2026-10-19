@@ -6,6 +6,7 @@ same-origin Origin header when one is sent; responses carry a strict nonce CSP. 
 autoescape and never mark target data safe (a test greps for `|safe`).
 """
 
+import hashlib
 import re
 import secrets
 import time
@@ -15,6 +16,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from importlib.resources import files
+from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Annotated, Any, Final
 from urllib.parse import quote, urlencode, urlsplit
@@ -138,6 +140,14 @@ PALETTE_PAGES: Final = (
 )
 
 
+def _asset_version(static: Traversable) -> str:
+    h = hashlib.sha256()
+    for f in sorted((x for x in static.iterdir() if x.is_file()), key=lambda x: x.name):
+        h.update(f.name.encode())
+        h.update(f.read_bytes())
+    return h.hexdigest()[:10]
+
+
 def _ago(when: datetime | None, now: datetime | None = None) -> str:
     """'3 min ago' for a UTC timestamp (naive values from SQLite are UTC)."""
     if when is None:
@@ -164,6 +174,9 @@ def create_app(cfg: WebConfig) -> FastAPI:
     templates = Jinja2Templates(directory=str(PKG / "templates"))
     templates.env.autoescape = True
     templates.env.globals["version"] = __version__
+    # Cache-busting token for /static URLs: changes whenever an asset changes, so a browser
+    # never keeps an old app.js/topology.js after an update.
+    templates.env.globals["asset_v"] = _asset_version(PKG / "static")
     templates.env.filters["ago"] = _ago
     throttle = LoginThrottle(*LOGIN_RATE)
 

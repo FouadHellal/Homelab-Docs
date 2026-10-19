@@ -7,9 +7,9 @@
   <meta name="color-scheme" content="light dark">
   <title>{% block title %}atlas{% endblock %} · atlas</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/app.css?v={{ asset_v }}">
   <script src="/static/vendor/htmx.min.js" nonce="{{ nonce }}" defer></script>
-  <script src="/static/app.js" nonce="{{ nonce }}" defer></script>
+  <script src="/static/app.js?v={{ asset_v }}" nonce="{{ nonce }}" defer></script>
   {% block head %}{% endblock %}
 </head>
 <body{% if user %} hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'{% endif %}>

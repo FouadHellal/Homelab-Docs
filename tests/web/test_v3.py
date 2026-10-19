@@ -309,3 +309,12 @@ def test_proxmox_summary_numbers(rt: Runtime) -> None:
     assert p["running"] + p["stopped"] + p["unknown"] == p["guests"]
     assert p["clusters"] == ["homelab"]
     assert p["vcpu"] > 0
+
+
+def test_static_urls_are_cache_busted(web: TestClient) -> None:
+    body = web.get("/topology").text
+    v = re.search(r'/static/app\.js\?v=([0-9a-f]{10})"', body)
+    assert v is not None
+    assert f"/static/app.css?v={v.group(1)}" in body
+    assert f"/static/topology.js?v={v.group(1)}" in body
+    assert web.get(f"/static/app.js?v={v.group(1)}").status_code == 200
