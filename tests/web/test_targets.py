@@ -359,3 +359,27 @@ def test_plain_form_post_passes_origin_check(client: tuple[TestClient, str]) -> 
         follow_redirects=False,
     )
     assert bad.status_code == 403
+
+
+@pytest.mark.parametrize(("mode", "probe"), [("key", "streamed"), ("key-installed", "installed")])
+def test_add_vm_with_atlas_ssh_key(client: tuple[TestClient, str], env: dict[str, Any],
+                                   mode: str, probe: str) -> None:  # fmt: skip
+    c, csrf = client
+    form_page = c.get("/targets/host").text
+    m = re.search(r"(ssh-ed25519 [A-Za-z0-9+/=]+ atlas-collector)", form_page)
+    assert m is not None
+    assert "PRIVATE KEY" not in form_page
+    r = c.post("/targets/host", data=_host(csrf, auth=mode, password=""), follow_redirects=False)
+    assert r.status_code == 303, r.text
+    inputs = live_inputs(env["data"])
+    from homelab_atlas.security.allowlist import ProbeSection  # noqa: PLC0415
+
+    target = inputs.inventory.ssh_target(
+        inputs.inventory.host("docker01"), frozenset({ProbeSection.OS})
+    )
+    assert (target.auth, target.key_secret, target.probe) == ("key", "ui-atlas-ssh-key", probe)
+    # The vault holds a real ed25519 key whose public half is what the page showed.
+    from homelab_atlas.security.ssh_keys import public_line  # noqa: PLC0415
+
+    assert public_line(env["vault"].resolve_bytes("ui-atlas-ssh-key")) == m.group(1)
+    assert not env["vault"].has("ui-ssh-docker01")  # no password stored in key mode

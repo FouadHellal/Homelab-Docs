@@ -222,3 +222,11 @@ async def test_session_reuses_one_connection(lab: Lab, audit: MemoryAudit) -> No
     assert lab.seen.connections == 1
     assert lab.seen.commands == ["atlas-probe version", "atlas-probe os", "atlas-probe net"]
     assert audit.outcomes == ["ok", "ok", "ok"]
+
+
+async def test_key_mode_streamed_probe_sends_constant_loader(lab: Lab, audit: MemoryAudit) -> None:
+    from homelab_atlas.security.ssh import INLINE_COMMANDS  # noqa: PLC0415
+
+    runner = SshRunner(transport=AsyncSshTransport(lab.resolver, b"PROBE"), audit=audit)
+    await runner.run(lab.target(probe="streamed"), ProbeSection.OS)
+    assert lab.seen.commands == [INLINE_COMMANDS[ProbeSection.OS]]
