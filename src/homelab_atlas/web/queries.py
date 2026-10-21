@@ -3,6 +3,7 @@
 import ipaddress
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any, Final
 
@@ -12,7 +13,15 @@ from sqlalchemy.orm import Session
 from homelab_atlas.engine.reconcile import RECONCILE, Index, build_index, network_of
 from homelab_atlas.inventory.hosts import Inventory
 from homelab_atlas.store.facets import SOURCE_LABELS, FacetView, facet_views
-from homelab_atlas.store.tables import Annotation, CollectorRun, Entity, Event, Facet, Scan
+from homelab_atlas.store.tables import (
+    Annotation,
+    CollectorRun,
+    Entity,
+    Event,
+    Facet,
+    Scan,
+    utcnow,
+)
 
 HIDDEN_KINDS: Final = frozenset({"unknown-device", "container", "compose-project"})
 SEVERITY_ORDER: Final = {"warning": 0, "notice": 1, "info": 2}
@@ -349,23 +358,60 @@ def port_table(s: Session, q: str | None = None) -> list[dict[str, Any]]:
     return rows
 
 
+CHANGE_RANGES: Final = {
+    "24h": timedelta(hours=24),
+    "7d": timedelta(days=7),
+    "30d": timedelta(days=30),
+}
+
+
+def related_keys(s: Session, key: str) -> list[str]:
+    """A machine and everything that is part of it: its VM/host twin and their children
+    (containers, compose projects), so "changes on docker01" includes its containers."""
+    keys = {key}
+    keys |= set(s.scalars(select(Entity.key).where(Entity.same_as == key)))
+    e = s.get(Entity, key)
+    if e is not None and e.same_as:
+        keys.add(e.same_as)
+    keys |= set(s.scalars(select(Entity.key).where(Entity.parent_key.in_(keys))))
+    return sorted(keys)
+
+
+def _change_filters(
+    stmt: Any,
+    severity: str | None,
+    q: str | None,
+    since: str | None,
+    keys: list[str] | None,
+) -> Any:
+    if severity in SEVERITY_ORDER:
+        stmt = stmt.where(Event.severity == severity)
+    if q:
+        like = f"%{q[:64]}%"
+        stmt = stmt.where(or_(Event.summary.ilike(like), Event.type.ilike(like)))
+    if since in CHANGE_RANGES:
+        stmt = stmt.where(Event.created_at >= utcnow() - CHANGE_RANGES[since])
+    if keys is not None:
+        stmt = stmt.where(Event.entity_key.in_(keys))
+    return stmt
+
+
 def changes(
     s: Session,
     severity: str | None = None,
     q: str | None = None,
     before: int | None = None,
     limit: int = 100,
+    *,
+    since: str | None = None,
+    keys: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     stmt = (
         select(Event, Entity.display_name, Scan.started_at, Scan.label)
         .join(Entity, Entity.key == Event.entity_key, isouter=True)
         .join(Scan, Scan.id == Event.scan_id)
     )
-    if severity in SEVERITY_ORDER:
-        stmt = stmt.where(Event.severity == severity)
-    if q:
-        like = f"%{q[:64]}%"
-        stmt = stmt.where(or_(Event.summary.ilike(like), Event.type.ilike(like)))
+    stmt = _change_filters(stmt, severity, q, since, keys)
     if before:
         stmt = stmt.where(Event.id < before)
     rows = s.execute(stmt.order_by(Event.id.desc()).limit(limit)).all()
@@ -373,6 +419,26 @@ def changes(
         {"event": e, "name": n or e.entity_key, "at": at, "label": label}
         for e, n, at, label in rows
     ]
+
+
+def changes_summary(
+    s: Session, since: str | None = None, keys: list[str] | None = None
+) -> dict[str, Any]:
+    """Counts for the Changes header: by severity and the most frequent event types."""
+    stmt = _change_filters(
+        select(Event.severity, Event.type, func.count()).group_by(Event.severity, Event.type),
+        None,
+        None,
+        since,
+        keys,
+    )
+    by_sev: dict[str, int] = {}
+    by_type: dict[str, int] = {}
+    for sev, typ, n in s.execute(stmt):
+        by_sev[sev] = by_sev.get(sev, 0) + n
+        by_type[typ] = by_type.get(typ, 0) + n
+    top = sorted(by_type.items(), key=lambda kv: (-kv[1], kv[0]))[:8]
+    return {"total": sum(by_sev.values()), "severity": by_sev, "types": top}
 
 
 def unknown_devices(s: Session, include_ack: bool = False) -> list[dict[str, Any]]:

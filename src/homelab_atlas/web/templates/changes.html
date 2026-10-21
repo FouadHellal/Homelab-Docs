@@ -1,13 +1,32 @@
 {% extends "base.html" %}
 {% block title %}Changes{% endblock %}
 {% block main %}
-<h1>Changelog</h1>
-<form class="filters" method="get" action="/changes" hx-get="/changes" hx-target="#rows" hx-trigger="input changed delay:300ms from:#q, change from:#severity" hx-push-url="true">
-  <input id="q" name="q" value="{{ q }}" placeholder="Filter text or event type" maxlength="64" type="search">
-  <select id="severity" name="severity">
-    <option value="">All severities</option>
-    {% for s in ["warning", "notice", "info"] %}<option value="{{ s }}"{% if s == severity %} selected{% endif %}>{{ s }}</option>{% endfor %}
-  </select>
+<header class="page-head">
+  <div>
+    <h1>Changes</h1>
+    <p class="muted">Everything atlas noticed between scans: ports, images, guests, firmware, devices, VLANs.</p>
+  </div>
+</header>
+<form class="filter-bar card" method="get" action="/changes" hx-get="/changes" hx-target="#changes-results"
+      hx-trigger="change, keyup changed delay:300ms from:#q" hx-push-url="true" role="search">
+  <fieldset class="seg-radio" aria-label="Time range">
+    {% for v, lbl in [("24h", "24 h"), ("7d", "7 days"), ("30d", "30 days"), ("", "All")] %}
+    <label class="{{ 'on' if v == since }}"><input type="radio" name="since" value="{{ v }}"{% if v == since %} checked{% endif %}>{{ lbl }}</label>
+    {% endfor %}
+  </fieldset>
+  <label class="field"><span>Machine</span>
+    <select name="machine">
+      <option value="">All machines and devices</option>
+      {% for m in machines %}<option value="{{ m.key }}"{% if m.key == machine %} selected{% endif %}>{{ m.short }}</option>{% endfor %}
+    </select></label>
+  <label class="field"><span>Severity</span>
+    <select id="severity" name="severity">
+      <option value="">All</option>
+      {% for s in ["warning", "notice", "info"] %}<option value="{{ s }}"{% if s == severity %} selected{% endif %}>{{ s }}</option>{% endfor %}
+    </select></label>
+  <label class="field grow"><span>Search</span>
+    <input id="q" name="q" value="{{ q }}" placeholder="port, image, kernel, docker01…" maxlength="64" type="search" autocomplete="off"></label>
+  <noscript><button type="submit">Filter</button></noscript>
 </form>
-<table class="events timeline"><tbody id="rows">{% include "_change_rows.html" %}</tbody></table>
+<div id="changes-results">{% include "_changes_results.html" %}</div>
 {% endblock %}

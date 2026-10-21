@@ -13,6 +13,7 @@ import typer
 from rich.console import Console
 from sqlalchemy import func, select
 
+from homelab_atlas.cli_export import sanitize_key
 from homelab_atlas.engine.scan import ScanEngine
 from homelab_atlas.lab import load_lab
 from homelab_atlas.runtime import (
@@ -203,6 +204,8 @@ def serve(
             tester=tester,
             source_tester=None if lab else functools.partial(_source_tester, rt),
             setup_token_file=setup_file,
+            data_dir=rt.data_dir,
+            export_key=sanitize_key(rt),
         )
     )
     scheme = "https" if tls_cert else "http"

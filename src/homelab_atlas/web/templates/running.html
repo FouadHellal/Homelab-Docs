@@ -11,8 +11,10 @@
   </form>
 </header>
 
+{% if msg %}<p class="card" role="status">{{ msg }}</p>{% endif %}
 <nav class="tabs sticky-tabs">
   <a href="#apps">Apps <span class="count">{{ r.apps_by_category.values() | map("length") | sum }}</span></a>
+  <a href="#unrecognised">Unrecognised <span class="count">{{ unrec | length }}</span></a>
   <a href="#services">Services <span class="count">{{ r.services | length }}</span></a>
   <a href="#containers">Containers <span class="count">{{ r.containers | length }}</span></a>
 </nav>
@@ -36,6 +38,42 @@
   </div>
   {% else %}<p class="muted">No recognised apps yet. Add machines on <a href="/targets">Targets</a> so atlas can look inside them.</p>{% endfor %}
 </section>
+
+<section class="card" id="unrecognised">
+  <div class="section-head"><h2>Unrecognised listening ports <span class="muted small">({{ unrec | length }})</span></h2></div>
+  <p class="muted small">Something listens here, but atlas doesn't know what it is. Name it once: it is recognised from then on, on every page, the topology and the Services table.
+    {% if not can_name %}Naming needs a data directory (not available in this mode).{% endif %}</p>
+  {% if unrec %}
+  <table class="data"><thead><tr><th>What</th><th>Ports</th><th>Machines</th><th>Name it</th></tr></thead><tbody>
+  {% for u in unrec[:60] %}
+  <tr>
+    <td>{{ u.label }}</td>
+    <td><code>{{ u.ports | join(", ") }}</code> <span class="muted small">{{ u.protos | join("/") }}</span></td>
+    <td>{% for n, k in u.machines %}<a class="host-chip" href="/entity?key={{ k | urlencode }}">{{ n }}</a>{% endfor %}</td>
+    <td>{% if can_name %}<form method="post" action="/apps/name" class="inline name-it">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="kind" value="{{ u.kind }}">
+      <input type="hidden" name="value" value="{{ u.value }}"><input type="hidden" name="ports" value="{{ u.ports | join(',') }}">
+      <input type="hidden" name="machines" value="{{ u.machines | map(attribute=0) | join(',') }}">
+      <input name="name" required maxlength="64" placeholder="e.g. Paperless" aria-label="App name">
+      <select name="category" aria-label="Category">{% for c, l in categories.items() %}<option value="{{ c }}"{% if c == "custom" %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+      <button type="submit" class="small">Save</button></form>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody></table>
+  {% else %}<p class="muted">Every listening port is explained. Nice.</p>{% endif %}
+</section>
+
+{% if rules %}
+<section class="card" id="yours">
+  <h2>Your app rules <span class="muted small">({{ rules | length }})</span></h2>
+  <table class="data"><thead><tr><th>App</th><th>Category</th><th>Matches</th><th></th></tr></thead><tbody>
+  {% for r in rules %}<tr><td><strong>{{ r.name }}</strong></td><td>{{ categories.get(r.category, r.category) }}</td>
+    <td class="small">{% if r.images %}image {{ r.images | join(", ") }} {% endif %}{% if r.procs %}process {{ r.procs | join(", ") }} {% endif %}{% if r.units %}service {{ r.units | join(", ") }} {% endif %}{% if r.ports %}port {{ r.ports | join(", ") }}{% endif %}{% if r.hosts %} on {{ r.hosts | join(", ") }}{% endif %}</td>
+    <td>{% if can_name %}<form method="post" action="/apps/forget" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="name" value="{{ r.name }}"><button type="submit" class="small ghost">Remove</button></form>{% endif %}</td></tr>
+  {% endfor %}
+  </tbody></table>
+</section>
+{% endif %}
 
 <section class="card" id="services">
   <div class="section-head"><h2>Services <span class="muted small">({{ r.services | length }} running systemd units)</span></h2>

@@ -10,8 +10,8 @@
   <td class="muted">{{ e.path }}</td>
 </tr>
 {% if loop.last and rows | length >= 100 %}
-<tr hx-get="/changes?before={{ e.id }}&severity={{ severity | urlencode }}&q={{ q | urlencode }}" hx-trigger="revealed" hx-swap="outerHTML"><td colspan="4" class="muted">Loading more…</td></tr>
+<tr hx-get="/changes?before={{ e.id }}&amp;severity={{ severity | urlencode }}&amp;q={{ q | urlencode }}&amp;since={{ since | urlencode }}&amp;machine={{ machine | urlencode }}" hx-trigger="revealed" hx-swap="outerHTML"><td colspan="4" class="muted">Loading more…</td></tr>
 {% endif %}
 {% else %}
-<tr><td colspan="4" class="muted">No changes.</td></tr>
+<tr><td colspan="4" class="muted">No changes{% if since or machine or severity or q %} match these filters{% endif %}.</td></tr>
 {% endfor %}

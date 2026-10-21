@@ -17,6 +17,23 @@
 {% if not v.editable %}<p class="card warn">Read-only here{% if lab %} (demo lab: targets come from fixtures){% endif %}.</p>{% endif %}
 <p class="muted">Add your machines and controllers here. atlas only <strong>reads</strong>: it logs in, collects, and never changes anything.
 Passwords and API keys are stored encrypted and are never shown again.</p>
+{% if tally %}
+<section class="card tally">
+  <div class="chips">
+    {% for h, lbl in [("ok", "ok"), ("partial", "partial"), ("failed", "failed"), ("never", "not scanned yet")] %}{% if tally.get(h) %}
+    <span class="pill {{ 'info' if h == 'never' else h }}">{{ tally[h] }} {{ lbl }}</span>{% endif %}{% endfor %}
+    {% if sched and sched.status.queued %}<span class="muted small">queued: {{ sched.status.queued | join(", ") }}</span>{% endif %}
+    {% if sched and sched.status.running %}<span class="muted small">scanning: {{ sched.status.running }}</span>{% endif %}
+  </div>
+  {% if sched %}<div class="actions">
+    {% if tally.get("failed") or tally.get("never") %}
+    <form method="post" action="/targets/scan-many" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="which" value="failed">
+      <button type="submit" class="small">Scan failed &amp; new</button></form>{% endif %}
+    <form method="post" action="/targets/scan-many" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="which" value="all">
+      <button type="submit" class="small ghost">Scan everything</button></form>
+  </div>{% endif %}
+</section>
+{% endif %}
 
 <section class="card">
   <h2>Machines (SSH){% if v.editable %} <a class="more" href="/targets/host">+ add a VM / host</a>{% endif %}</h2>

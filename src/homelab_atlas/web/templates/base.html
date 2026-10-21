@@ -57,6 +57,8 @@
       <summary>{{ user.username }}</summary>
       <div class="dropdown-panel right" role="menu">
         <a role="menuitem" href="/targets"><strong>Targets</strong><span>Machines, Proxmox, UniFi</span></a>
+        <a role="menuitem" href="/exports"><strong>Exports</strong><span>Markdown, CSV, JSON, Mermaid</span></a>
+        <a role="menuitem" href="/diagnostics"><strong>Diagnostics</strong><span>Health of atlas, support report</span></a>
         <a role="menuitem" href="/docs"><strong>Documentation</strong><span>How atlas works</span></a>
         <form method="post" action="/logout" class="inline">
           <input type="hidden" name="csrf_token" value="{{ csrf }}">

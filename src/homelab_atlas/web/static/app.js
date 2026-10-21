@@ -58,6 +58,28 @@
     });
   }
 
+  // ------------------------------------------------------------ toast + copy buttons
+  function toast(msg) {
+    var t = document.createElement("div");
+    t.className = "toast";
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function () { t.classList.add("out"); }, 2400);
+    setTimeout(function () { t.remove(); }, 3000);
+  }
+  window.atlasToast = toast;
+  // <button data-copy="text" data-copy-what="SSH command">
+  function wireCopy(root) {
+    root.querySelectorAll("[data-copy]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        if (!navigator.clipboard) { toast(b.dataset.copy); return; }
+        navigator.clipboard.writeText(b.dataset.copy).then(function () {
+          toast((b.dataset.copyWhat || "Text") + " copied");
+        });
+      });
+    });
+  }
+
   // ------------------------------------------------------------ dropdown menus (<details>)
   function wireDropdowns() {
     var menus = Array.prototype.slice.call(document.querySelectorAll("details.dropdown"));
@@ -184,6 +206,7 @@
     wireBars(document);
     wireRadioPills(document);
     wirePalette();
+    wireCopy(document);
     var btn = document.getElementById("theme-toggle");
     if (btn) {
       btn.addEventListener("click", function () {

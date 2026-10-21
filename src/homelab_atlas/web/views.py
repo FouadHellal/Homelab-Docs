@@ -13,7 +13,13 @@ from typing import Any, Final
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from homelab_atlas.engine.apps import CATEGORY_LABELS, app_for_unit, detect
+from homelab_atlas.engine.apps import (
+    CATEGORY_LABELS,
+    CustomRule,
+    app_for_unit,
+    catalog,
+    detect,
+)
 from homelab_atlas.engine.reconcile import RECONCILE
 from homelab_atlas.store.facets import facet_views
 from homelab_atlas.store.tables import Entity, Event, Facet
@@ -52,6 +58,11 @@ OSTYPES: Final = {
     "devuan": "Devuan",
     "unmanaged": "Unmanaged",
 }
+
+
+def short_name(display_name: str) -> str:
+    """`docker01 (VM 101)` -> `docker01`, `pve1 (PVE node)` -> `pve1`."""
+    return re.sub(r" \((VM|LXC) \d+\)$| \(PVE node\)$", "", display_name)
 
 
 def os_label(code: str | None) -> str | None:
@@ -135,7 +146,11 @@ def _card(key: str, e: Entity, facets: dict[str, dict[str, Any]], ents: dict[str
     services = [x for x in (lx or {}).get("services") or [] if x.get("active") == "active"]
     containers = dk.get("containers") or []
     apps = detect(
-        services, (lx or {}).get("processes") or [], containers, (lx or {}).get("sockets") or []
+        services,
+        (lx or {}).get("processes") or [],
+        containers,
+        (lx or {}).get("sockets") or [],
+        host=short_name(e.display_name),
     )
     os_ = (lx or {}).get("os") or {}
     parent = ents.get(e.parent_key) if e.parent_key else None
@@ -148,7 +163,7 @@ def _card(key: str, e: Entity, facets: dict[str, dict[str, Any]], ents: dict[str
     return {
         "key": key,
         "name": e.display_name,
-        "short": re.sub(r" \((VM|LXC) \d+\)$| \(PVE node\)$", "", e.display_name),
+        "short": short_name(e.display_name),
         "kind": e.kind,
         "status": g.get("status") or e.status,
         "node": node,
@@ -237,8 +252,10 @@ def running(s: Session, key: str) -> dict[str, Any]:
     services = [x for x in lx.get("services") or [] if x.get("active") == "active"]
     procs = sorted(lx.get("processes") or [], key=lambda p: -(p.get("cpu_pct") or 0))
     containers = dk.get("containers") or []
+    ent = s.get(Entity, key)
+    host = short_name(ent.display_name) if ent is not None else None
     return {
-        "apps": detect(services, procs, containers, lx.get("sockets") or []),
+        "apps": detect(services, procs, containers, lx.get("sockets") or [], host=host),
         "services": sorted(services, key=lambda x: x.get("unit") or ""),
         "failed": [x for x in lx.get("services") or [] if x.get("active") == "failed"],
         "containers": containers,
@@ -594,3 +611,97 @@ def service_table(
             m["short"] for m in cards if not m["documented"] and m["status"] != "stopped"
         ),
     }
+
+
+# Ports nobody needs to name: DHCP clients, rpcbind, chrony, mDNS, SSDP, NetBIOS.
+IGNORED_PORTS: Final = frozenset({68, 111, 123, 137, 138, 323, 546, 1900, 5353})
+GENERIC_PROCS: Final = frozenset({
+    "docker-proxy", "python", "python3", "node", "java", "ruby", "perl", "php", "php-fpm",
+    "dotnet", "mono", "deno", "bun", "beam.smp", "gunicorn", "uvicorn", "busybox", "sh", "bash",
+})  # fmt: skip
+
+
+def _is_loopback(address: str) -> bool:
+    try:
+        return ipaddress.ip_address(address.strip("[]").split("%")[0]).is_loopback
+    except ValueError:
+        return address in ("localhost",)
+
+
+def unrecognised_ports(s: Session) -> list[dict[str, Any]]:
+    """Listening ports no recognised app explains, grouped by what would name them: a
+    container image, a process, or (generic process) the port on that machine. ADR-034."""
+    cards = {m["key"]: m for m in machines(s) if m["documented"]}
+    twins: dict[str, list[str]] = defaultdict(list)
+    for e in s.scalars(select(Entity).where(Entity.same_as.is_not(None))):
+        twins[str(e.same_as)].append(e.key)
+    facets: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+    for f in s.scalars(select(Facet).where(Facet.collector.in_(("linux-ssh", "docker")))):
+        facets[f.entity_key][f.collector] = f.data
+    groups: dict[tuple[str, str], dict[str, Any]] = {}
+    for key, m in cards.items():
+        lx: dict[str, Any] = {}
+        dk: dict[str, Any] = {}
+        for k in (key, *twins.get(key, [])):
+            lx = lx or facets[k].get("linux-ssh") or {}
+            dk = dk or facets[k].get("docker") or {}
+        claimed_ports = {p for a in m["apps"] for p in a["ports"]}
+        claimed_ctrs = {c for a in m["apps"] for c in a["containers"]}
+        by_name = {a.name: a for a in catalog()}
+        claimed_procs = {
+            pn.lower() for a in m["apps"] if a["name"] in by_name for pn in by_name[a["name"]].procs
+        }
+        published = {
+            p.get("host_port"): c for c in dk.get("containers") or [] for p in c.get("ports") or []
+        }
+        for sock in lx.get("sockets") or []:
+            port, proc = sock.get("port"), str(sock.get("process") or "").lower()
+            if not isinstance(port, int) or port in IGNORED_PORTS or port in claimed_ports:
+                continue
+            if _is_loopback(str(sock.get("address") or "")) or proc in claimed_procs:
+                continue
+            ctr = published.get(port) if proc in ("docker-proxy", "") else None
+            if ctr is not None:
+                if str(ctr.get("name") or "") in claimed_ctrs:
+                    continue
+                image = str(ctr.get("image") or "").split("@")[0].rsplit(":", 1)[0].lower()
+                gkey, kind, value = ("image", image), "image", image
+                label = f"container {ctr.get('name')} ({image})"
+            elif proc and proc not in GENERIC_PROCS:
+                gkey, kind, value, label = ("proc", proc), "proc", proc, f"process {proc}"
+            else:
+                host = m["short"].lower()
+                gkey, kind, value = ("port", f"{host}:{port}"), "port", str(port)
+                label = f"port {port}" + (f" ({proc})" if proc else " (process unknown)")
+            g = groups.setdefault(
+                gkey,
+                {"kind": kind, "value": value, "label": label, "ports": set(), "machines": {},
+                 "protos": set()},
+            )  # fmt: skip
+            g["ports"].add(port)
+            g["protos"].add(str(sock.get("proto") or "tcp"))
+            g["machines"][m["short"]] = m["key"]
+    out = []
+    for g in groups.values():
+        out.append({**g, "ports": sorted(g["ports"]), "protos": sorted(g["protos"]),
+                    "machines": sorted(g["machines"].items())})  # fmt: skip
+    return sorted(out, key=lambda g: (-len(g["machines"]), g["ports"][0]))
+
+
+def custom_rule_from(
+    *, name: str, category: str, kind: str, value: str, ports: list[int], machines: list[str]
+) -> CustomRule:
+    """The rule the "Name it" form creates for one unrecognised-port group."""
+    data: dict[str, Any] = {"name": name.strip(), "category": category, "ports": ports}
+    if kind == "image":
+        data["images"] = [value]
+    elif kind == "proc":
+        data["procs"] = [value]
+    else:  # a generic process: the port itself is the evidence, on these machines only
+        data["strong_ports"] = True
+        data["hosts"] = [m.lower() for m in machines]
+    web = next((p for p in ports if p in (80, 443, 3000, 5000, 8000, 8080, 8443, 9000)), None)
+    if web is None and len(ports) == 1:
+        web = ports[0]
+    data["web"] = web
+    return CustomRule.model_validate(data)

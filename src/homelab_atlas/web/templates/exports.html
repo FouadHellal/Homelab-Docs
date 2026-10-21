@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Exports{% endblock %}
+{% block main %}
+<header class="page-head">
+  <div>
+    <h1>Exports</h1>
+    <p class="muted">Take your documentation with you: a readable report, tables for a spreadsheet, raw data, or diagrams for your wiki.
+      Secrets were already removed when the data was collected.</p>
+  </div>
+</header>
+<p class="muted small">In the database now: {% for k, n in counts | dictsort %}{{ n }} {{ k }}{{ ", " if not loop.last }}{% endfor %}.</p>
+<div class="export-grid">
+  {% for fmt, title, what in [
+    ("md", "Markdown report", "One document: every machine with OS, network, ports, services, containers, Proxmox details and notes. Paste it into a wiki, Obsidian or BookStack."),
+    ("csv", "CSV tables (zip)", "hosts, IPs, ports, VLANs, containers and unknown devices, one file each, for Excel or LibreOffice."),
+    ("json", "JSON", "Everything, machine-readable: entities, facets, annotations and topology."),
+    ("mermaid", "Mermaid diagrams", "The physical and logical topology as Mermaid text. GitHub, GitLab, Obsidian and most wikis render it."),
+  ] %}
+  <section class="card export-card">
+    <h2>{{ title }}</h2>
+    <p class="muted">{{ what }}</p>
+    <div class="actions">
+      <a class="btn small" href="/export/{{ fmt }}" download>Download</a>
+      {% if can_sanitize %}<a class="btn ghost small" href="/export/{{ fmt }}?sanitize=true" download title="Names, IPs and MACs replaced by stable pseudonyms">Sanitized, to share</a>{% endif %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+<p class="muted small">The Services and Changes pages export exactly what you filtered (Export CSV there). The topology page downloads a PNG. From the command line: <code>atlas export md|csv|json|mkdocs|mermaid [--sanitize]</code>.</p>
+{% endblock %}

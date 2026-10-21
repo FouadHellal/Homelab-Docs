@@ -11,6 +11,27 @@
   {% if d.same_as %} · same machine as <a href="/entity?key={{ d.same_as.key | urlencode }}">{{ d.same_as.display_name }}</a>{% endif %}
   {% for t in d.twins %} · seen over SSH as <a href="/entity?key={{ t.key | urlencode }}">{{ t.display_name }}</a>{% endfor %}
 </p>
+{% if card %}{% set web = card.apps | selectattr("web_port") | first %}{% set ip = card.ips | first %}
+<section class="facts card" aria-label="Summary">
+  <div class="fact-list">
+    {% if ip %}<div><span class="k">IP</span><code>{{ ip }}</code>{% if card.ips | length > 1 %} <span class="muted small">+{{ card.ips | length - 1 }}</span>{% endif %}</div>{% endif %}
+    {% if card.os %}<div><span class="k">OS</span>{{ card.os }}</div>{% endif %}
+    {% if card.node %}<div><span class="k">Node</span>{{ card.node }}{% if card.vmid %} · {{ card.vmid }}{% endif %}</div>{% endif %}
+    {% if card.cores or card.memory_mb %}<div><span class="k">Size</span>{% if card.cores %}{{ card.cores }} vCPU{% endif %}{% if card.memory_mb %} · {{ (card.memory_mb / 1024) | round(1) }} GB{% endif %}</div>{% endif %}
+    {% if card.network %}<div><span class="k">Network</span>{{ card.network }}{% if card.vlan is not none %} · VLAN {{ card.vlan }}{% endif %}{% if card.uplink %} · {{ card.uplink }}{% endif %}</div>{% endif %}
+    {% if health %}<div><span class="k">Last scan</span><a href="/targets#t-{{ card.target | urlencode }}"><span class="pill {{ 'info' if health == 'never' else health }}">{{ "not scanned yet" if health == "never" else health }}</span></a></div>{% endif %}
+  </div>
+  <div class="actions">
+    <a class="btn ghost small" href="/topology?focus={{ card.key | urlencode }}">Show on topology</a>
+    {% if card.documented %}<a class="btn ghost small" href="/services?state=all&amp;machine={{ card.short | urlencode }}">All services</a>{% endif %}
+    {% if web and ip %}<a class="btn ghost small" href="{{ 'https' if web.web_port in (443, 8006, 8007, 9443) else 'http' }}://{{ ip }}:{{ web.web_port }}" target="_blank" rel="noopener noreferrer">Open {{ web.name }} ↗</a>{% endif %}
+    {% if ip %}<button type="button" class="ghost small" data-copy="ssh {{ ip.split('/')[0] }}" data-copy-what="SSH command">Copy SSH</button>{% endif %}
+    {% if sched and card.target %}<form method="post" action="/targets/scan" hx-post="/targets/scan" hx-target="#scan-result" class="inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="name" value="{{ card.target }}">
+      <button type="submit" class="small">Scan now</button></form><span id="scan-result" class="small"></span>{% endif %}
+  </div>
+</section>
+{% endif %}
 
 {% if run %}{% include "_running.html" %}{% endif %}
 
@@ -130,9 +151,9 @@
 {% endif %}
 
 {% if d.children %}
-<section class="card"><h2>Contains</h2><ul class="plain">
+<section class="card"><details><summary><h2 class="inline-h">Contains <span class="muted small">({{ d.children | length }})</span></h2></summary><ul class="plain">
   {% for c in d.children %}<li><a href="/entity?key={{ c.key | urlencode }}">{{ c.display_name }}</a> <span class="muted">{{ c.kind }}</span></li>{% endfor %}
-</ul></section>
+</ul></details></section>
 {% endif %}
 
 <section class="card"><h2>History</h2><table class="events"><tbody>

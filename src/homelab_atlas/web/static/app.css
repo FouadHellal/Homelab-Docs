@@ -331,3 +331,19 @@ table.narrow { width: auto; }
   .palette-btn { padding: 6px 10px; }
 }
 a.bad { color: var(--bad); }
+
+/* ---------- entity summary */
+.facts { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: center; justify-content: space-between; padding: 12px 16px; }
+.fact-list { display: flex; flex-wrap: wrap; gap: 10px 26px; }
+.fact-list > div { display: flex; flex-direction: column; gap: 2px; font-size: 13.5px; }
+.fact-list .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+.facts .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.inline-h { display: inline; margin: 0; }
+details > summary { cursor: pointer; }
+.tally { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding: 10px 14px; }
+.tally .actions { display: flex; gap: 8px; }
+.export-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin: 10px 0; }
+.export-card { display: flex; flex-direction: column; gap: 6px; }
+.export-card .actions { margin-top: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+.name-it { display: flex; gap: 6px; flex-wrap: wrap; }
+.name-it input { width: 150px; }
