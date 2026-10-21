@@ -290,6 +290,44 @@
     });
   }
 
+  // ------------------------------------------------------------ saved layouts (per browser)
+  // Drag nodes where you like: positions are kept per view in localStorage and applied over
+  // the tidy layout. "Reset my layout" forgets them; "Lock layout" stops accidental drags.
+  function posKey() { return "atlas-topo-pos:" + el.dataset.view; }
+  function savedPositions() {
+    try { return JSON.parse(localStorage.getItem(posKey()) || "{}") || {}; } catch (e) { return {}; }
+  }
+  function storePositions(map) {
+    try { localStorage.setItem(posKey(), JSON.stringify(map)); } catch (e) { /* private mode */ }
+  }
+  function rememberDrag(n) {
+    var map = savedPositions();
+    var moved = n.isParent() ? n.descendants().filter(function (d) { return !d.isParent(); }) : n;
+    moved.forEach(function (m) { var p = m.position(); map[m.id()] = { x: Math.round(p.x), y: Math.round(p.y) }; });
+    storePositions(map);
+  }
+  function hasSaved() { return Object.keys(savedPositions()).length > 0; }
+  function locked() { try { return localStorage.getItem("atlas-topo-lock") === "1"; } catch (e) { return false; } }
+  function setLocked(on) {
+    try { localStorage.setItem("atlas-topo-lock", on ? "1" : "0"); } catch (e) { /* private mode */ }
+    if (cy) cy.autoungrabify(on);
+    toast(on ? "Layout locked: nodes can't be dragged." : "Layout unlocked: drag nodes to arrange them.");
+  }
+  function withSaved(positions) {
+    if (layoutName !== "auto") return positions;
+    var saved = savedPositions(), out = {};
+    Object.keys(positions).forEach(function (k) { out[k] = positions[k]; });
+    Object.keys(saved).forEach(function (k) { out[k] = saved[k]; });
+    // Containers follow their (moved) machine, keeping their place under it.
+    cy.nodes("[kind = 'container']").forEach(function (c) {
+      var h = c.data("host");
+      if (saved[c.id()] || !saved[h] || !positions[h] || !positions[c.id()]) return;
+      out[c.id()] = { x: saved[h].x + positions[c.id()].x - positions[h].x,
+                      y: saved[h].y + positions[c.id()].y - positions[h].y };
+    });
+    return out;
+  }
+
   function runLayout(animate) {
     var view = el.dataset.view, opts;
     var vis = cy.elements().filter(shown);
@@ -300,17 +338,23 @@
       opts = { name: "concentric", animate: animate, animationDuration: 500, padding: 30, minNodeSpacing: 18,
                concentric: function (n) { return n.degree() + (n.isParent() ? 5 : 0); }, levelWidth: function () { return 2; } };
     } else if (view === "logical") {
-      var p = tidyProxmox();
+      var p = withSaved(tidyProxmox());
       jumpNew(p);
       opts = { name: "preset", positions: function (n) { return p[n.id()]; }, animate: animate, animationDuration: 450, padding: 40, fit: true };
     } else if (view === "vlan") {
-      var q = vlanPositions();
+      var q = withSaved(vlanPositions());
       jumpNew(q);
       opts = { name: "preset", positions: function (n) { return q[n.id()]; }, animate: animate, animationDuration: 450, padding: 30 };
     } else {
       var roots = cy.nodes("[kind = 'gateway']");
       opts = { name: "breadthfirst", directed: true, roots: roots.length ? roots : undefined,
                spacingFactor: 1.15, padding: 30, animate: animate, animationDuration: 500 };
+      if (layoutName === "auto" && hasSaved()) {
+        opts.stop = function () {
+          var saved = savedPositions();
+          cy.nodes().forEach(function (n) { if (saved[n.id()] && !n.isParent()) n.position(saved[n.id()]); });
+        };
+      }
     }
     vis.layout(opts).run();
   }
@@ -554,6 +598,8 @@
       { label: "Show all containers", disabled: !hosts.length, run: function () { setContainers(hosts, true); } },
       { label: "Hide all containers", disabled: !hosts.length, run: function () { setContainers(hosts, false); } },
       { label: showIps ? "Hide IP addresses" : "Show IP addresses", run: function () { showIps = !showIps; cy.style().update(); } },
+      { label: locked() ? "Unlock layout" : "Lock layout", run: function () { setLocked(!locked()); } },
+      { label: "Reset my layout", disabled: !hasSaved(), run: function () { storePositions({}); laidOut = {}; runLayout(true); toast("Layout reset."); } },
       "-",
       "Layout",
       { label: "Tidy", run: function () { setLayout("auto"); } },
@@ -723,6 +769,25 @@
     cy.on("cxttap", "node", function (e) { nodeMenu(e.target, e.renderedPosition || e.position); });
     cy.on("cxttap", function (e) { if (e.target === cy) backgroundMenu(e.renderedPosition || e.position); });
     cy.on("pan zoom", hideMenu);
+    cy.on("dragfree", "node", function (e) { rememberDrag(e.target); });
+    cy.autoungrabify(locked());
+  }
+
+  // /topology?focus=<entity key>: open on that machine (from its page's "Show on topology").
+  function focusFromUrl() {
+    var key = new URLSearchParams(window.location.search).get("focus");
+    if (!key || !cy) return;
+    var n = cy.nodes().filter(function (x) { return x.id() === key || x.data("key") === key; });
+    n = n.filter(function (x) { return !x.isParent(); }).first().length ? n.filter(function (x) { return !x.isParent(); }).first() : n.first();
+    if (!n.length) return;
+    if (n.data("kind") === "pve-node") n = n.children("[kind = 'pve-hub']").first();
+    setTimeout(function () {
+      n.select();
+      pinned = n;
+      highlight(n);
+      focusOn(hoodOf(n));
+      showPanel(n);
+    }, 120);
   }
 
   function load() {
@@ -746,6 +811,7 @@
           return;
         }
         build(raw);
+        focusFromUrl();
       })
       .catch(function (err) { el.textContent = "Could not load topology: " + err.message; });
   }

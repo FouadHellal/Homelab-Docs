@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Diagnostics{% endblock %}
+{% block main %}
+<header class="page-head">
+  <div>
+    <h1>Diagnostics</h1>
+    <p class="muted">The state of atlas itself. When something doesn't work, download the report and attach it to an issue: it has no passwords or keys, but it does list your target names and IPs.</p>
+  </div>
+  <a class="btn" href="/diagnostics/report" download>Download report</a>
+</header>
+<div class="grid two">
+  <section class="card"><h2>Versions</h2><dl class="kv">{% for k, v in x.versions.items() %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}</dl></section>
+  <section class="card"><h2>Database</h2><dl class="kv">{% for k, v in x.db.items() %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}</dl>
+    <p class="muted small">Audit log: {{ x.audit }}</p></section>
+  <section class="card"><h2>Scheduler</h2><ul class="plain">{% for line in x.scheduler %}<li>{{ line }}</li>{% endfor %}</ul></section>
+  <section class="card"><h2>Recent scans</h2><ul class="plain small">{% for line in x.scans %}<li><code>{{ line }}</code></li>{% else %}<li class="muted">None yet.</li>{% endfor %}</ul></section>
+</div>
+<section class="card"><h2>Targets</h2>
+  <table class="data"><thead><tr><th>Target</th><th>Health</th><th>Latest results</th></tr></thead><tbody>
+  {% for t in x.targets %}<tr><td><a href="/targets#t-{{ t.name | urlencode }}">{{ t.name }}</a></td>
+    <td><span class="pill {{ 'info' if t.health == 'never' else t.health }}">{{ "not scanned yet" if t.health == "never" else t.health }}</span></td>
+    <td class="small">{% for r in t.runs %}<div>{{ r.collector }}: {{ r.status }}{% if r.when %} · {{ r.when | ago }}{% endif %}{% for e in r.errors %}<div class="muted err">{{ e }}</div>{% endfor %}</div>{% endfor %}</td></tr>
+  {% else %}<tr><td colspan="3" class="muted">No targets.</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+{% endblock %}

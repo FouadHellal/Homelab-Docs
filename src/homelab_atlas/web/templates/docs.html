@@ -93,9 +93,11 @@
     <dt><a href="/">Dashboard</a></dt><dd>Totals, your Proxmox nodes with their guests, what needs attention (failed or never-scanned targets), and machines seen on the network that aren't documented yet.</dd>
     <dt><a href="/topology">Topology</a></dt><dd><strong>Proxmox</strong>: one box per node, containing the node, its bridges and its VMs/LXCs, each wired to the bridge its NIC uses. Pulses show running guests. <strong>Network</strong>: gateway, switches, APs and clients. <strong>VLANs</strong>: members per network. Click for details, right-click for actions, double-click to open.</dd>
     <dt><a href="/services">Services</a></dt><dd>Every systemd unit and container on every machine in one table. Filter by machine, state, type or text, and <strong>Export CSV</strong> exports exactly what you see.</dd>
-    <dt><a href="/running">Apps</a></dt><dd>Recognised apps by category, with the machines they run on and a link to their web UI.</dd>
+    <dt><a href="/running">Apps</a></dt><dd>Recognised apps by category, with the machines they run on and a link to their web UI. <strong>Unrecognised listening ports</strong> are listed with a <em>Name it</em> form: after that, atlas recognises the app everywhere. Rules for generic processes (python3, docker-proxy) only apply to the machines they were named on.</dd>
     <dt><a href="/ips">IP addresses</a></dt><dd>One row per device, with all its addresses, MACs and networks. Link-local and Docker-bridge addresses are hidden until you ask for them.</dd>
-    <dt><a href="/changes">Changes</a></dt><dd>Typed events: port opened, image updated, guest migrated, new device on a VLAN, and so on.</dd>
+    <dt><a href="/changes">Changes</a></dt><dd>Typed events: port opened, image updated, guest migrated, new device on a VLAN, and so on. Filter by time range, machine (including its containers), severity or text, then <strong>Export CSV</strong>.</dd>
+    <dt><a href="/exports">Exports</a></dt><dd>A Markdown report, CSV tables, JSON or Mermaid diagrams. <em>Sanitized</em> replaces names, IPs and MACs with stable pseudonyms, so you can share it.</dd>
+    <dt><a href="/diagnostics">Diagnostics</a></dt><dd>The health of atlas itself, and a support report to attach to an issue. It has no secrets, but it lists target names and IPs.</dd>
     <dt><a href="/unknown">Unknown</a></dt><dd>Devices on the network that you haven't added. Infrastructure is listed first; phones and IoT are behind "show everything".</dd>
   </dl>
 </section>
@@ -106,6 +108,7 @@
     <tr><td><kbd>Ctrl</kbd> <kbd>K</kbd></td><td>Quick find: pages, machines, apps</td></tr>
     <tr><td><kbd>/</kbd></td><td>Topology: search</td></tr>
     <tr><td><kbd>F</kbd> · <kbd>R</kbd> · <kbd>C</kbd></td><td>Topology: fit · re-arrange · show/hide containers</td></tr>
+    <tr><td>drag</td><td>Topology: move nodes; your layout is kept in this browser (right-click the background to lock or reset it)</td></tr>
     <tr><td><kbd>Esc</kbd></td><td>Close menus and panels</td></tr>
   </tbody></table>
 </section>

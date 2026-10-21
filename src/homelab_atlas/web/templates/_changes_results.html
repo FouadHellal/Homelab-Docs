@@ -1,0 +1,9 @@
+<div class="section-head">
+  <div class="chips">
+    <span class="chip big">{{ summary.total }} changes</span>
+    {% for sev in ["warning", "notice", "info"] %}{% if summary.severity.get(sev) %}<span class="sev {{ sev }}">{{ summary.severity[sev] }} {{ sev }}</span>{% endif %}{% endfor %}
+    {% for typ, n in summary.types %}<a class="chip" href="/changes?{{ query ~ '&amp;' if query }}q={{ typ | urlencode }}" title="Show only {{ typ }}">{{ typ }} · {{ n }}</a>{% endfor %}
+  </div>
+  <a class="btn ghost small" href="/changes.csv{{ '?' ~ query if query }}" download>Export CSV</a>
+</div>
+<table class="events timeline"><tbody id="rows">{% include "_change_rows.html" %}</tbody></table>

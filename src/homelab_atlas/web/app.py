@@ -7,9 +7,12 @@ autoescape and never mark target data safe (a test greps for `|safe`).
 """
 
 import hashlib
+import io
+import platform
 import re
 import secrets
 import time
+import zipfile
 from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -25,18 +28,21 @@ from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, Respo
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from homelab_atlas import __version__
+from homelab_atlas.engine import apps
+from homelab_atlas.export import build as export_build
 from homelab_atlas.export.build import csv_table
 from homelab_atlas.inventory import annotations as ann
 from homelab_atlas.inventory.managed import SourceKind
 from homelab_atlas.scheduler import Scheduler
+from homelab_atlas.security.audit import verify as audit_verify
 from homelab_atlas.security.errors import HttpStatusError, SecurityRefusal, TransportError
-from homelab_atlas.store.tables import Annotation, Entity
+from homelab_atlas.store.tables import Annotation, CollectorRun, Entity, Event, Facet, Scan
 from homelab_atlas.store.tables import User as UserRow
 from homelab_atlas.web import auth, queries, topology, views
 from homelab_atlas.web.targets import (
@@ -77,6 +83,10 @@ class WebConfig:
     source_tester: Callable[[str, str], Awaitable[tuple[bool, str]]] | None = None
     #: Quick SSH login test for one host: name -> (ok, message).
     tester: Callable[[str], Awaitable[tuple[bool, str]]] | None = None
+    #: Data directory (Diagnostics: database size, audit log check).
+    data_dir: Path | None = None
+    #: Key for --sanitize style pseudonymised exports from the Exports page (None: not offered).
+    export_key: bytes | None = None
 
 
 class LoginThrottle:
@@ -136,8 +146,24 @@ PALETTE_PAGES: Final = (
     ("/changes", "Changes"),
     ("/targets", "Targets"),
     ("/targets/host", "Add a VM / host"),
+    ("/exports", "Exports"),
+    ("/diagnostics", "Diagnostics"),
     ("/docs", "Documentation"),
 )
+
+
+EXPORT_FORMATS: Final = ("md", "json", "csv", "mermaid")
+
+
+def _finalize(value: Any) -> Any:
+    """How bare values print in templates: no "None", "True" or "False" on any page."""
+    if value is None:
+        return ""
+    if value is True:
+        return "yes"
+    if value is False:
+        return "no"
+    return value
 
 
 def _asset_version(static: Traversable) -> str:
@@ -178,6 +204,8 @@ def create_app(cfg: WebConfig) -> FastAPI:
     # never keeps an old app.js/topology.js after an update.
     templates.env.globals["asset_v"] = _asset_version(PKG / "static")
     templates.env.filters["ago"] = _ago
+    templates.env.finalize = _finalize  # None -> "", True/False -> yes/no, everywhere
+    apps.configure_custom(cfg.data_dir / apps.CUSTOM_FILE if cfg.data_dir else None)
     throttle = LoginThrottle(*LOGIN_RATE)
 
     @asynccontextmanager
@@ -490,7 +518,20 @@ def create_app(cfg: WebConfig) -> FastAPI:
             raise HTTPException(404, "no such entity")
         run = views.running(s, key) if detail["entity"].kind in views.MACHINE_KINDS else None
         has_run = run is not None and (run["services"] or run["containers"] or run["processes"])
-        return page(request, "entity.html", user, d=detail, run=run if has_run else None)
+        card = next((m for m in views.machines(s) if m["key"] == key), None)
+        health = None
+        if card is not None and card.get("target"):
+            health = queries.target_health(queries.latest_runs(s).get(card["target"]))
+        return page(
+            request,
+            "entity.html",
+            user,
+            d=detail,
+            run=run if has_run else None,
+            card=card,
+            health=health,
+            sched=cfg.scheduler,
+        )
 
     @app.get("/ips", response_class=HTMLResponse)
     def ips(
@@ -508,7 +549,54 @@ def create_app(cfg: WebConfig) -> FastAPI:
     def running_page(
         request: Request, s: DB, user: User, q: Annotated[str | None, Query(max_length=64)] = None
     ) -> Response:
-        return page(request, "running.html", user, r=views.everything_running(s, q), q=q or "")
+        return page(
+            request,
+            "running.html",
+            user,
+            r=views.everything_running(s, q),
+            q=q or "",
+            unrec=views.unrecognised_ports(s),
+            rules=apps.load_rules(),
+            categories=apps.CATEGORY_LABELS,
+            can_name=cfg.data_dir is not None,
+            msg=request.query_params.get("msg", "")[:200],
+        )
+
+    @app.post("/apps/name")
+    def name_app(
+        user: Csrf,
+        name: Annotated[str, Form(max_length=64)],
+        category: Annotated[str, Form(max_length=16)],
+        kind: Annotated[str, Form(max_length=8)],
+        value: Annotated[str, Form(max_length=96)],
+        ports: Annotated[str, Form(max_length=64)] = "",
+        machines: Annotated[str, Form(max_length=2048)] = "",
+    ) -> Response:
+        """Turn an unrecognised port into an app rule (ADR-034). Only atlas's own data changes."""
+        if cfg.data_dir is None or kind not in ("image", "proc", "port"):
+            raise HTTPException(404, "not available")
+        try:
+            plist = [int(p) for p in ports.split(",") if p.strip()][:8]
+            rule = views.custom_rule_from(
+                name=name,
+                category=category,
+                kind=kind,
+                value=value,
+                ports=plist,
+                machines=[m for m in machines.split(",") if m][:32],
+            )
+            apps.save_rule(rule)
+        except (ValueError, ValidationError) as exc:
+            msg = f"Not saved: {str(exc).splitlines()[0][:150]}"
+            return RedirectResponse(f"/running?msg={quote(msg)}#unrecognised", 303)
+        msg = f"{rule.name} saved: it is recognised from now on, on every page"
+        return RedirectResponse(f"/running?msg={quote(msg)}#unrecognised", 303)
+
+    @app.post("/apps/forget")
+    def forget_app(user: Csrf, name: Annotated[str, Form(max_length=64)]) -> Response:
+        done = apps.delete_rule(name)
+        msg = f"{name} removed" if done else f"{name}: no such rule"
+        return RedirectResponse(f"/running?msg={quote(msg)}#yours", 303)
 
     ServiceFilters = tuple[str | None, str, str | None, str | None]
 
@@ -531,12 +619,158 @@ def create_app(cfg: WebConfig) -> FastAPI:
         query = urlencode(
             {k: v for k, v in zip(("machine", "state", "kind", "q"), f, strict=True) if v}
         )
-        return page(request, name, user, t=t, machine=machine or "", state=state,
-                    kind=kind or "", q=q or "", query=query)  # fmt: skip
+        return page(
+            request,
+            name,
+            user,
+            t=t,
+            machine=machine or "",
+            state=state,
+            kind=kind or "",
+            q=q or "",
+            query=query,
+        )
 
     @app.get("/docs", response_class=HTMLResponse)
-    def docs_page(request: Request, user: User) -> Response:
-        return page(request, "docs.html", user)
+    def docs_page(request: Request, s: DB) -> Response:
+        """The guide is public (it holds no inventory data): reachable from the login page."""
+        return page(request, "docs.html", auth.resolve(s, request.cookies.get(SESSION_COOKIE)))
+
+    # ------------------------------------------------------------------ exports, diagnostics
+
+    @app.get("/exports", response_class=HTMLResponse)
+    def exports_page(request: Request, s: DB, user: User) -> Response:
+        counts: dict[str, int] = {
+            str(k): int(n)
+            for k, n in s.execute(select(Entity.kind, func.count()).group_by(Entity.kind))
+        }
+        return page(
+            request, "exports.html", user, counts=counts, can_sanitize=cfg.export_key is not None
+        )
+
+    @app.get("/export/{fmt}")
+    def export_download(s: DB, _user: User, fmt: str, sanitize: bool = False) -> Response:
+        """The CLI's exports, from the browser. Data was redacted at scan time; `sanitize`
+        also pseudonymises names, IPs and MACs for sharing (same key as `atlas export`)."""
+        if fmt not in EXPORT_FORMATS:
+            raise HTTPException(404, "unknown export format")
+        if sanitize and cfg.export_key is None:
+            raise HTTPException(400, "sanitized exports are not available here")
+        doc = export_build.build(s)
+        if sanitize and cfg.export_key is not None:
+            doc = export_build.sanitize(doc, cfg.export_key)
+        suffix = "-sanitized" if sanitize else ""
+        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M")
+        if fmt == "json":
+            body, mime, name = export_build.to_json(doc).encode(), "application/json", "json"
+        elif fmt == "md":
+            body, mime, name = export_build.to_markdown(doc).encode(), "text/markdown", "md"
+        elif fmt == "mermaid":
+            text = "%% physical\n" + export_build.to_mermaid(doc["topology"]["physical"])
+            text += "\n%% logical\n" + export_build.to_mermaid(doc["topology"]["logical"])
+            body, mime, name = text.encode(), "text/plain", "mmd"
+        else:
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+                for fname, text in export_build.to_csv(doc).items():
+                    z.writestr(fname, text)
+            body, mime, name = buf.getvalue(), "application/zip", "csv.zip"
+        return Response(
+            body,
+            media_type=mime,
+            headers={"Content-Disposition": f'attachment; filename="atlas{suffix}-{stamp}.{name}"'},
+        )
+
+    @app.get("/diagnostics", response_class=HTMLResponse)
+    def diagnostics_page(request: Request, s: DB, user: User) -> Response:
+        return page(request, "diagnostics.html", user, x=_diagnostics(s, audit=False))
+
+    @app.get("/diagnostics/report")
+    def diagnostics_report(s: DB, _user: User) -> Response:
+        """A text report to paste into an issue: versions, scheduler, per-target errors.
+        No secrets (they never reach the DB), but target names and IPs: review before sharing."""
+        x = _diagnostics(s, audit=True)
+        lines = [f"# atlas diagnostics ({x['now']})", "", "## Versions"]
+        lines += [f"- {k}: {v}" for k, v in x["versions"].items()]
+        lines += ["", "## Database"] + [f"- {k}: {v}" for k, v in x["db"].items()]
+        lines += ["", "## Audit log", f"- {x['audit']}"]
+        lines += ["", "## Scheduler"] + [f"- {c}" for c in x["scheduler"]]
+        lines += ["", "## Targets"]
+        for t in x["targets"]:
+            lines.append(f"- {t['name']}: {t['health']}")
+            lines += [
+                f"  - {r['collector']} {r['status']}: {e}" for r in t["runs"] for e in r["errors"]
+            ]
+        lines += ["", "## Recent scans"] + [f"- {r}" for r in x["scans"]]
+        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M")
+        return Response(
+            "\n".join(lines) + "\n",
+            media_type="text/markdown",
+            headers={"Content-Disposition": f'attachment; filename="atlas-diagnostics-{stamp}.md"'},
+        )
+
+    def _diagnostics(s: Session, *, audit: bool) -> dict[str, Any]:
+        names, _ = _target_names()
+        latest = queries.latest_runs(s)
+        targets = [
+            {"name": n, "health": queries.target_health(latest.get(n)), "runs": latest.get(n, [])}
+            for n in sorted(names if names is not None else latest)
+        ]
+        scans = [
+            f"#{sc.id} {sc.label or ''} {sc.status} {sc.started_at:%Y-%m-%d %H:%M}"
+            for sc in s.scalars(select(Scan).order_by(Scan.id.desc()).limit(10))
+        ]
+        db: dict[str, Any] = {
+            k: s.scalar(select(func.count()).select_from(tbl))
+            for k, tbl in (
+                ("entities", Entity),
+                ("facets", Facet),
+                ("events", Event),
+                ("scans", Scan),
+                ("collector runs", CollectorRun),
+            )
+        }
+        audit_line = "not checked (press Download report)"
+        if cfg.data_dir is not None:
+            dbf = cfg.data_dir / "atlas.db"
+            if dbf.is_file():
+                db["file size"] = f"{dbf.stat().st_size / 1e6:.1f} MB"
+            if audit:
+                rep = audit_verify(cfg.data_dir / "audit")
+                audit_line = f"{'ok' if rep.ok else 'BROKEN'}: {rep.records} records" + (
+                    f", {rep.error}" if rep.error else ""
+                )
+        sched = []
+        if cfg.scheduler is not None:
+            st = cfg.scheduler.status
+            nxt = cfg.scheduler.next_runs()
+            for name, c in st.collectors.items():
+                when = nxt.get(name)
+                sched.append(
+                    f"{name}: every {c.interval_s // 60} min, last {c.last_status or '-'}"
+                    + (f", backoff x{c.failures}" if c.backoff_until else "")
+                    + (f", next {when:%H:%M} UTC" if when else "")
+                )
+            if st.running:
+                sched.append(f"running: {st.running}")
+            if st.queued:
+                sched.append(f"queued: {', '.join(st.queued)}")
+        else:
+            sched.append("no scheduler (scans only with `atlas scan`)")
+        return {
+            "now": datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
+            "versions": {
+                "atlas": __version__,
+                "python": platform.python_version(),
+                "platform": platform.platform(terse=True),
+                "lab": cfg.lab,
+            },
+            "db": db,
+            "audit": audit_line,
+            "scheduler": sched,
+            "targets": targets,
+            "scans": scans,
+        }
 
     @app.get("/api/palette")
     def palette(s: DB, _user: User) -> JSONResponse:
@@ -594,10 +828,67 @@ def create_app(cfg: WebConfig) -> FastAPI:
         severity: Annotated[str | None, Query(max_length=16)] = None,
         q: Annotated[str | None, Query(max_length=64)] = None,
         before: Annotated[int | None, Query(ge=1)] = None,
+        since: Annotated[str | None, Query(max_length=8)] = None,
+        machine: Annotated[str | None, Query(max_length=256)] = None,
     ) -> Response:
-        rows = queries.changes(s, severity, q, before)
-        name = "_change_rows.html" if partial(request) else "changes.html"
-        return page(request, name, user, rows=rows, severity=severity or "", q=q or "")
+        keys = queries.related_keys(s, machine) if machine else None
+        rows = queries.changes(s, severity, q, before, since=since, keys=keys)
+        ctx: dict[str, Any] = {
+            "rows": rows,
+            "severity": severity or "",
+            "q": q or "",
+            "since": since or "",
+            "machine": machine or "",
+        }
+        if partial(request) and before:
+            return page(request, "_change_rows.html", user, **ctx)
+        ctx["summary"] = queries.changes_summary(s, since, keys)
+        ctx["machines"] = views.machines(s)
+        ctx["query"] = urlencode(
+            {
+                k: v
+                for k, v in (
+                    ("severity", severity),
+                    ("q", q),
+                    ("since", since),
+                    ("machine", machine),
+                )
+                if v
+            }
+        )
+        name = "_changes_results.html" if partial(request) else "changes.html"
+        return page(request, name, user, **ctx)
+
+    @app.get("/changes.csv")
+    def changes_csv(
+        s: DB,
+        _user: User,
+        severity: Annotated[str | None, Query(max_length=16)] = None,
+        q: Annotated[str | None, Query(max_length=64)] = None,
+        since: Annotated[str | None, Query(max_length=8)] = None,
+        machine: Annotated[str | None, Query(max_length=256)] = None,
+    ) -> Response:
+        keys = queries.related_keys(s, machine) if machine else None
+        rows = queries.changes(s, severity, q, since=since, keys=keys, limit=20000)
+        flat = [
+            {
+                "time": r["event"].created_at.isoformat(timespec="seconds"),
+                "severity": r["event"].severity,
+                "type": r["event"].type,
+                "entity": r["name"],
+                "summary": r["event"].summary,
+                "path": r["event"].path,
+                "scan": r["event"].scan_id,
+            }
+            for r in rows
+        ]
+        body = csv_table(flat, ["time", "severity", "type", "entity", "summary", "path", "scan"])
+        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M")
+        return Response(
+            body,
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="atlas-changes-{stamp}.csv"'},
+        )
 
     @app.get("/unknown", response_class=HTMLResponse)
     def unknown(
@@ -757,8 +1048,41 @@ def create_app(cfg: WebConfig) -> FastAPI:
         svc = targets_svc()
         runs = queries.latest_runs(s)
         health = {name: queries.target_health(rs) for name, rs in runs.items()}
-        return page(request, "targets.html", user, v=svc.view(), message=msg,
-                    sched=cfg.scheduler, runs=runs, health=health)  # fmt: skip
+        names, _ = _target_names()
+        tally: dict[str, int] = {}
+        for n in sorted(names or ()):
+            h = health.get(n, "never")
+            tally[h] = tally.get(h, 0) + 1
+        return page(
+            request,
+            "targets.html",
+            user,
+            v=svc.view(),
+            message=msg,
+            sched=cfg.scheduler,
+            runs=runs,
+            health=health,
+            tally=tally,
+        )
+
+    @app.post("/targets/scan-many", response_class=HTMLResponse)
+    async def target_scan_many(
+        request: Request, s: DB, user: Csrf, which: Annotated[str, Form(max_length=16)] = "failed"
+    ) -> Response:
+        """Queue a scan of every target that failed or was never scanned (or of all of them)."""
+        if cfg.scheduler is None:
+            raise HTTPException(404, "scheduler disabled")
+        names, _ = _target_names()
+        latest = queries.latest_runs(s)
+        todo = sorted(
+            n
+            for n in names or ()
+            if which == "all" or queries.target_health(latest.get(n)) in ("failed", "never")
+        )
+        if todo:
+            cfg.scheduler.trigger(hosts=todo)
+        msg = f"Queued {len(todo)} target(s): {', '.join(todo)}" if todo else "Nothing to rescan."
+        return RedirectResponse(f"/targets?msg={quote(msg[:190])}", 303)
 
     @app.get("/targets/host", response_class=HTMLResponse)
     def target_host_form(
