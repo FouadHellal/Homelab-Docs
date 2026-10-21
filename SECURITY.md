@@ -91,6 +91,7 @@ The latest review pass and its findings are in [docs/SECURITY-REVIEW.md](docs/SE
 - **What v2 reads in addition** (probe 1.4.0):
   - `ps` command lines, which go through the Redactor before storage and are never diffed;
   - on Proxmox nodes, `/etc/pve` guest configs and the `.members`/`.vmlist` status files. `/etc/pve/priv` (keys, API tokens, `shadow.cfg`) is never read; a test checks the probe's paths (ADR-028).
+- **v4 additions:** `/docs` is public (a static guide, no inventory). Owner app rules live in `custom-apps.yaml` in the data volume: strict schema, atomic `0600` writes, CSRF on every change. Exports and the diagnostics report need a login. The report has no secrets but lists target names and IPs.
 - **`atlas update`** runs `git pull --ff-only` in your clone as root, so only update from a remote you trust. It never resets local edits, and it never touches targets.
 - **Updates:** pin image tags, rotate the Proxmox token and the UniFi key yearly, and keep the
   collector's SSH key on the deploy host only (`from=` in `authorized_keys`).

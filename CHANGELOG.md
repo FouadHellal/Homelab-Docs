@@ -2,6 +2,44 @@
 
 All notable changes. Versions follow [SemVer](https://semver.org/); dates are UTC.
 
+## 0.4.0 (2026-10-21)
+
+Ideas from a review of similar tools (Homelable, Scanopy) and of the UI.
+
+### Added
+- **Unrecognised listening ports, and naming them.**
+  - The Apps page lists every listening port no app explains, grouped by what would identify it:
+    a container image, a process, or, for generic processes like `python3` or `docker-proxy`,
+    the port on that machine.
+  - **Name it** once, and it is recognised from then on everywhere: machine cards, topology,
+    Services, exports.
+  - Your rules are kept in `custom-apps.yaml` in the data volume, listed under *Your app rules*,
+    and can be removed.
+- **Changes page:** time range (24 h / 7 days / 30 days), a per-machine filter (the machine, its
+  VM/host twin and its containers), a summary by severity and type with one-click filters, and
+  **CSV export** of what you filtered.
+- **Exports page:** download the Markdown report, CSV tables (zip), JSON or Mermaid diagrams
+  from the browser, each optionally **sanitized** (names, IPs and MACs pseudonymised) for sharing.
+- **Diagnostics page:** versions, database, audit-log check, scheduler, every target's latest
+  errors, and a downloadable **support report** for issues.
+- **Machine page summary:** IP, OS, node, size, network and last scan at the top, with
+  *Show on topology* (opens the topology focused on it), *All services*, *Open <app>*,
+  *Copy SSH* and *Scan now*.
+- **Topology:**
+  - drag nodes and the layout is kept, per view and per browser;
+  - *Lock layout* and *Reset my layout* in the background menu;
+  - containers follow their moved machine;
+  - `?focus=<machine>` links.
+- **Targets:** a status summary (ok / partial / failed / not scanned), **Scan failed & new**, and
+  **Scan everything**.
+
+### Fixed
+- Pages no longer print `None`, `True` or `False`: they show blank, yes or no.
+- The docs page opens without logging in. It is linked from the login page and holds no inventory
+  data.
+- A NAS (or any target read through an API) no longer shows "waiting for its first scan".
+- The "Contains" list on machine pages is collapsed instead of repeating the container table.
+
 ## 0.3.1 (2026-10-19)
 
 ### Fixed
