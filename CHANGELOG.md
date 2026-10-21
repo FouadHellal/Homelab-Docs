@@ -2,6 +2,14 @@
 
 All notable changes. Versions follow [SemVer](https://semver.org/); dates are UTC.
 
+## 0.4.1 (2026-10-21)
+
+### Security
+- certifi 2026.10.19: the 2026.10.18 bundle shipped emSign root CAs whose intermediate keys
+  were compromised ([GHSA-6q48-6c7w-9gw2](https://github.com/advisories/GHSA-6q48-6c7w-9gw2),
+  PYSEC-2026-4320). atlas uses that bundle only to verify `api.ui.com` (UniFi cloud keys).
+  certifi is now a declared dependency, with that version as its minimum.
+
 ## 0.4.0 (2026-10-21)
 
 Ideas from a review of similar tools (Homelable, Scanopy) and of the UI.
