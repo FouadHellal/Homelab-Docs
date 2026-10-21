@@ -147,6 +147,10 @@ def state_a() -> list[dict[str, Any]]:
         host("mediatheque", "10.0.20.50", hostname="médiathèque", broken={"lsblk"},
              mounts=[("/", "/dev/sda1", "ext4", 33285996544, 9123456789)]),
         host("backup01", "10.0.20.40",
+             # Something no catalog entry knows: shows up under "Unrecognised ports" (ADR-034).
+             sockets=[("tcp", "0.0.0.0", 22, "sshd", 812), ("tcp", "[::]", 22, "sshd", 812),
+                      ("udp", "127.0.0.53%lo", 53, "systemd-resolve", 600),
+                      ("tcp", "0.0.0.0", 8077, "labelmaker", 1400)],
              cron={"/etc/crontab": ["SHELL=/bin/sh"],
                    "/etc/cron.d/restic": [
                        "RESTIC_PASSWORD=rp-ATLASFAKE-2026a",
@@ -154,6 +158,10 @@ def state_a() -> list[dict[str, Any]]:
                        "15 3 * * * root curl -fsS 'https://hc.example/ping/abc?token=hc-ATLASFAKE-0001' >/dev/null"]},
              packages={**BASE_PKGS, "restic": "0.14.0-1+b5"}),
         host("pi-garage", "10.0.20.60", virt="none", arch="aarch64", kernel="6.6.51+rpt-rpi-v8",
+             # A generic interpreter on a port: named per machine, by port (ADR-034).
+             sockets=[("tcp", "0.0.0.0", 22, "sshd", 812), ("tcp", "[::]", 22, "sshd", 812),
+                      ("udp", "127.0.0.53%lo", 53, "systemd-resolve", 600),
+                      ("tcp", "0.0.0.0", 5000, "python3", 1500)],
              packages={**BASE_PKGS, "raspberrypi-kernel": "1:1.20241008-1", "linux-image-rpi-v8": "1:6.6.51-1+rpt3"}),
         host("media01", "10.0.20.55", virt="lxc", veth=1,
              ifaces=[{"name": "eth0", "mac": mac("media01"), "addrs": ["10.0.20.55/24"], "kind": None},
