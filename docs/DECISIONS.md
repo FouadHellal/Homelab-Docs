@@ -581,3 +581,62 @@ Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a
 - GPL-3.0 to allow copying ProxMenux code: it would relicense a project whose own code is MIT-compatible, for little gain.
 - Client-side-only filtering of thousands of rows.
 - A separate SPA.
+
+## ADR-034 Unrecognised ports and owner-defined app rules (v4)
+**Context.** The app catalog will never know every self-hosted app. Scanopy's "unclaimed ports" and Homelable's pending list show the pattern: put the unknowns in front of the owner and let them name each one once. (Researched 2026-10-21: noted.lol articles on Homelable (2026-10-17) and Scanopy (2026-03-03), virtualizationhowto.com Scanopy review (2025-12).)
+
+**Decisions.**
+- **`views.unrecognised_ports()`** lists the sockets on documented machines that no detected app explains, and skips the rest:
+  - ports a found app claims, or whose process is one of its process names;
+  - loopback listeners;
+  - a short list of plumbing ports (DHCP, rpcbind, NTP, mDNS, SSDP, NetBIOS);
+  - `docker-proxy` ports published by a container an app already claims.
+- Groups are keyed by what would identify the app:
+  - a **container image** (a `docker-proxy` port mapped to an unknown container);
+  - a **process name**;
+  - for generic processes (`python3`, `node`, `java`, `docker-proxy` without a mapping…), the **port on that machine**.
+- **Owner rules** (`engine.apps.CustomRule`) are stored in `custom-apps.yaml` in the data volume:
+  - the model is strict pydantic with `extra=forbid` and bounded lists;
+  - matchers are limited to `[A-Za-z0-9._@/+:-]`, names have no control characters or `<>`, and categories come from a fixed list;
+  - writes are atomic (`0600`);
+  - the file is re-read on mtime change; invalid entries are skipped and logged, and an unreadable file is ignored.
+- `catalog()` = built-ins + owner rules. An owner rule with a built-in's name replaces it.
+- Two new rule fields:
+  - `strong_ports`: a port alone is evidence;
+  - `hosts`: limit a rule to some machines. `detect()` takes the machine name.
+- Port-only rules are always limited to the machines they were named on, so "python3 on 5000" on a Pi doesn't label every port 5000 in the lab.
+- Only atlas's own data changes. Targets are never contacted. The form needs CSRF, like every POST.
+
+**Rejected.**
+- Active service fingerprinting (banner grabs): that is probing, which ADR-016 rules out.
+- A community-wide rules registry: possible later as a file people share.
+
+## ADR-035 UI v4: exports and diagnostics in the browser, change filters, saved layouts (v4)
+**Context.** A full review of the UI, plus research ideas: exportable documentation (a recurring Reddit ask), "what changed" views, saved diagram layouts (Scanopy), and the need for a support path when atlas runs on a lab we can't see.
+
+**Decisions.**
+- **Exports page** (`/exports`, `/export/{md,csv,json,mermaid}`): the same builders as `atlas export`, served as downloads.
+  - `?sanitize=true` uses the CLI's derived key (`cli_export.sanitize_key`), so pseudonyms are stable across CLI and UI.
+  - Login required. CSV is zipped in memory.
+- **Diagnostics** (`/diagnostics`, `/diagnostics/report`): versions, row counts, DB size, the scheduler (intervals, last status, backoff, queue), each target's latest runs and errors, and recent scans. The audit-chain check runs only for the downloaded report, since it walks the whole log.
+  - The report has no secrets, which never reach the DB. It does list target names and IPs, and the page says so.
+- **Changes**:
+  - `since` (24h/7d/30d) and `machine` filters;
+  - `queries.related_keys()` gives a machine, its `same_as` twin and their children, so containers count;
+  - a severity/type summary;
+  - `/changes.csv` with the same filters, formula-safe.
+- **Topology layouts.** Dragged positions are stored per view in `localStorage`:
+  - they are a per-browser convenience, not shared state;
+  - they are applied over the tidy layout only;
+  - containers follow a moved host;
+  - Lock and Reset live in the background menu;
+  - `?focus=` opens the graph on one machine.
+- **Templates** use a Jinja `finalize` that renders None as blank and booleans as yes/no on every page. No template writes booleans into form values (checked).
+- **`/docs` is public**: it is a static guide reachable from the login page. Everything else still needs a session.
+- **Targets**:
+  - a health tally;
+  - `/targets/scan-many` (`failed` = failed or never scanned; `all`) queues through the scheduler's merge queue.
+
+**Rejected.**
+- Server-side shared layouts: they'd need write APIs and conflict handling, for one owner.
+- A public share link for exports: atlas holds a map of the network, so downloads stay behind login.

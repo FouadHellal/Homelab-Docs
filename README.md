@@ -154,14 +154,16 @@ is shown and SSH stays as a fallback.
 | **Dashboard** | Clickable tiles, your Proxmox nodes with their guests, a card per machine with the apps found on it (filter by kind, search), **Needs attention** (failed or never-scanned targets, with the reason), devices seen on the network but not documented yet, recent changes, "Scan now" |
 | **Topology** | **Proxmox**: one box per node, holding the node, its bridges, and its VMs and LXCs. Each guest is wired to the bridge its NIC uses, with traffic pulses on running guests. Summary cards show guests and the vCPU and RAM allocated. **Network**: gateway → switches → APs → hosts. **VLANs**. Hover highlights the path, click shows details, **right-click** gives actions (open, web UI, scan this machine, copy IP/MAC/SSH command, show only this, containers), plus search, three layouts and PNG export. Keys: `/` `F` `R` `C` |
 | **Services** | Every systemd unit and Docker container on every machine in one table. Filter by machine, state (running / failed / stopped), type and text, then **Export CSV** |
-| **Apps** | Recognised apps by category (Pi-hole, Unbound, Tailscale, Home Assistant, Jellyfin, NetBox, Grafana…) and where they run, with a link to their web UI |
+| **Apps** | Recognised apps by category (Pi-hole, Unbound, Tailscale, Home Assistant, Jellyfin, NetBox, Grafana…) and where they run, with a link to their web UI. **Unrecognised listening ports** are listed too: name one once and it is recognised everywhere from then on |
 | **Inventory** | Every machine. Open one for OS, network, ports, a **Running** panel (services, containers, processes, ports, timers), disks, users, notes and history |
 | **IPs** | One row per device with all its addresses, MACs and networks. Link-local and Docker-bridge addresses are hidden until you ask for them |
 | **VLANs / Ports** | Searchable tables |
-| **Changes** | Typed events: port opened, image updated, container restarted, new device on a VLAN, VM not backed up… |
+| **Changes** | Typed events: port opened, image updated, container restarted, new device on a VLAN, VM not backed up… Filter by time range, machine, severity or text, then export to CSV |
 | **Unknown** | Devices on the network you haven't added, infrastructure first |
 | **Targets** | Add and edit machines, Proxmox and UniFi. Each row shows its **last scan** (ok / partial / failed and why / not scanned yet) |
-| **Docs** | The in-app guide. **Ctrl+K** jumps to any page, machine or app |
+| **Exports** | Markdown report, CSV tables (zip), JSON and Mermaid diagrams, each also **sanitized** for sharing |
+| **Diagnostics** | Versions, database, audit-log check, scheduler, every target's latest errors, and a **support report** to attach to an issue |
+| **Docs** | The in-app guide (no login needed). **Ctrl+K** jumps to any page, machine or app |
 
 Scans run on their own: UniFi and Proxmox every 15 min, machines hourly. A new target is
 scanned as soon as you save it. **Scan now** (dashboard) and **Scan** (per target) are queued,
