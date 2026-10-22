@@ -16,6 +16,7 @@ REPO_DIR="$(cd "$(dirname "$SELF")/.." && pwd)"
 BIN_LINK="${ATLAS_BIN_LINK:-/usr/local/bin/atlas}"
 KEEP_BACKUPS="${ATLAS_KEEP_BACKUPS:-5}"
 GIT="${ATLAS_GIT:-git}"
+SUDOERS_FILE="${ATLAS_SUDOERS_FILE:-/etc/sudoers.d/atlas-mcp}"
 ATLAS_DIR="${ATLAS_DIR:-/opt/atlas}"
 IMAGE_DEFAULT="ghcr.io/fouadhellal/homelab-docs"
 APP_UID=10001
@@ -39,6 +40,8 @@ Usage: atlas.sh <command> [options]
   logs                            follow atlas logs
   backup [file.tar.gz]            consistent DB copy + config (NOT the master key)
   version                         running atlas version
+  mcp [--allow-scan] [--sanitize] MCP server on stdin/stdout, for Claude over SSH (see docs)
+  mcp-allow <user> [--allow-scan] let <user> start `atlas mcp` with sudo, no password (SSH)
   stop | start                    stop / start the stack
   uninstall [--purge]             remove containers (--purge also deletes the data volume)
 
@@ -326,6 +329,46 @@ cmd_backup() {
     say "wrote $out (encrypt it: it maps your network). The master key is NOT in it; keep $ATLAS_DIR/secrets/atlas_master_key separately."
 }
 
+cmd_mcp() {  # stdio MCP inside the atlas container: stdout is the protocol, print nothing else
+    local a
+    for a in "$@"; do
+        case "$a" in --allow-scan|--sanitize) ;; *) die "unknown option $a" ;; esac
+    done
+    [ -f "$ATLAS_DIR/.env" ] || die "not installed in $ATLAS_DIR"
+    [ -n "$(compose ps -q atlas 2>/dev/null || true)" ] || die "atlas is not running (sudo atlas start)"
+    exec docker compose --project-directory "$ATLAS_DIR" -f "$ATLAS_DIR/docker-compose.yml" \
+        exec -T atlas atlas mcp "$@"
+}
+
+cmd_mcp_allow() {  # sudoers rule for exactly `atlas mcp` (and optionally --allow-scan)
+    local user="${1:-}" scan="${2:-}" rule tmp host
+    [ -n "$user" ] || die "usage: atlas.sh mcp-allow <user> [--allow-scan]"
+    case "$user" in *[!a-z0-9._-]*|root) die "a normal user name, please (not root)" ;; esac
+    [ -z "$scan" ] || [ "$scan" = "--allow-scan" ] || die "unknown option $scan"
+    [ "$(id -u)" -eq 0 ] || die "run with sudo"
+    id "$user" >/dev/null 2>&1 || die "no such user: $user"
+    command -v visudo >/dev/null 2>&1 || die "visudo is missing (apt install sudo)"
+    # Exact command lines only. --sanitize is always allowed (it can only hide more).
+    rule="$user ALL=(root) NOPASSWD: $BIN_LINK mcp, $BIN_LINK mcp --sanitize"
+    if [ "$scan" = "--allow-scan" ]; then
+        rule="$rule, $BIN_LINK mcp --allow-scan, $BIN_LINK mcp --allow-scan --sanitize"
+        rule="$rule, $BIN_LINK mcp --sanitize --allow-scan"
+    fi
+    tmp="$(mktemp)"
+    printf '# atlas: %s may start the MCP server over SSH (atlas.sh mcp-allow)\n%s\n' \
+        "$user" "$rule" > "$tmp"
+    visudo -cf "$tmp" >/dev/null || { rm -f "$tmp"; die "sudoers rule did not validate"; }
+    install -m 0440 -o root -g root "$tmp" "$SUDOERS_FILE"
+    rm -f "$tmp"
+    link_cli
+    host="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    say "done: $user can run 'sudo atlas mcp${scan:+ $scan}' without a password"
+    say "Claude Code, on your PC:"
+    printf '  claude mcp add --transport stdio --scope user atlas -- ssh -T %s@%s sudo atlas mcp%s\n' \
+        "$user" "${host:-<this-vm>}" "${scan:+ $scan}"
+    say "Claude Desktop: see https://github.com/FouadHellal/Homelab-Docs/blob/main/docs/MCP.md"
+}
+
 main() {
     local cmd="${1:-}"
     [ $# -gt 0 ] && shift
@@ -341,6 +384,8 @@ main() {
         logs) compose logs -f atlas ;;
         backup) cmd_backup "$@" ;;
         version) cmd_version ;;
+        mcp) cmd_mcp "$@" ;;
+        mcp-allow) cmd_mcp_allow "$@" ;;
         stop) compose stop ;;
         start) compose up -d && wait_healthy && print_access ;;
         uninstall)

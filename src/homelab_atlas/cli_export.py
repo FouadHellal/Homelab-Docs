@@ -104,14 +104,30 @@ def mcp_cmd(
         list[str] | None, typer.Option(help="Accepted Host header(s) for HTTP.")
     ] = None,
     sanitize: SanitizeOpt = False,
+    allow_scan: Annotated[
+        bool,
+        typer.Option(
+            "--allow-scan",
+            help="Offer scan_machine: the assistant may ask for a fresh (read-only) scan of one "
+            "machine. Needs the scan credentials, i.e. run it in the atlas container.",
+        ),
+    ] = False,
     lab: LabFlag = None,
     data_dir: DataOpt = None,
 ) -> None:
-    """Read-only MCP server over the inventory (stdio by default)."""
-    from homelab_atlas.mcp_server import BearerAuth, build_server  # noqa: PLC0415
+    """MCP server over the inventory (stdio by default, read-only unless --allow-scan)."""
+    from homelab_atlas.mcp_server import BearerAuth, build_server, engine_scanner  # noqa: PLC0415
+    from homelab_atlas.runtime import lab_inputs, live_inputs  # noqa: PLC0415
 
     rt = _runtime(lab, data_dir)
-    server = build_server(rt.sessions, sanitize_key=sanitize_key(rt) if sanitize else None)
+    scanner = None
+    if allow_scan:
+        scanner = engine_scanner(
+            lambda: rt.scan_engine(lab_inputs("B") if lab else live_inputs(rt.data_dir))
+        )
+    server = build_server(
+        rt.sessions, sanitize_key=sanitize_key(rt) if sanitize else None, scanner=scanner
+    )
     if not http:
         server.run("stdio")
         return
