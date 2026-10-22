@@ -132,6 +132,9 @@ atlas sets CSP, HSTS (`--hsts`, already in the compose file), `X-Frame-Options`,
 
 ## 6. MCP (optional)
 
+> To connect Claude Code or Claude Desktop, start with [MCP.md](MCP.md): over SSH you need no port,
+> token or certificate (`sudo atlas mcp-allow <user>`). The HTTP service below is the alternative.
+
 ```bash
 openssl rand -base64 36 | tr -d '\n' > secrets/mcp_token && sudo chown 10001 secrets/mcp_token && sudo chmod 0400 secrets/mcp_token
 echo "ATLAS_MCP_HOST=atlas.home.arpa:8765" >> .env    # Host header(s) clients use

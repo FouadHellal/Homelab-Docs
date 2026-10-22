@@ -640,3 +640,35 @@ Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a
 **Rejected.**
 - Server-side shared layouts: they'd need write APIs and conflict handling, for one owner.
 - A public share link for exports: atlas holds a map of the network, so downloads stay behind login.
+
+## ADR-036 MCP for Claude: machine-level tools, stdio over SSH, opt-in live scan (v5, owner request)
+**Context.** "Make an MCP so we can hook it up to Claude, so next time I ask what is running in that VM, it checks it for me." ADR-014's server had seven entity-level tools and no way to refresh data. Facts were checked on 2026-10-22 against code.claude.com/docs/en/mcp, modelcontextprotocol.io "connect local servers", and the Claude help-center article on custom connectors:
+- `claude mcp add --transport stdio|http`, `--scope user`, `--header`;
+- Desktop's `claude_desktop_config.json` takes stdio `command`/`args` entries;
+- claude.ai custom connectors connect from Anthropic's cloud, so a LAN-only server can't be one.
+
+**Decisions.**
+- **Tools are shaped like the questions** and built on the UI's read models, so answers match the pages:
+  - `list_machines`, `whats_running(machine)`, `list_services`, `proxmox_overview`, `scan_status`, `unrecognised_ports`;
+  - `what_changed(machine=)`.
+  - `find_machine` resolves a name (case-insensitive), IP, entity key, scan-target name, or a *unique* fragment.
+  - Results carry `last_scan`, so the model can tell old data from new. The server instructions tell it to start with `list_machines` and to prefer `scan_machine` when data is stale or the user asks for a live check.
+- **`scan_machine` is opt-in** (`atlas mcp --allow-scan`):
+  - It runs `ScanEngine.run(hosts=[target])`, the same read-only choke points, redaction and audit as the scheduler, on a worker thread with a 180 s timeout.
+  - It reports `busy` when the scan file lock is held, and is limited to one request per target per 60 s.
+  - It is annotated honestly (`readOnlyHint=false`, `openWorldHint=true`), because it writes atlas's DB and reaches the network. Targets are still never changed.
+  - It needs the scan credentials, so it exists only in the stdio path inside the atlas container. The compose HTTP `mcp` service stays read-only.
+- **Recommended transport: stdio over SSH.**
+  - `ssh -T user@vm sudo atlas mcp`: no listener, token or TLS; SSH is the authentication.
+  - `atlas.sh mcp` validates its flags (only `--allow-scan` and `--sanitize`) and `exec`s `docker compose exec -T atlas atlas mcp`, printing nothing on stdout.
+  - `atlas.sh mcp-allow <user>` writes `/etc/sudoers.d/atlas-mcp`:
+    - exact command lines only, `--sanitize` variants always included;
+    - `--allow-scan` lines only when asked;
+    - `visudo -cf` before `install -m 0440`;
+    - root and odd user names are refused.
+- **Logs go to stderr** (`structlog.PrintLoggerFactory(file=sys.stderr)`). Before this, a warning during an MCP stdio session would have corrupted the protocol stream. A real stdio session is tested end to end.
+
+**Rejected.**
+- Exposing atlas to the internet for claude.ai connectors: it holds a map of the network.
+- Giving the HTTP MCP service the master key so it could scan: a network listener with scan credentials, for a convenience SSH already provides.
+- Free-form arguments in the sudoers rule (`atlas mcp *`).
