@@ -274,7 +274,13 @@ def test_mcp_tools_are_all_read_only(rt: Runtime) -> None:
         "find_service",
         "what_changed",
         "list_unknown_devices",
-    }
+        "list_machines",
+        "whats_running",
+        "list_services",
+        "proxmox_overview",
+        "scan_status",
+        "unrecognised_ports",
+    }  # no scan_machine unless --allow-scan (tests/unit/test_mcp_v2.py)
     for t in tools:
         a = t.annotations
         assert a is not None

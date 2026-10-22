@@ -230,3 +230,27 @@ def test_update_flags_and_not_installed(tmp_path: Path) -> None:
     assert res.returncode == 0, res.stderr
     assert "git " not in log
     assert "build -t atlas:local" in log
+
+
+def test_mcp_runs_inside_the_container_and_prints_nothing_else(tmp_path: Path) -> None:
+    _installed(tmp_path)
+    res, log = _run(tmp_path, "mcp", "--allow-scan")
+    assert res.returncode == 0, res.stderr
+    assert res.stdout == ""  # stdout belongs to the MCP protocol
+    assert log.splitlines()[-1].endswith("exec -T atlas atlas mcp --allow-scan")
+    bad, _ = _run(tmp_path, "mcp", "--http")
+    assert bad.returncode != 0
+    assert "unknown option --http" in bad.stderr
+
+
+def test_mcp_allow_refuses_bad_input_and_non_root(tmp_path: Path) -> None:
+    _installed(tmp_path)
+    for args in (("mcp-allow",), ("mcp-allow", "root"), ("mcp-allow", "Bad;Name"),
+                 ("mcp-allow", "alice", "--everything")):  # fmt: skip
+        res, _ = _run(tmp_path, *args)
+        assert res.returncode != 0, args
+    res, _ = _run(tmp_path, "mcp-allow", "alice")
+    if getattr(os, "geteuid", lambda: 1)() == 0:  # pragma: no cover - CI runs unprivileged
+        pytest.skip("running as root")
+    assert res.returncode != 0
+    assert "run with sudo" in res.stderr
