@@ -17,7 +17,8 @@ gateway and your VMs on a web page. atlas then:
 - links everything into a topology;
 - keeps tables (services with CSV export, IPs, VLANs, ports), a change history, and exports
   in Markdown, MkDocs, JSON, CSV and Mermaid;
-- serves a read-only MCP server so AI assistants can answer questions like *"what changed on
+- plugs into Claude (MCP, [guide](docs/MCP.md)) so you can ask *"what is running on that VM?"*
+  and, if you allow it, have Claude rescan it first. Other questions work too, like *"what changed on
   docker01 this week?"*.
 
 It never changes anything on your machines. See [SECURITY.md](SECURITY.md).
@@ -219,8 +220,22 @@ The backup archive deliberately leaves the key out.
 | `ATLAS_SNAPSHOT_DAYS` | How long detailed snapshots are kept (default 90; change history is kept forever) |
 | `ATLAS_MODE=proxy` | Run behind your own TLS reverse proxy instead (HTTP on 127.0.0.1:8080, see [docs/DEPLOY.md](docs/DEPLOY.md)) |
 
-**MCP for AI assistants (optional):** `docker compose --project-directory /opt/atlas --profile mcp up -d`.
-The bearer token is in `/opt/atlas/secrets/mcp_token`. See [docs/DEPLOY.md §6](docs/DEPLOY.md).
+**Ask Claude about your homelab (MCP).** Connect atlas to Claude Code or Claude Desktop and ask
+*"what is running on docker01?"*, *"which VMs are on pve2?"* or *"check the Pi-hole now"*. Over
+SSH it is two commands. On the VM:
+
+```bash
+sudo atlas mcp-allow youruser --allow-scan
+```
+
+Then on your PC:
+
+```bash
+claude mcp add --transport stdio --scope user atlas -- ssh -T youruser@atlas-vm sudo atlas mcp --allow-scan
+```
+
+The full guide, including Claude Desktop, HTTP with a token, privacy and troubleshooting, is in
+[docs/MCP.md](docs/MCP.md).
 
 ## Troubleshooting
 

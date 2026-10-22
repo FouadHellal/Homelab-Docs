@@ -2,6 +2,24 @@
 
 All notable changes. Versions follow [SemVer](https://semver.org/); dates are UTC.
 
+## 0.5.0 (2026-10-22)
+
+### Added
+- **Ask Claude about your homelab.** The MCP server gains machine-level tools:
+  - `whats_running`: apps, running and failed services, containers, ports, top processes, timers;
+  - `list_machines`, `list_services`, `proxmox_overview`, `scan_status`, `unrecognised_ports`;
+  - `what_changed` now takes `machine`;
+  - machines resolve by name, IP or key, and every answer carries the last scan time and result.
+- **Live checks, opt-in.** `atlas mcp --allow-scan` adds `scan_machine`: Claude can ask for a
+  fresh read-only scan of one machine (at most once a minute per machine), then read the result.
+- **Two-command setup over SSH.** `sudo atlas mcp-allow <user> [--allow-scan]` writes a
+  `visudo`-checked rule for exactly `atlas mcp`, and prints the `claude mcp add` line.
+  `sudo atlas mcp` runs the server inside the atlas container. No port, token or certificate is
+  needed. Guide: `docs/MCP.md` (Claude Code, Claude Desktop, HTTP, privacy).
+
+### Fixed
+- Logs go to stderr instead of stdout, so they can no longer break an MCP stdio session.
+
 ## 0.4.1 (2026-10-21)
 
 ### Security

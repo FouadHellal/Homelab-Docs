@@ -12,6 +12,7 @@
     <li><a href="#collect">What atlas reads</a></li>
     <li><a href="#pages">The pages</a></li>
     <li><a href="#keys">Keyboard shortcuts</a></li>
+    <li><a href="#claude">Ask Claude (MCP)</a></li>
     <li><a href="#update">Updating</a></li>
     <li><a href="#trouble">Troubleshooting</a></li>
     <li><a href="#security">Security</a></li>
@@ -111,6 +112,17 @@
     <tr><td>drag</td><td>Topology: move nodes; your layout is kept in this browser (right-click the background to lock or reset it)</td></tr>
     <tr><td><kbd>Esc</kbd></td><td>Close menus and panels</td></tr>
   </tbody></table>
+</section>
+
+<section id="claude" class="card">
+  <h2>Ask Claude about your homelab (MCP)</h2>
+  <p>Connect atlas to Claude Code or Claude Desktop. Then ask things like <em>"what is running on docker01?"</em>, <em>"which VMs are on pve2 and which are stopped?"</em>, <em>"what changed on the NAS this week?"</em>, or <em>"check the Pi-hole now"</em>. Claude answers from atlas's inventory, and it says when the data was collected.</p>
+  <ol class="steps">
+    <li>On the atlas VM, once: <code>sudo atlas mcp-allow youruser --allow-scan</code>. Leave out <code>--allow-scan</code> if Claude should only read, never rescan.</li>
+    <li>On your PC, make sure <code>ssh youruser@atlas-vm</code> logs in without a password (an SSH key).</li>
+    <li>Claude Code: <code>claude mcp add --transport stdio --scope user atlas -- ssh -T youruser@atlas-vm sudo atlas mcp --allow-scan</code>, then <code>claude mcp list</code>.</li>
+  </ol>
+  <p>For Claude Desktop, HTTP with a token, privacy (<code>--sanitize</code>) and troubleshooting, see <code>docs/MCP.md</code> in the repository. Your machines stay read-only: the most Claude can do is ask atlas for a fresh read-only scan of one machine, at most once a minute.</p>
 </section>
 
 <section id="update" class="card">
