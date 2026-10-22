@@ -2,6 +2,14 @@
 
 All notable changes. Versions follow [SemVer](https://semver.org/); dates are UTC.
 
+## 0.5.1 (2026-10-22)
+
+### Fixed
+- `./deploy/atlas.sh` and the `sudo atlas` shortcut failed with "command not found" on Linux:
+  the scripts were committed without the executable bit. They are executable in git now, and the
+  shortcut sets the bit itself. If an old clone still says "command not found", run
+  `sudo bash deploy/atlas.sh update --no-pull` once.
+
 ## 0.5.0 (2026-10-22)
 
 ### Added

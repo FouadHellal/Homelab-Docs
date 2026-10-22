@@ -216,6 +216,7 @@ link_cli() {  # `atlas` on PATH, so updates are one command
         warn "$BIN_LINK exists and is not our shortcut; leaving it alone"
         return 0
     fi
+    chmod 0755 "$REPO_DIR/deploy/atlas.sh"  # a clone made where git kept no exec bit
     ln -sfn "$REPO_DIR/deploy/atlas.sh" "$BIN_LINK"
 }
 

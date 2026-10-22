@@ -254,3 +254,20 @@ def test_mcp_allow_refuses_bad_input_and_non_root(tmp_path: Path) -> None:
         pytest.skip("running as root")
     assert res.returncode != 0
     assert "run with sudo" in res.stderr
+
+
+def test_scripts_are_executable_in_git() -> None:
+    """Committed from Windows, the exec bit is easy to lose; then `./deploy/atlas.sh` and the
+    `atlas` shortcut fail with "command not found" on every Linux clone."""
+    git = shutil.which("git")
+    if git is None:
+        pytest.skip("needs git")
+    res = subprocess.run(  # noqa: S603 - fixed argv, test-only
+        [git, "ls-files", "-s", "deploy/atlas.sh", "docs/targets/atlas-probe",
+         "docs/targets/atlas-probe-gate"],
+        cwd=REPO, capture_output=True, text=True, check=True, timeout=30,
+    )  # fmt: skip
+    modes = {line.split("\t")[1]: line.split()[0] for line in res.stdout.splitlines()}
+    assert modes == dict.fromkeys(
+        ("deploy/atlas.sh", "docs/targets/atlas-probe", "docs/targets/atlas-probe-gate"), "100755"
+    )
