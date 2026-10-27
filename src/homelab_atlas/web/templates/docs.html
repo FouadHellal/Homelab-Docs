@@ -128,7 +128,7 @@
 <section id="update" class="card">
   <h2>Updating</h2>
   <pre><code>sudo atlas update</code></pre>
-  <p>This pulls the new code (<code>git pull --ff-only</code>, run as the clone's owner so a private repository works), writes a backup to <code>/opt/atlas/backups</code> (the last five are kept), pulls the new image and restarts. Your targets, stored passwords and keys, accounts, notes and history are kept. Database changes are applied automatically. The first time, if the shortcut doesn't exist yet, run <code>git pull &amp;&amp; sudo ./deploy/atlas.sh update</code> in your clone.</p>
+  <p>This pulls the new code (<code>git pull --ff-only</code>, run as the clone's owner), writes a backup to <code>/opt/atlas/backups</code> (the last five are kept), pulls the new image and restarts. Your targets, stored passwords and keys, accounts, notes and history are kept. Database changes are applied automatically. The first time, if the shortcut doesn't exist yet, run <code>git pull &amp;&amp; sudo ./deploy/atlas.sh update</code> in your clone.</p>
   <p><strong>Nothing changed?</strong> <code>sudo atlas version</code> shows the running version and the clone's last commit. If the pull failed, run <code>git pull</code> in the clone as yourself, then <code>sudo atlas update --no-pull</code>, then reload with <kbd>Ctrl</kbd> <kbd>F5</kbd>.</p>
 </section>
 

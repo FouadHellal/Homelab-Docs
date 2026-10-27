@@ -54,7 +54,7 @@ Validated by Pydantic; unknown keys are an error. `credential`/`key` are names r
 One file per entity or group, keyed by stable entity key:
 ```yaml
 entity: "pve:vm:homelab/105"
-owner: fouad
+owner: alex
 purpose: "Reverse proxy"
 criticality: high      # low | medium | high | critical
 tags: [edge, prod]

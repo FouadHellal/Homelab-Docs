@@ -1,5 +1,5 @@
 entity: host:02081f17b96537b5f3a884404e3c9fb2
-owner: fouad
+owner: alex
 purpose: Garage sensors and door relay
 criticality: low
 tags:

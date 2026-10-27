@@ -174,7 +174,7 @@ Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a
 **Rejected.** Distroless (harder debugging, little gain over slim with a non-root user and ro rootfs); Alpine (musl wheels for argon2/cryptography).
 
 ## ADR-018 Secrets handling
-**Decision.** `SecretResolver` reads `/run/secrets/<name>` (prod) or `./secrets/<name>` (dev, git-ignored, never read by Claude). Values are wrapped in `SecretStr` and only unwrapped inside the transport call. SSH private keys are mounted read-only. Names must match `[a-z0-9][a-z0-9_.-]{0,63}`; symlinks, directories and files over 64 KiB are refused. The 0600 check applies to the dev `./secrets/` directory only, because Docker Compose bind-mounts file secrets 0444 and ignores `mode`, so `/run/secrets` relies on container isolation (non-root, single-purpose container). `.env.example` only. gitleaks runs in pre-commit (staged changes) and in CI (full history). Fake secrets must contain `ATLASFAKE`, the only allowlist.
+**Decision.** `SecretResolver` reads `/run/secrets/<name>` (prod) or `./secrets/<name>` (dev, git-ignored). Values are wrapped in `SecretStr` and only unwrapped inside the transport call. SSH private keys are mounted read-only. Names must match `[a-z0-9][a-z0-9_.-]{0,63}`; symlinks, directories and files over 64 KiB are refused. The 0600 check applies to the dev `./secrets/` directory only, because Docker Compose bind-mounts file secrets 0444 and ignores `mode`, so `/run/secrets` relies on container isolation (non-root, single-purpose container). `.env.example` only. gitleaks runs in pre-commit (staged changes) and in CI (full history). Fake secrets must contain `ATLASFAKE`, the only allowlist.
 **Rejected.** Env-var secrets (they leak via `/proc`, `docker inspect`, crash dumps); a Vault (an extra service for a homelab).
 
 ## ADR-019 Change-noise policy (M2)
@@ -574,7 +574,7 @@ Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a
 - **In-app docs (`/docs`)** cover onboarding, Proxmox (SSH and token, including the privilege-separation step), UniFi, what is read, pages, shortcuts, updating, troubleshooting and security.
 - **Publishing.**
   - The MIT license: permissive, and the norm for homelab tools.
-  - CONTRIBUTING (the hard rules from CLAUDE.md, for humans), a short code of conduct, issue forms that warn against pasting secrets, a PR checklist and a CHANGELOG.
+  - CONTRIBUTING (the project's hard rules), a short code of conduct, issue forms that warn against pasting secrets, a PR checklist and a CHANGELOG.
   - Version 0.3.0.
 
 **Rejected.**

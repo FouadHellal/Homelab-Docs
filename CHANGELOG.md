@@ -2,6 +2,34 @@
 
 All notable changes. Versions follow [SemVer](https://semver.org/); dates are UTC.
 
+## Unreleased
+
+### Changed
+- The repository is public. The README is shorter; setup per target, pages, settings and
+  troubleshooting moved to `docs/GUIDE.md`.
+- Docs no longer assume a private repository or a private GHCR package.
+- `atlas mcp --http --allow-scan` is refused: live scans stay on stdio (ADR-036).
+
+### Fixed
+- `--sanitize` exports and MCP answers let all-caps names (`DC01`, `NAS-01`) through.
+- Sanitized MCP `get_host` still returned annotation tags and criticality.
+- The MCP size cap could recurse until `RecursionError` on one oversized item.
+- One crashing collector (e.g. a proxy's HTML page instead of JSON) aborted the whole scan;
+  it is now a failed run for that target only.
+- A Proxmox cluster of 3+ nodes with 2+ nodes scanned over SSH rolled back every scan
+  (both nodes reported the same peer).
+- API-only Proxmox nodes were listed as unknown devices.
+- `HttpLimits.total_s` was never enforced, so a slow drip of data never timed out.
+- `atlas serve` and a CLI or MCP scan in the same container forked the audit chain;
+  appends now take a file lock.
+- A failing manual scan stopped the queue, leaving the rest stuck as "queued".
+- Logging in after following a link dropped its query string (422 on `/entity?key=…`).
+- Adding a target with an existing name, or renaming onto one, silently replaced it and
+  its stored credential.
+- Malformed manual UNAS YAML and an `apps:` mapping in `custom-apps.yaml` crashed instead
+  of being reported or ignored.
+- `atlas backup` failed if an interrupted earlier backup left `/data/backup.db` behind.
+
 ## 0.5.1 (2026-10-22)
 
 ### Fixed

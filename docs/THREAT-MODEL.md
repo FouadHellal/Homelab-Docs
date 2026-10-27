@@ -70,7 +70,7 @@ Status: draft for approval (M0a). Method: assets → trust boundaries (ARCHITECT
 |---|---|
 | secrets committed | `.gitignore` for secrets/env/keys/data; gitleaks in pre-commit and CI; Claude deny rules for `.env*`, `secrets/`, `~/.ssh`, keys, force-push |
 | malicious or vulnerable deps | `uv.lock` with hashes, pip-audit, Dependabot, minimal deps, Actions pinned by SHA, Trivy, SBOM |
-| compromised image | GHCR private, provenance attestation, digest-pinned base, non-root, ro rootfs, cap_drop ALL |
+| compromised image | provenance attestation, digest-pinned base, non-root, ro rootfs, cap_drop ALL |
 | a future dev bypasses the wrappers | ruff `banned-api` for `httpx`, `asyncssh`, `subprocess`, `os.system`, `socket` outside `security/`; an architecture test walks imports |
 | Claude touches real targets | no credentials in dev; the `demo:` transport is the default; real transports need `--live` and a config outside the repo |
 

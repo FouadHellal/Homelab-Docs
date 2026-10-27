@@ -1,7 +1,7 @@
 # Deploying atlas
 
 **Quick path:** `sudo ./deploy/atlas.sh install` from a clone does everything below for you;
-see the README's [Deploy](../README.md#deploy) section. This page explains what it sets up,
+see the README's [Deploy](../README.md#deploy) section and the [user guide](GUIDE.md). This page explains what it sets up,
 and how to run atlas behind your own reverse proxy instead.
 
 One small VM or LXC runs the stack with `docker compose`. atlas is a LAN tool: **never
@@ -59,10 +59,9 @@ head -c 48 /dev/urandom | base64 > secrets/atlas_master_key     # encrypts what 
 
 ## 3. Image
 
-The CI builds `ghcr.io/fouadhellal/homelab-docs` from `main` and from `v*` tags, with an SBOM and provenance attestations, after the Trivy gate passes. The package is private by default:
+The CI builds `ghcr.io/fouadhellal/homelab-docs` from `main` and from `v*` tags, with an SBOM and provenance attestations, after the Trivy gate passes. If the pull fails, the installer builds the same image from your clone instead.
 
 ```bash
-echo "$GHCR_READ_TOKEN" | docker login ghcr.io -u <github-user> --password-stdin   # PAT with read:packages only
 docker compose pull
 ```
 

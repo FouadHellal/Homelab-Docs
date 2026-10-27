@@ -177,7 +177,7 @@ Dockerfile docker-compose.yml .github/workflows/{ci,image}.yml
 ## 7. Deployment
 ```mermaid
 flowchart LR
-  gh[GitHub Actions] -- build, scan, push --> ghcr[(GHCR private)]
+  gh[GitHub Actions] -- build, scan, push --> ghcr[(GHCR)]
   ghcr -- docker compose pull --> vm
   subgraph vm[Proxmox VM/LXC: atlas]
     direction TB
