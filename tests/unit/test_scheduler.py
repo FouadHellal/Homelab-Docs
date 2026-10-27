@@ -219,6 +219,34 @@ def test_full_scan_absorbs_queued_host_scans() -> None:
     asyncio.run(scenario())
 
 
+def test_crashed_manual_scan_does_not_strand_the_queue() -> None:
+    class CrashOnce(FakeEngine):
+        async def run(
+            self,
+            hosts: Sequence[str] | None = None,
+            collectors: Sequence[str] | None = None,
+            label: str | None = None,
+        ) -> ScanSummary:
+            summary = await super().run(hosts, collectors, label)
+            if len(self.calls) == 1:
+                raise RuntimeError("engine crashed")
+            return summary
+
+    async def scenario() -> None:
+        eng = CrashOnce()
+        eng.gate = threading.Event()
+        s = make(eng)
+        s.trigger(hosts=["web01"])
+        await asyncio.sleep(0.05)
+        assert s.trigger(hosts=["db01"]) == "queued"
+        eng.gate.set()
+        await _idle(s)
+        assert eng.calls == [(None, "manual:web01"), (None, "manual:db01")]
+        assert s.status.queued == []
+
+    asyncio.run(scenario())
+
+
 def test_queued_scan_waits_for_an_external_lock() -> None:
     async def scenario() -> None:
         eng = FakeEngine(locked=True)

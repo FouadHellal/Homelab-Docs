@@ -160,6 +160,24 @@ def test_edit_keeps_password_when_left_empty(
     assert ManagedInventory(env["data"]).load().host("docker01").address == "192.168.1.21"
 
 
+def test_add_or_rename_onto_an_existing_host_is_refused(
+    client: tuple[TestClient, str], env: dict[str, Any]
+) -> None:
+    c, csrf = client
+    assert c.post("/targets/host", data=_host(csrf), follow_redirects=False).status_code == 303
+    other = _host(csrf, name="web01", address="192.168.1.30", password="other-ATLASFAKE-pw")
+    assert c.post("/targets/host", data=other, follow_redirects=False).status_code == 303
+    # "Add" with an existing name, and renaming web01 onto docker01 (any case).
+    for data in (_host(csrf, name="DOCKER01"), {**other, "original": "web01", "name": "docker01"}):
+        r = c.post("/targets/host", data=data)
+        assert r.status_code == 422
+        assert "already exists" in r.text
+    inv = ManagedInventory(env["data"]).load()
+    assert {h.name for h in inv.hosts} == {"docker01", "web01"}
+    assert env["vault"].resolve("ui-ssh-docker01").get_secret_value() == SSH_PW
+    assert env["vault"].resolve("ui-ssh-web01").get_secret_value() == "other-ATLASFAKE-pw"
+
+
 @pytest.mark.parametrize(
     ("kw", "message"),
     [
@@ -397,7 +415,7 @@ def test_unknown_page_hides_personal_devices_and_prefills_targets(
         s.add(scan)
         s.flush()
         for key, name, cat in [
-            ("net:mac:aa", "Fouads-iPhone", "personal"),
+            ("net:mac:aa", "Alexs-iPhone", "personal"),
             ("net:mac:bb", "rpi-dns", "pi"),
         ]:
             s.add(Entity(key=key, kind="unknown-device", display_name=name, status="unknown"))
@@ -421,9 +439,9 @@ def test_unknown_page_hides_personal_devices_and_prefills_targets(
         s.commit()
     page = c.get("/unknown").text
     assert "rpi-dns" in page
-    assert "Fouads-iPhone" not in page
+    assert "Alexs-iPhone" not in page
     assert "show everything" in page
-    assert "Fouads-iPhone" in c.get("/unknown?everything=true").text
+    assert "Alexs-iPhone" in c.get("/unknown?everything=true").text
     m = re.search(r'href="(/targets/host\?prefill[^"]+)"', page)
     assert m is not None
     form = c.get(m.group(1).replace("&amp;", "&")).text

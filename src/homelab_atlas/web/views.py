@@ -22,7 +22,7 @@ from homelab_atlas.engine.apps import (
 )
 from homelab_atlas.engine.reconcile import RECONCILE
 from homelab_atlas.store.facets import facet_views
-from homelab_atlas.store.tables import Entity, Event, Facet
+from homelab_atlas.store.tables import Entity, Facet
 from homelab_atlas.web.queries import _ip_key, context, ip_table
 
 MACHINE_KINDS: Final = ("pve-node", "pve-vm", "pve-lxc", "linux-host", "nas")
@@ -382,16 +382,6 @@ def ip_groups(s: Session, q: str | None = None, everything: bool = False) -> dic
         ql = q.lower()[:64]
         out = [g for g in out if ql in str(g).lower()]
     return {"groups": out, "hidden": hidden}
-
-
-def recent_activity(s: Session, limit: int = 8) -> list[dict[str, Any]]:
-    rows = s.execute(
-        select(Event, Entity.display_name)
-        .join(Entity, Entity.key == Event.entity_key, isouter=True)
-        .order_by(Event.id.desc())
-        .limit(limit)
-    ).all()
-    return [{"event": e, "name": n or e.entity_key} for e, n in rows]
 
 
 def discovered_not_documented(

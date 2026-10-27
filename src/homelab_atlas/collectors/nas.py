@@ -92,7 +92,10 @@ def from_drive(name: str, system: Any, storage: Any, info: Any) -> NasFacts:
 def from_manual(name: str, path: Path) -> NasFacts:
     if path.stat().st_size > MAX_MANUAL_BYTES:
         raise ValueError(f"{path.name}: too large")
-    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError:
+        raise ValueError(f"{path.name}: not valid YAML") from None
     if not isinstance(raw, dict):
         raise ValueError(f"{path.name}: must be a mapping")
     allowed = {"name", "model", "mac", "firmware", "pools", "disks", "shares"}

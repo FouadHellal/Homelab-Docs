@@ -119,6 +119,10 @@ def mcp_cmd(
     from homelab_atlas.mcp_server import BearerAuth, build_server, engine_scanner  # noqa: PLC0415
     from homelab_atlas.runtime import lab_inputs, live_inputs  # noqa: PLC0415
 
+    if http and allow_scan:
+        # ADR-036: scan credentials never sit behind a network listener; use stdio over SSH.
+        console.print("[red]error:[/] --allow-scan works with stdio only, not with --http")
+        raise typer.Exit(2)
     rt = _runtime(lab, data_dir)
     scanner = None
     if allow_scan:

@@ -20,7 +20,7 @@ from tests.helpers import scanned_lab
         ("dc:a6:32:01:02:03", "kitchen-thing", False, None, "pi"),  # Raspberry Pi 4
         ("2c:cf:67:01:02:03", None, True, None, "pi"),  # Raspberry Pi 5
         ("00:11:32:aa:bb:cc", "DiskStation", True, None, "nas"),
-        ("a4:83:e7:11:22:33", "Fouads-iPhone", False, "Home", "personal"),
+        ("a4:83:e7:11:22:33", "Alexs-iPhone", False, "Home", "personal"),
         ("3a:1f:22:33:44:55", None, False, "Home", "personal"),  # randomized MAC
         ("3a:1f:22:33:44:55", "pve3", True, "Servers", "server"),  # name beats random MAC
         ("f0:f5:bd:11:22:33", "LivingRoom-TV", False, "Home", "iot"),

@@ -108,7 +108,7 @@ get_image() {  # get_image <build:0|1>
         if compose pull atlas; then
             return 0
         fi
-        warn "could not pull $image:$tag (private package? run: docker login ghcr.io). Building locally instead."
+        warn "could not pull $image:$tag (offline, or no access to the registry?). Building locally instead."
     fi
     say "building the image from $REPO_DIR (takes a few minutes the first time)"
     docker build -t atlas:local "$REPO_DIR"
@@ -243,7 +243,7 @@ git_pull() {  # fast-forward this clone; never discards local edits; stops loudl
         [ -z "$changed" ] || warn "files changed in the clone (git refuses to overwrite them):
 $changed"
         die "git pull failed, so nothing was updated (atlas still runs the old version).
-  Private repository? git must log in as the clone's owner: run   git -C $REPO_DIR pull   yourself.
+  If git needs credentials, run   git -C $REPO_DIR pull   yourself.
   Local edits? keep them with   git -C $REPO_DIR stash   (or drop them with   git -C $REPO_DIR checkout -- .).
   Then run   sudo atlas update --no-pull"
     fi
@@ -319,6 +319,8 @@ cmd_version() {
 cmd_backup() {
     local out="${1:-atlas-backup-$(date +%Y%m%d-%H%M%S).tar.gz}" tmp
     tmp="$(mktemp -d)"
+    # VACUUM INTO refuses an existing file: clear what an interrupted backup left behind.
+    compose exec -T atlas rm -f /data/backup.db
     compose exec -T atlas python -c "import sqlite3; c=sqlite3.connect('/data/atlas.db'); c.execute(\"VACUUM INTO '/data/backup.db'\")"
     docker cp "$(compose ps -q atlas):/data/backup.db" "$tmp/atlas.db"
     compose exec -T atlas rm -f /data/backup.db

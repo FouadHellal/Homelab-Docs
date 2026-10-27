@@ -32,6 +32,7 @@ from homelab_atlas.store.tables import Annotation, Entity, Facet
 from homelab_atlas.web import queries, views
 
 MAX_RESULT_BYTES: Final = 200_000
+FACETS_OMITTED: Final = "omitted: too large, narrow the query"
 #: Tool arguments are short identifiers or search terms; refuse anything longer.
 Arg = Annotated[str, Field(max_length=128)]
 MAX_ROWS: Final = 500
@@ -68,13 +69,15 @@ def _cap(payload: dict[str, Any]) -> dict[str, Any]:
     size = len(json.dumps(payload, default=str, ensure_ascii=False).encode())
     if size <= MAX_RESULT_BYTES:
         return payload
-    if isinstance(payload.get("items"), list):
-        items = payload["items"]
-        keep = max(1, len(items) * MAX_RESULT_BYTES // size - 1)
+    items = payload.get("items")
+    if isinstance(items, list) and items:
+        # Always drop at least one item, so the recursion ends even for one huge item.
+        keep = min(len(items) - 1, max(1, len(items) * MAX_RESULT_BYTES // size - 1))
         return _cap({**payload, "items": items[:keep], "truncated": True})
-    if isinstance(payload.get("facets"), dict):
+    facets = payload.get("facets")
+    if isinstance(facets, dict) and any(v != FACETS_OMITTED for v in facets.values()):
         slim = {k: v for k, v in payload.items() if k != "facets"}
-        slim["facets"] = dict.fromkeys(payload["facets"], "omitted: too large, narrow the query")
+        slim["facets"] = dict.fromkeys(facets, FACETS_OMITTED)
         return _cap({**slim, "truncated": True})
     return {"truncated": True, "error": "result too large, narrow the query"}
 
@@ -188,7 +191,8 @@ def build_server(
                         "tags": a.tags,
                         "notes": a.notes,
                     }
-                    if a
+                    # Sanitized answers drop annotations, like sanitized exports (ADR-023).
+                    if a and sanitize_key is None
                     else None,
                     "facets": d["facets"],
                     "recent_changes": [

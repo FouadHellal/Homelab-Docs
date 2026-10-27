@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final, Literal, Protocol
 
+from filelock import FileLock
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from homelab_atlas.redact import redact_text
@@ -91,10 +92,13 @@ class VerifyReport:
 
 
 class AuditLog:
-    """Thread-safe appender.
+    """Thread- and process-safe appender.
 
     Startup reads only the last record (cheap) and refuses to start if it is malformed or
     does not hash to itself. Full-chain checking is `verify()` / `atlas audit verify`.
+    Several processes may share the directory (`atlas serve` plus `atlas scan`, `atlas mcp`
+    in the same container): appends hold a file lock and re-read the tail whenever another
+    process wrote since this one last did, so the chain never forks.
     """
 
     def __init__(self, directory: Path, *, scrub: Callable[[str], str] = redact_text) -> None:
@@ -102,7 +106,10 @@ class AuditLog:
         self._scrub = scrub
         self._lock = threading.Lock()
         directory.mkdir(parents=True, exist_ok=True)
-        self._seq, self._head = _tail(directory)
+        self._file_lock = FileLock(directory / ".audit.lock")
+        with self._file_lock:
+            self._seq, self._head = _tail(directory)
+            self._mark = _mark(directory)
 
     @property
     def head(self) -> tuple[int, str]:
@@ -112,7 +119,9 @@ class AuditLog:
         body = event.model_dump(mode="json")
         if body["detail"] is not None:
             body["detail"] = self._scrub(body["detail"])[:MAX_DETAIL]
-        with self._lock:
+        with self._lock, self._file_lock:
+            if _mark(self._dir) != self._mark:  # another process appended meanwhile
+                self._seq, self._head = _tail(self._dir)
             body["seq"] = self._seq + 1
             body["prev"] = self._head
             digest = _chain_hash(self._head, body)
@@ -128,6 +137,13 @@ class AuditLog:
                 os.close(fd)
             self._seq += 1
             self._head = digest
+            self._mark = _mark(self._dir)
+
+
+def _mark(directory: Path) -> tuple[str, int] | None:
+    """Name and size of the newest file: changes whenever anyone appends."""
+    files = _files(directory)
+    return (files[-1].name, files[-1].stat().st_size) if files else None
 
 
 def _tail(directory: Path) -> tuple[int, str]:

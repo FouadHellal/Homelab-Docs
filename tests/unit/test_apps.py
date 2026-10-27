@@ -1,6 +1,8 @@
 """App recognition from services, processes, containers and ports (ADR-029)."""
 
-from homelab_atlas.engine.apps import CATALOG, CATEGORY_LABELS, detect
+from pathlib import Path
+
+from homelab_atlas.engine.apps import CATALOG, CATEGORY_LABELS, detect, load_rules
 from homelab_atlas.web.views import os_label, top_apps
 
 
@@ -91,3 +93,10 @@ def test_top_apps_skips_platform_apps() -> None:
     assert top_apps(cards) == ["Pi-hole", "Grafana", "Jellyfin"]
     assert top_apps(cards, n=1) == ["Pi-hole"]
     assert top_apps([]) == []
+
+
+def test_custom_rules_file_with_wrong_shape_is_ignored(tmp_path: Path) -> None:
+    f = tmp_path / "apps.yaml"
+    for text in ("apps: {name: X}\n", "apps: 3\n", "- a\n", ""):
+        f.write_text(text, encoding="utf-8")
+        assert load_rules(f) == []

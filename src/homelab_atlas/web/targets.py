@@ -10,6 +10,7 @@
 """
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final, Literal
@@ -219,10 +220,17 @@ class TargetsService:
             AuditEvent(target=target[:128], transport="ui", op=op, outcome="ok", duration_ms=0)
         )
 
+    def _refuse_taken(self, names: Iterable[str], name: str, original: str) -> None:
+        """Adding, or renaming onto, an existing name would silently replace that target."""
+        if name.lower() != original.lower() and name.lower() in {n.lower() for n in names}:
+            raise TargetError(f"{name} already exists; pick another name or edit that one")
+
     def save_host(self, form: HostForm, password: SecretStr | None) -> HostEntry:
         self._require_editable(form.name)
         if form.original and form.original != form.name:
             self._require_editable(form.original)
+        inv, _ = self.inventory()
+        self._refuse_taken((h.name for h in inv.hosts), form.name, form.original)
         existing = self.host(form.original or form.name)
         keys = existing.ssh.host_keys if existing else ()
         collectors = [c for c in form.collectors if c in HOST_COLLECTORS]
@@ -265,6 +273,7 @@ class TargetsService:
         except ValidationError as exc:
             raise TargetError(_errors(exc)) from None
         assert self._vault is not None  # noqa: S101 - editable implies a vault
+        moved_from = None
         if form.auth == "password" and password is not None:
             self._vault.put(pw_name, password)
             self._record("ui.secret.set", pw_name)
@@ -275,14 +284,16 @@ class TargetsService:
             and existing.ssh.password != pw_name
             and self.has_secret(existing.ssh.password)
         ):
-            # Renamed host: move the stored password to the new name.
+            # Renamed host: copy the stored password to the new name (old one dropped below).
             self._vault.put(pw_name, self._vault.resolve(existing.ssh.password))
-            self._vault.delete(existing.ssh.password)
+            moved_from = existing.ssh.password
         try:
             self._store.upsert_host(entry, replaces=form.original or None)
         except (ValueError, InventoryError) as exc:
             msg = _errors(exc) if isinstance(exc, ValidationError) else str(exc)
             raise TargetError(msg) from None
+        if moved_from is not None:
+            self._vault.delete(moved_from)
         if key_mode and self.has_secret(pw_name):
             self._vault.delete(pw_name)
         self._record("ui.host.save", form.name)
@@ -299,6 +310,9 @@ class TargetsService:
         self._require_editable(form.name, form.kind)
         if form.original and form.original != form.name:
             self._require_editable(form.original, form.kind)
+        inv, _ = self.inventory()
+        taken = (s.name for s in getattr(inv.sources, form.kind))
+        self._refuse_taken(taken, form.name, form.original)
         cloud = form.kind == "unifi" and form.connection == "cloud"
         url = form.url if cloud else normalize_url(form.kind, form.url)
         existing = self.source(form.kind, form.original or form.name)
@@ -337,18 +351,22 @@ class TargetsService:
         except ValidationError as exc:
             raise TargetError(_errors(exc)) from None
         assert self._vault is not None  # noqa: S101
+        moved_from = None
         if credential is not None:
             self._vault.put(cred_name, credential)
             self._record("ui.secret.set", cred_name)
         elif existing is not None and existing.credential and existing.credential != cred_name:
             self._vault.put(cred_name, self._vault.resolve(existing.credential))
-            self._vault.delete(existing.credential)
-        if form.original and form.original != form.name:
-            self._store.delete_source(form.kind, form.original)
+            moved_from = existing.credential
         try:
             self._store.upsert_source(form.kind, source)
         except (ValueError, InventoryError) as exc:
             raise TargetError(str(exc)[:300]) from None
+        # Only once the new entry is stored: drop the renamed one and its old credential.
+        if form.original and form.original != form.name:
+            self._store.delete_source(form.kind, form.original)
+        if moved_from is not None:
+            self._vault.delete(moved_from)
         self._record(f"ui.{form.kind}.save", form.name)
         return source
 

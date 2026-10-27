@@ -414,8 +414,10 @@ def load_rules(path: Path | None = None) -> list[CustomRule]:
         return []
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     items = raw.get("apps") if isinstance(raw, dict) else None
+    if not isinstance(items, list):
+        items = []  # `apps:` must be a list; anything else is ignored, not a crash
     rules = []
-    for item in (items or [])[:MAX_RULES]:
+    for item in items[:MAX_RULES]:
         try:
             rules.append(CustomRule.model_validate(item))
         except ValidationError as exc:

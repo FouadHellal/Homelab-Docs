@@ -111,6 +111,9 @@ def test_nas_manual_yaml(tmp_path: Path) -> None:
     f.write_text("- not a mapping\n", encoding="utf-8")
     with pytest.raises(ValueError, match="mapping"):
         from_manual("unas", f)
+    f.write_text("model: [unclosed\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="not valid YAML"):
+        from_manual("unas", f)
 
 
 def test_nas_events() -> None:

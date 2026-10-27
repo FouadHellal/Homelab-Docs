@@ -261,7 +261,13 @@ class ReadOnlyHttpClient:
                 await asyncio.sleep(wait)
             self._next_at = time.monotonic() + self._limits.min_interval_s
         try:
-            result = await self._send(request, op)
+            # read_s bounds each read; total_s bounds the whole exchange (a slow drip of small
+            # chunks would otherwise never trip a timeout).
+            async with asyncio.timeout(self._limits.total_s):
+                result = await self._send(request, op)
+        except TimeoutError:
+            self._record(op, "error", start, reason=TargetTimeout.__name__)
+            raise TargetTimeout(f"{op}: total timeout") from None
         except SecurityRefusal as exc:
             self._record(op, "refused", start, reason=exc.reason.value, detail=exc.detail)
             raise

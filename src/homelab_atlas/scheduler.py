@@ -209,7 +209,12 @@ class Scheduler:
             self._queue_hosts.clear()
             self._publish_queue()
             label = "manual" if not hosts else f"manual:{','.join(hosts)}"[:64]
-            if await self._run(label=label, hosts=hosts) is None:
+            try:
+                summary = await self._run(label=label, hosts=hosts)
+            except Exception as exc:  # noqa: BLE001 - a crashed scan must not strand the queue
+                log.warning("scheduler.manual_error", label=label, error=type(exc).__name__)
+                continue
+            if summary is None:
                 # `atlas scan` holds the file lock: put the work back and try again shortly.
                 if hosts is None:
                     self._queue_full = True

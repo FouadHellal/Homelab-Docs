@@ -264,7 +264,12 @@ def create_app(cfg: WebConfig) -> FastAPI:
         if user is None:
             is_api = request.url.path.startswith("/api/")
             if request.method == "GET" and "hx-request" not in request.headers and not is_api:
-                raise HTTPException(303, headers={"Location": f"/login?next={request.url.path}"})
+                # Keep the query (/entity?key=...), within the login form's 512-char limit.
+                back = request.url.path
+                if request.url.query and len(back) + len(request.url.query) < 500:
+                    back += f"?{request.url.query}"
+                location = f"/login?next={quote(back, safe='/')}"
+                raise HTTPException(303, headers={"Location": location})
             raise HTTPException(401, "login required")
         return user
 

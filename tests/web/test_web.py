@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 import yaml
@@ -97,6 +98,13 @@ def test_pages_require_login(client: TestClient, path: str) -> None:
     r = client.get(path, follow_redirects=False)
     assert r.status_code == 303
     assert r.headers["location"].startswith("/login?next=")
+
+
+def test_login_redirect_keeps_the_query(client: TestClient) -> None:
+    r = client.get("/entity?key=pve:vm:homelab/101&x=1", follow_redirects=False)
+    assert r.status_code == 303
+    nxt = parse_qs(urlsplit(r.headers["location"]).query)["next"]
+    assert nxt == ["/entity?key=pve:vm:homelab/101&x=1"]
 
 
 def test_api_and_htmx_get_401(client: TestClient) -> None:
@@ -364,7 +372,7 @@ def test_annotation_edit_roundtrip(client: TestClient, ann_dir: Path) -> None:
     form = {
         "key": key,
         "csrf_token": token,
-        "owner": "fouad",
+        "owner": "alex",
         "purpose": "apps host",
         "criticality": "medium",
         "tags": "docker, apps",
@@ -378,7 +386,7 @@ def test_annotation_edit_roundtrip(client: TestClient, ann_dir: Path) -> None:
     doc = next(d for d in saved if d["entity"] == key)
     assert doc["tags"] == ["apps", "docker"]
     assert list(doc) == ["entity", "owner", "purpose", "criticality", "tags", "links", "notes"]
-    assert "fouad" in client.get(f"/entity?key={key}").text
+    assert "alex" in client.get(f"/entity?key={key}").text
 
 
 @pytest.mark.parametrize(

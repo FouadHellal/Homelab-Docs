@@ -17,6 +17,7 @@ from homelab_atlas.engine.events import EventSpec
 from homelab_atlas.engine.reconcile import reconcile
 from homelab_atlas.models.base import canonical
 from homelab_atlas.redact import Redactor
+from homelab_atlas.security.errors import SecurityRefusal
 from homelab_atlas.store.facets import PVE_FACETS, PVE_SSH_PEER
 from homelab_atlas.store.tables import (
     Blob,
@@ -113,10 +114,13 @@ class ScanEngine:
         jobs = self.plan(hosts, collectors)
         results = await asyncio.gather(*(self._collect(t, c) for t, c in jobs))
         summary = ScanSummary(scan_id=scan_id)
+        # (entity, facet store) pairs already written by this scan: two targets may report the
+        # same fact (two SSH nodes of a 3+ node cluster both see a third node as a peer).
+        written: set[tuple[str, str]] = set()
         with self._sessions() as s:
             for result in sorted(results, key=lambda r: (r.collector, r.target)):
                 summary.runs.append(result)
-                summary.events.extend(self._persist(s, scan_id, result))
+                summary.events.extend(self._persist(s, scan_id, result, written))
             summary.events.extend(reconcile(s, scan_id, self._ctx.inventory))
             scan_row = s.get_one(Scan, scan_id)
             scan_row.finished_at = utcnow()
@@ -147,6 +151,20 @@ class ScanEngine:
                 result = CollectorResult(
                     collector.name, target, "failed", errors=["collector timeout"]
                 )
+            except SecurityRefusal as exc:  # collectors usually map these themselves
+                result = CollectorResult(
+                    collector.name, target, "refused", errors=[f"refused: {exc.reason.value}"]
+                )
+            except Exception as exc:  # noqa: BLE001 - one broken target must not sink the scan
+                log.warning(
+                    "collector.crashed",
+                    collector=collector.name,
+                    target=target,
+                    error=type(exc).__name__,
+                )
+                result = CollectorResult(
+                    collector.name, target, "failed", errors=[f"crashed: {type(exc).__name__}"]
+                )
         for facet in result.facets:
             if facet.model is not None:
                 facet.model = self._redactor.model(facet.model)
@@ -156,7 +174,9 @@ class ScanEngine:
 
     # ------------------------------------------------------------------ persistence
 
-    def _persist(self, s: Session, scan_id: int, r: CollectorResult) -> list[EventSpec]:
+    def _persist(
+        self, s: Session, scan_id: int, r: CollectorResult, written: set[tuple[str, str]]
+    ) -> list[EventSpec]:
         prev_run = s.scalars(
             select(CollectorRun)
             .where(CollectorRun.target == r.target, CollectorRun.collector == r.collector)
@@ -200,6 +220,9 @@ class ScanEngine:
             if pair in seen:
                 continue  # first report wins; collectors should not duplicate keys
             seen.add(pair)
+            if pair in written:
+                continue  # another target of this scan already reported it: first wins
+            written.add(pair)
             events.extend(self._persist_facet(s, scan_id, r, facet, collector))
         if r.complete:
             stores = {r.collector} | set(getattr(collector, "extra_facets", ()))

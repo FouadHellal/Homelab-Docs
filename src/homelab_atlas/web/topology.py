@@ -325,41 +325,6 @@ def proxmox(s: Session, c: Ctx) -> list[dict[str, Any]]:
     return _dedupe(out)
 
 
-def logical(c: Ctx) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    keep = {
-        "pve-cluster",
-        "pve-node",
-        "pve-vm",
-        "pve-lxc",
-        "linux-host",
-        "compose-project",
-        "container",
-        "nas",
-    }
-    for key, e in c.entities.items():
-        if e.kind not in keep or e.status == "gone" or e.same_as:
-            continue  # same_as hosts are drawn as their VM
-        short = e.display_name.split("/")
-        label = short[-2] if e.kind == "container" and len(short) > 3 else short[-1]
-        out.append(
-            _node(c, key, label=label if e.kind in ("container", "compose-project") else None)
-        )
-        parent = e.parent_key
-        if e.kind == "container":
-            project = next((v for v in (e.display_name.split("/")[1:2]) if v), None)
-            compose = f"compose:{e.parent_key}/{project}" if project else None
-            parent = compose if compose in c.entities else e.parent_key
-        if parent:
-            out.append(_edge(canonical_key(c, parent), key, "contains"))
-    ids = {n["data"]["id"] for n in out if "source" not in n["data"]}
-    return [
-        x
-        for x in _dedupe(out)
-        if "source" not in x["data"] or (x["data"]["source"] in ids and x["data"]["target"] in ids)
-    ]
-
-
 def vlan(s: Session, c: Ctx) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     rows = ip_table(s)

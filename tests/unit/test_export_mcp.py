@@ -349,6 +349,51 @@ def test_mcp_result_cap() -> None:
     assert facets["truncated"] and facets["facets"]["docker"].startswith("omitted")
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"items": [{"x": "y" * (MAX_RESULT_BYTES + 1)}]},  # one item too big on its own
+        {"items": [], "note": "y" * (MAX_RESULT_BYTES + 1)},  # big non-item field
+        {"facets": {"a": "z" * 10}, "children": ["c" * 100] * 3000},  # big after eliding
+    ],
+)
+def test_mcp_result_cap_always_terminates(payload: dict[str, Any]) -> None:
+    capped = _cap(payload)
+    assert capped["truncated"] is True
+    assert len(json.dumps(capped).encode()) <= MAX_RESULT_BYTES
+
+
+def test_sanitize_hides_all_caps_names() -> None:
+    san = Sanitizer(KEY)
+    export.register_names(
+        san,
+        [
+            {"name": "DC01", "kind": "pve-vm", "facets": {}},
+            {"name": "ATLASFAKE-NAS", "kind": "nas", "facets": {}},
+            {"name": "web (CT)", "kind": "pve-lxc", "facets": {}},
+        ],
+    )
+    out = json.dumps(san.data({"a": "DC01", "b": "vm DC01 started", "c": "ATLASFAKE-NAS up"}))
+    assert "DC01" not in out and "ATLASFAKE-NAS" not in out
+    # Short all-caps words of a name are not registered on their own.
+    assert san.text("CT and VM") == "CT and VM"
+
+
+def test_mcp_sanitized_get_host_drops_annotation(rt: Runtime) -> None:
+    srv = build_server(rt.sessions, sanitize_key=KEY)
+    with rt.sessions() as s:
+        key = _docker01(s)
+    assert _call(srv, "get_host", name_or_key=key)["annotation"] is None
+
+
+def test_mcp_http_refuses_allow_scan(tmp_path: Path) -> None:
+    res = CliRunner().invoke(
+        cli_app, ["mcp", "--http", "--allow-scan", "--data-dir", str(tmp_path / "d")]
+    )
+    assert res.exit_code == 2
+    assert not (tmp_path / "d").exists()  # refused before opening anything
+
+
 def _guarded(token: str) -> TestClient:
     inner = Starlette(routes=[Route("/mcp", lambda r: PlainTextResponse("ok"), methods=["POST"])])
     return TestClient(BearerAuth(inner, token))

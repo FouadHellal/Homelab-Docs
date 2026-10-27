@@ -113,9 +113,15 @@ def register_names(san: Sanitizer, entities: Iterable[dict[str, Any]]) -> None:
     """
     for e in entities:
         prefix = KIND_PREFIX.get(e["kind"], "obj")
-        names = {e["name"], *e["name"].replace("(", " ").split()}
+        # The whole name always counts (DC01, NAS-01 are names too); of its words, skip
+        # all-caps / numeric tokens such as "VM" or "CT)" that would clobber unrelated text.
+        words = e["name"].replace("(", " ").split()
         san.register(
-            [n for n in names if len(n) > 2 and not n.isupper() and not n.isdigit()], prefix
+            [
+                *([] if e["name"].isdigit() else [e["name"]]),
+                *(w for w in words if len(w) > 2 and not w.isupper() and not w.isdigit()),
+            ],
+            prefix,
         )
         for f in e["facets"].values():
             if not isinstance(f, dict):

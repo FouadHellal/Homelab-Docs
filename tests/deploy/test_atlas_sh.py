@@ -131,7 +131,7 @@ def test_install_builds_when_pull_fails(tmp_path: Path) -> None:
     env = (tmp_path / "atlas" / ".env").read_text(encoding="utf-8")
     assert "ATLAS_IMAGE=atlas" in env
     assert "ATLAS_VERSION=local" in env
-    assert "docker login ghcr.io" in res.stderr
+    assert "Building locally instead" in res.stderr
 
 
 def test_user_add_rejects_mismatch_then_accepts(tmp_path: Path) -> None:

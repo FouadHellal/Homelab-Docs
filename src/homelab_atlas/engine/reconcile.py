@@ -89,13 +89,15 @@ def build_index(
             idx.ips.update(
                 ip for a in iface.get("addresses") or [] if (ip := _ip(a.get("address")))
             )
-    for f in facets:  # Proxmox guests, from the API or from a node's /etc/pve
+    for f in facets:  # Proxmox nodes and guests, from the API or from a node's /etc/pve
+        if f.entity_key.startswith("pve:node:"):
+            if ip := _ip(f.data.get("ip")):
+                idx.ips.add(ip)  # an API-only node is explained, not an unknown device
+            continue
         if "vmid" not in f.data:
             continue
         _claim(idx, [n.get("mac") for n in f.data.get("nics") or []], f.entity_key)
         idx.ips.update(ip for a in f.data.get("ips") or [] if (ip := _ip(a.get("address"))))
-        if ip := _ip(f.data.get("ip")):
-            idx.ips.add(ip)
     for h in inventory.hosts if inventory is not None else ():
         if ip := _ip(h.address):
             idx.ips.add(ip)

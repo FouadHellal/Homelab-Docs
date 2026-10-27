@@ -17,7 +17,7 @@ PROBE_PATH: Final = "/usr/local/libexec/atlas-probe"
 GATE_PATH: Final = "/usr/local/libexec/atlas-probe-gate"
 SUDO_PATH: Final = "/usr/bin/sudo"
 PROBE_USER: Final = "atlas-ro"
-#: Sections the v1 probe implements; the others exit 3 until their milestone.
+#: Sections the probe implements (all of them; kept for the gate template and docs).
 IMPLEMENTED: Final = frozenset(ProbeSection)
 
 _PATH_RE: Final = re.compile(r"/[A-Za-z0-9._/-]+")

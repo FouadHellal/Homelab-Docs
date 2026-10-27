@@ -1,5 +1,6 @@
 """ReadOnlyHttpClient: refusals, path tricks, redirects, caps, headers, audit."""
 
+import asyncio
 import dataclasses
 import json
 from collections.abc import Callable
@@ -406,6 +407,20 @@ async def test_timeout_mapped(audit: MemoryAudit) -> None:
     async with make_client(audit, rec) as c:
         with pytest.raises(TargetTimeout):
             await c.get(EP_QEMU, {"node": "pve1"})
+    assert audit.events[-1].reason == "TargetTimeout"
+
+
+async def test_total_time_cap_stops_a_slow_drip(audit: MemoryAudit) -> None:
+    async def drip() -> Any:
+        for _ in range(1000):
+            await asyncio.sleep(0.01)  # each read is quick; the whole body is not
+            yield b"y"
+
+    rec = Recorder(lambda _r: httpx.Response(200, content=drip()))
+    async with make_client(audit, rec, limits=HttpLimits(total_s=0.2)) as c:
+        with pytest.raises(TargetTimeout):
+            await c.get(EP_QEMU, {"node": "pve1"})
+    assert audit.events[-1].outcome == "error"
     assert audit.events[-1].reason == "TargetTimeout"
 
 

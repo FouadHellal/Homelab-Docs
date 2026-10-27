@@ -203,3 +203,16 @@ def test_event_validation(kw: dict[str, Any]) -> None:
 def test_no_mutation_api() -> None:
     public = {n for n in dir(AuditLog) if not n.startswith("_")}
     assert public == {"record", "head"}
+
+
+def test_two_writers_on_one_directory_keep_one_chain(tmp_path: Path) -> None:
+    """`atlas serve` and a CLI/MCP scan each hold an AuditLog on the same directory."""
+    server, cli = AuditLog(tmp_path), AuditLog(tmp_path)
+    server.record(ev(1))
+    cli.record(ev(2))
+    cli.record(ev(3))
+    server.record(ev(4))
+    report = verify(tmp_path)
+    assert report.ok, report.error
+    assert report.records == 4
+    assert server.head[0] == 4
