@@ -2,6 +2,26 @@
 
 All notable changes. Versions follow [SemVer](https://semver.org/); dates are UTC.
 
+## 0.7.0 (2026-11-01)
+
+### Added
+- A new look: left sidebar with icons, a real logo, the Geist font, a violet-to-cyan theme in
+  dark and light, and a phone layout (menu drawer, stacked cards, tables that scroll inside
+  their card).
+- App pages: click any app, chip or service (for example the Action1 agent) to see what it is,
+  who makes it, what to watch out for, every machine it runs on with version and state, and
+  search buttons that open in your browser. Also in Ctrl+K and for Claude (`describe_app`).
+- Recognises more agents: Action1, Tactical RMM, MeshCentral, Wazuh, Checkmk, Datadog,
+  Telegraf, Promtail, Cloudflare Tunnel, ZeroTier, NetBird, Watchtower, QEMU guest agent.
+
+### Fixed
+- Proxmox view: a node scanned over SSH could appear twice (the node with its VMs, plus an
+  empty box for the same machine), so nodes and VMs looked mixed up.
+- Saved passwords: the login form now uses the fields password managers look for.
+- VLAN members, long target URLs and docs tables no longer spill out of their cards.
+- A machine without Docker no longer shows *docker: failed*; unreadable Docker and refused
+  Proxmox tokens say what to do.
+
 ## 0.6.0 (2026-11-01)
 
 ### Added

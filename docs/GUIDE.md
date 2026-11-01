@@ -91,7 +91,7 @@ they're stored.
 | Dashboard | Proxmox nodes and guests, one card per machine with the apps found on it, targets that need attention, undocumented devices, recent changes, **Scan now** |
 | Topology | Proxmox view (node → bridges → VMs/LXCs), network view (gateway → switches → APs → hosts) and VLANs. Click for details, right-click for actions, PNG export. Keys: `/` `F` `R` `C` |
 | Services | Every systemd unit and container on every machine, filterable, with CSV export |
-| Apps | Recognised apps (Pi-hole, Home Assistant, Jellyfin, NetBox, Grafana…) and where they run. Unrecognised listening ports are listed too; name one once and it's recognised everywhere |
+| Apps | Recognised apps and agents (Pi-hole, Home Assistant, Jellyfin, Action1, Zabbix, Wazuh…) and where they run. Click any app, chip or service name for its page: what it is, who makes it, caveats, every machine it runs on with version and state, and search buttons that open in your browser. Unrecognised listening ports are listed too; name one once and it's recognised everywhere |
 | Inventory | Every machine: OS, network, ports, what's running, disks, users, notes, history |
 | IPs, VLANs, Ports | Searchable tables |
 | Changes | Port opened, image updated, container restarted, new device on a VLAN, VM not backed up… with filters and CSV export |
@@ -148,6 +148,9 @@ Settings live in `/opt/atlas/.env`. Run `sudo atlas start` after editing.
 | `install` builds the image instead of pulling it | The registry pull failed (network, or no access to the package). Building from the clone works just as well. |
 | VM test login: *authentication refused* | Wrong credentials, or the VM has `PasswordAuthentication no`. Use the SSH key option. |
 | VM scan is *partial* | No sudo, so Docker details, port owners and root crontabs are missing. Tick *use for sudo*. |
+| docker: *failed*, "could not be read" | Docker is installed but the login can't read it. Tick *use for sudo* (or add the login to the `docker` group). Machines without Docker now show *ok*. |
+| Proxmox: *HTTP 401* | The token id or secret is wrong: the id is `user@realm!name`, the secret is the UUID shown once. *HTTP 403*: give the token PVEAuditor on `/`. |
+| The browser doesn't fill in the saved password | Browsers only auto-fill on `https://` pages; on plain HTTP click the username field and pick the saved login. |
 | UniFi cloud: *the key was refused* | A unifi.ui.com key entered as Local, or the other way round. |
 | UniFi local: certificate error | The gateway's certificate changed (often after an update). Fetch and confirm it again. |
 | No Proxmox nodes or VMs anywhere | The token lacks PVEAuditor itself; run the last `pveum acl modify … --tokens` line above. Or add a node as `proxmox-node`. |

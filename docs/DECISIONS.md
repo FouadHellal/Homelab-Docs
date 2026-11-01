@@ -687,3 +687,19 @@ Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a
 **Rejected.**
 - Logging in with a local account to get a classic session: a stored password with admin-ish reach, for one field.
 - Reading port tables from device details and guessing by MAC: switch port tables in the Integration API don't list client MACs.
+
+## ADR-038 UI v6: sidebar shell, Geist, app pages with built-in notes, topology dedupe (v7, owner request)
+**Context.** Owner feedback on 0.6.0 with screenshots: the UI "looks like a classic Claude Code website", menu wanted on the left, phones unusable, tables spilling out of their cards (VLAN members, Targets URLs, Docs), browsers not filling saved logins, the Proxmox view of the real lab mixing nodes up, and detected things (e.g. the Action1 agent) should be clickable with details "like it searched it up".
+
+**Decisions.**
+- **Shell**: a fixed left sidebar (sections Infrastructure, Network, Activity, Setup, inline line icons) replaces the top bar; below 960 px it becomes a drawer behind a hamburger, with a sticky mobile bar. Every table is wrapped in a horizontal scroller by app.js, so nothing is wider than its card; long values (URLs, VLAN members) wrap.
+- **Look**: a gradient violet → blue → cyan identity, a new logo (an "A" drawn as three linked nodes with an orbit), and the Geist / Geist Mono variable fonts (OFL-1.1, @fontsource-variable 5.3.0, verified against the npm tarball integrity, pinned by SHA-256 like the JS, served from `/static/vendor/fonts`; CSP `font-src 'self'` unchanged).
+- **Login**: the form uses the pattern password managers detect: POST form with id/name, `<label for>`, `name=username autocomplete=username type=text`, `name=password autocomplete=current-password`. Note that browsers only auto-fill without a click on HTTPS pages.
+- **App pages** (`/app?name=`, MCP `describe_app`): for a catalog app, a built-in note (summary, vendor, link, homelab caveat) from `engine/knowledge.py`; for anything else, the unit's own `Description=`; plus every machine it runs on with evidence, package version (dpkg name = unit/process name, or `<name>-…`), service state and an "open" link. **atlas does not go online to look things up**: search buttons (DuckDuckGo, Google, GitHub) open in the owner's browser. Every catalog app must have a note (test).
+- **Catalog**: agents commonly found in homelabs: Action1 (`action1_agent`, from Action1's Linux proxy documentation, read 2026-11-01), Tactical RMM, MeshCentral, Wazuh, Checkmk, Datadog, Telegraf, Promtail, cloudflared, ZeroTier, NetBird, Watchtower, QEMU guest agent.
+- **Proxmox view**: a node scanned over SSH is linked (`same_as`) to its own node entity from its `pve` section first, then by IP, then by a unique hostname. Before, a standalone node (no corosync IP) appeared twice: once as the node with its guests and once as an empty "Linux host running Proxmox VE" box. A Linux host running Proxmox VE never gets a second box when a node of the same name or IP exists.
+- **Clearer target health**: Docker not installed is `ok` ("docker is not installed on this machine"), not a red *failed*; an unreadable Docker says to tick *use for sudo* or use the docker group. A refused Proxmox token (HTTP 401/403) says what is wrong instead of "unreachable".
+
+**Rejected.**
+- Server-side web lookups for unknown apps: it would make the server talk to the internet and leak what runs in the lab.
+- A CDN font or icon font: the CSP and the offline promise forbid it.

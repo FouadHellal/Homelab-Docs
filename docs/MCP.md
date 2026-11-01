@@ -117,6 +117,7 @@ a map of your network.
 | `proxmox_overview` | Nodes with their guests (state, vmid, cores, memory, IP, bridge), plus totals |
 | `what_changed` | Change events over the last N hours, optionally for one machine (and its containers) |
 | `scan_status` | Each target's latest scan result, with the reason when it failed |
+| `describe_app` | What an app, agent, unit or container is (built-in notes: purpose, vendor, link, caveats) and every machine it runs on, with version and state |
 | `search_ip` | Who has an IP, or what is in a subnet. MACs too |
 | `find_service` | A port, process, unit, container or image, anywhere |
 | `get_host` | Everything atlas knows about one entity (raw facts) |
