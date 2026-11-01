@@ -491,7 +491,7 @@
     }
     if (d.apps && d.apps.length) {
       var chips = make("div", "chips");
-      d.apps.forEach(function (a) { chips.appendChild(make("span", "chip", a)); });
+      d.apps.forEach(function (a) { chips.appendChild(link(a, "/app?name=" + encodeURIComponent(a), "chip")); });
       body.appendChild(chips);
     }
     if (d.status === "unknown" && (d.kind === "pve-vm" || d.kind === "pve-lxc")) {

@@ -94,6 +94,13 @@ def test_list_services_and_proxmox_and_scan_status(rt: Runtime) -> None:
     assert ghost["runs"][0]["errors"]
     ports = _call(srv, "unrecognised_ports")
     assert {"process labelmaker", "port 5000 (python3)"} <= {p["what"] for p in ports["items"]}
+    agent = _call(srv, "describe_app", app="action1 AGENT")
+    assert agent["recognised"] is True
+    assert agent["about"]["by"] == "Action1 Corporation"
+    assert [h["short"] for h in agent["runs_on"]] == ["web01"]
+    unit = _call(srv, "describe_app", app="cron")
+    assert unit["recognised"] is False
+    assert "Regular background program processing daemon" in unit["unit_descriptions"]
 
 
 def test_what_changed_per_machine(rt: Runtime) -> None:

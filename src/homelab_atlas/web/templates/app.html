@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_dot %}
+{% block title %}{{ a.name }}{% endblock %}
+{% block main %}
+<p class="crumbs"><a href="/running">Apps</a> / {{ a.name }}</p>
+<header class="app-hero card"{% if a.category %} data-cat="{{ a.category }}"{% endif %}>
+  <div class="app-mark" aria-hidden="true">{{ a.name[:1] | upper }}</div>
+  <div class="app-hero-body">
+    <h1>{{ a.name }}</h1>
+    <div class="chips">
+      {% if a.category_label %}<span class="chip" data-cat="{{ a.category }}">{{ a.category_label }}</span>{% endif %}
+      {% if a.custom %}<span class="chip">your rule</span>{% endif %}
+      {% if not a.known %}<span class="chip">service / container</span>{% endif %}
+      <span class="chip more">{{ a.hosts | length }} machine{{ "s" if a.hosts | length != 1 }}</span>
+    </div>
+    {% if a.about %}
+      <p class="lead">{{ a.about.summary }}</p>
+      <p class="muted small">By {{ a.about.by }} · <a href="{{ a.about.url }}" target="_blank" rel="noopener noreferrer">{{ a.about.url | replace("https://", "") | truncate(48, true, "…") }} ↗</a></p>
+      {% if a.about.note %}<p class="callout">{{ a.about.note }}</p>{% endif %}
+    {% elif a.descriptions %}
+      <p class="lead">{{ a.descriptions[0] }}</p>
+      <p class="muted small">From the service's own description on your machines. atlas has no built-in notes on it yet.</p>
+    {% else %}
+      <p class="lead muted">atlas has no built-in notes on this one yet.</p>
+    {% endif %}
+    <div class="actions">
+      {% for label, href in a.search %}<a class="btn {{ 'ghost' if not loop.first }} small" href="{{ href }}" target="_blank" rel="noopener noreferrer">{{ label }} ↗</a>{% endfor %}
+    </div>
+    <p class="muted small">Searches open in your browser. atlas itself never goes online to look things up.</p>
+  </div>
+</header>
+
+<section class="card">
+  <div class="section-head"><h2>Where it runs</h2></div>
+  {% if a.hosts %}
+  <div class="host-grid">
+    {% for h in a.hosts %}
+    <a class="machine" href="/entity?key={{ h.key | urlencode }}">
+      <div class="m-head">{{ status_dot(h.status) }}<strong>{{ h.short }}</strong><span class="m-kind">{{ h.kind }}</span></div>
+      <div class="m-line muted small">{% if h.ip %}<code>{{ h.ip }}</code>{% endif %}{% if h.node %} · on {{ h.node }}{% endif %}</div>
+      {% if h.version %}<div class="m-line small">version <code>{{ h.version }}</code></div>{% endif %}
+      {% if h.ports %}<div class="m-line small">ports <code>{{ h.ports | join(", ") }}</code></div>{% endif %}
+      <div class="m-foot">{{ h.evidence | join(" · ") }}{% if h.states %} · {{ h.states | join(", ") }}{% endif %}</div>
+    </a>
+    {% if h.web %}<a class="open-ui" href="{{ h.web }}" target="_blank" rel="noopener noreferrer">Open {{ a.name }} on {{ h.short }} ↗</a>{% endif %}
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">Not seen on any documented machine right now.</p>
+  {% endif %}
+</section>
+
+{% if a.rows %}
+<section class="card">
+  <h2>Services and containers</h2>
+  <div class="table-scroll">
+  <table class="data">
+    <thead><tr><th>Machine</th><th>Type</th><th>Name</th><th>Description</th><th>State</th><th>At boot / restart</th></tr></thead>
+    <tbody>
+    {% for r in a.rows %}
+    <tr>
+      <td><a href="/entity?key={{ r.key | urlencode }}">{{ r.machine }}</a></td>
+      <td><span class="type-tag {{ r.type }}">{{ "unit" if r.type == "systemd" else "container" }}</span></td>
+      <td><code>{{ r.name }}</code>{% if r.image %} <span class="muted small">{{ r.image }}</span>{% endif %}</td>
+      <td class="muted wrap">{{ r.description }}</td>
+      <td><span class="pill {{ 'ok' if r.state == 'running' else 'failed' if r.state == 'failed' else 'partial' }}">{{ r.state }}</span></td>
+      <td class="small">{{ r.enabled }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+
+{% if a.known %}
+<section class="card">
+  <h2>How atlas recognises it</h2>
+  <dl class="kv">
+    {% if a.units %}<dt>systemd units</dt><dd>{% for u in a.units %}<code>{{ u }}</code> {% endfor %}</dd>{% endif %}
+    {% if a.images %}<dt>container images</dt><dd>{% for i in a.images %}<code>{{ i }}</code> {% endfor %}</dd>{% endif %}
+    {% if a.well_known_ports %}<dt>usual ports</dt><dd><code>{{ a.well_known_ports | join(", ") }}</code></dd>{% endif %}
+  </dl>
+</section>
+{% endif %}
+{% endblock %}

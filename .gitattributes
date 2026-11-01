@@ -13,3 +13,4 @@ Dockerfile text eol=lf
 
 # Pinned third-party files: byte-exact (SHA-256 checked by tests/web/test_web.py).
 src/homelab_atlas/web/static/vendor/*.js -text
+src/homelab_atlas/web/static/vendor/fonts/*.woff2 binary

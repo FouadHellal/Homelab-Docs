@@ -20,6 +20,7 @@ from homelab_atlas.engine.apps import (
     catalog,
     detect,
 )
+from homelab_atlas.engine.knowledge import about, search_links
 from homelab_atlas.engine.reconcile import RECONCILE
 from homelab_atlas.store.facets import facet_views
 from homelab_atlas.store.tables import Entity, Facet
@@ -695,3 +696,94 @@ def custom_rule_from(
         web = ports[0]
     data["web"] = web
     return CustomRule.model_validate(data)
+
+
+# ------------------------------------------------------------------ one app / service
+
+
+def _packages_by_machine(s: Session) -> dict[str, dict[str, str]]:
+    """machine key (after same_as) -> package name -> version."""
+    same = {e.key: e.same_as for e in s.scalars(select(Entity)) if e.same_as}
+    out: dict[str, dict[str, str]] = defaultdict(dict)
+    for f in s.scalars(select(Facet).where(Facet.collector == "linux-ssh")):
+        key = same.get(f.entity_key) or f.entity_key
+        for p in f.data.get("packages") or []:
+            if p.get("name") and p.get("version"):
+                out[key][str(p["name"]).lower()] = str(p["version"])
+    return out
+
+
+def app_detail(s: Session, name: str) -> dict[str, Any]:
+    """Everything atlas knows about one app (catalog name) or one service/container name:
+    what it is, where it runs, with which evidence, version, ports and state (ADR-038)."""
+    name = name.strip()[:96]
+    low = name.lower()
+    app = next((a for a in catalog() if a.name.lower() == low), None)
+    cards = machines(s)
+    table = service_table(s, state="all")
+    if app is not None:
+        rows = [r for r in table["rows"] if r["app"] == app.name]
+        pkg_names = {low, *(u.lower() for u in app.units), *(p.lower() for p in app.procs)}
+    else:
+        rows = [
+            r
+            for r in table["rows"]
+            if r["name"].lower() == low or (r["image"] and low in str(r["image"]).lower())
+        ]
+        pkg_names = {low}
+    pkgs = _packages_by_machine(s)
+    hosts: list[dict[str, Any]] = []
+    for m in cards:
+        hit = next((a for a in m["apps"] if app is not None and a["name"] == app.name), None)
+        mine = [r for r in rows if r["key"] == m["key"]]
+        if hit is None and not mine:
+            continue
+        ip = (m["ips"] or [None])[0]
+        web = hit.get("web_port") if hit else None
+        version = next(
+            (
+                v
+                for n, v in sorted(pkgs.get(m["key"], {}).items())
+                if n in pkg_names or any(n.startswith(f"{c}-") for c in pkg_names)
+            ),
+            None,
+        )
+        hosts.append(
+            {
+                "short": m["short"],
+                "key": m["key"],
+                "kind": KIND_LABELS.get(m["kind"], m["kind"]),
+                "node": m["node"],
+                "status": m["status"],
+                "ip": ip,
+                "evidence": hit["evidence"] if hit else [f"{r['type']} {r['name']}" for r in mine],
+                "ports": hit["ports"] if hit else [],
+                "web": (
+                    f"https://{ip}:{web}"
+                    if web in (443, 8006, 8007, 8443, 9443)
+                    else f"http://{ip}:{web}"
+                )
+                if web and ip
+                else None,
+                "version": version,
+                "states": sorted({r["state"] for r in mine}),
+            }
+        )
+    descriptions = sorted({r["description"] for r in rows if r["description"]})[:6]
+    info = about(app.name) if app else None
+    term = f"{app.name} homelab" if app else f"{name} linux service"
+    return {
+        "name": app.name if app else name,
+        "known": app is not None,
+        "category": app.category if app else None,
+        "category_label": CATEGORY_LABELS.get(app.category, app.category) if app else None,
+        "custom": bool(app and app.custom),
+        "about": info,
+        "descriptions": descriptions,
+        "hosts": hosts,
+        "rows": rows,
+        "search": search_links(term),
+        "units": list(app.units) if app else [],
+        "images": list(app.images) if app else [],
+        "well_known_ports": list(app.ports) if app else [],
+    }

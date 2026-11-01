@@ -256,7 +256,7 @@ def test_docs_nav_and_favicon(web: TestClient) -> None:
         assert f'id="{anchor}"' in docs
     assert "PVEAuditor" in docs
     assert 'href="/static/favicon.svg"' in docs
-    assert 'class="dropdown"' in docs
+    assert 'class="side"' in docs and 'class="nav-item"' in docs
     assert 'href="/services"' in docs
     icon = web.get("/static/favicon.svg")
     assert icon.status_code == 200

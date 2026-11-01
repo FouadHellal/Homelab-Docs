@@ -185,7 +185,8 @@
     var input = document.getElementById("palette-q");
     var dlg = document.getElementById("palette");
     if (!dlg || !input) return;
-    if (btn) btn.addEventListener("click", openPalette);
+    document.querySelectorAll(".js-palette").forEach(function (b) { b.addEventListener("click", function () { closeSide(); openPalette(); }); });
+    if (btn && !btn.classList.contains("js-palette")) btn.addEventListener("click", openPalette);
     document.addEventListener("keydown", function (e) {
       if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) { e.preventDefault(); openPalette(); }
     });
@@ -201,7 +202,44 @@
     dlg.addEventListener("click", function (e) { if (e.target === dlg) dlg.close(); });
   }
 
+  // ------------------------------------------------------------ sidebar drawer (phones, tablets)
+  function closeSide() {
+    document.body.classList.remove("side-open");
+    var scrim = document.getElementById("scrim"), open = document.getElementById("side-open");
+    if (scrim) scrim.hidden = true;
+    if (open) open.setAttribute("aria-expanded", "false");
+  }
+  function wireSide() {
+    var open = document.getElementById("side-open"), close = document.getElementById("side-close");
+    var scrim = document.getElementById("scrim");
+    if (!open) return;
+    open.addEventListener("click", function () {
+      document.body.classList.add("side-open");
+      if (scrim) scrim.hidden = false;
+      open.setAttribute("aria-expanded", "true");
+      var here = document.querySelector(".side-nav [aria-current]") || document.querySelector(".side-nav a");
+      if (here) here.focus();
+    });
+    if (close) close.addEventListener("click", closeSide);
+    if (scrim) scrim.addEventListener("click", closeSide);
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeSide(); });
+  }
+
+  // ------------------------------------------------------------ wide tables scroll inside their card
+  function wrapTables(root) {
+    root.querySelectorAll("table").forEach(function (t) {
+      var p = t.parentElement;
+      if (!p || p.classList.contains("table-scroll") || p.classList.contains("tscroll") || p.closest(".tab-panel")) return;
+      var w = document.createElement("div");
+      w.className = "tscroll";
+      p.insertBefore(w, t);
+      w.appendChild(t);
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
+    wireSide();
+    wrapTables(document);
     wireDropdowns();
     wireBars(document);
     wireRadioPills(document);
@@ -224,5 +262,5 @@
   });
 
   // htmx swaps in new rows: re-run the search filter so it stays applied.
-  document.addEventListener("htmx:afterSwap", function (e) { wireTabs(e.target); wireBars(e.target); });
+  document.addEventListener("htmx:afterSwap", function (e) { wireTabs(e.target); wireBars(e.target); wrapTables(e.target); });
 })();

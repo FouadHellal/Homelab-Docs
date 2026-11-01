@@ -273,6 +273,12 @@ def test_vendored_js_pinned() -> None:
     pins = {
         "htmx.min.js": "d6fdc75f204e6bdefa99b69bf1e6d4ac69b8a364f77929f45c13476b4000f717",
         "cytoscape.min.js": "081591ab735b2b6a3b31a3c60f8f3a3e2fee8c92939e0c7820ad1208571b6cd8",
+        "fonts/geist-latin-wght-normal.woff2": (
+            "19f9c92546aa300c312235e3125af1b81394d8db9a4bc4a425cd5b641d2d54e1"
+        ),
+        "fonts/geist-mono-latin-wght-normal.woff2": (
+            "684ad5b531f81d43c1e8c7038262d5db7cdc1f68006e04d6c7769efa8d33c8cc"
+        ),
     }
     for name, digest in pins.items():
         assert hashlib.sha256((PKG / "static" / "vendor" / name).read_bytes()).hexdigest() == digest

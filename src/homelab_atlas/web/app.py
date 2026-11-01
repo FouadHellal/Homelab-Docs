@@ -567,6 +567,16 @@ def create_app(cfg: WebConfig) -> FastAPI:
             msg=request.query_params.get("msg", "")[:200],
         )
 
+    @app.get("/app", response_class=HTMLResponse)
+    def app_page(
+        request: Request,
+        s: DB,
+        user: User,
+        name: Annotated[str, Query(min_length=1, max_length=96)],
+    ) -> Response:
+        """One app or service: what it is, where it runs, evidence, versions (ADR-038)."""
+        return page(request, "app.html", user, a=views.app_detail(s, name))
+
     @app.post("/apps/name")
     def name_app(
         user: Csrf,
@@ -796,9 +806,7 @@ def create_app(cfg: WebConfig) -> FastAPI:
                 }
             )
         apps = sorted({a["name"] for m in cards for a in m["apps"]})
-        items += [
-            {"label": a, "hint": "app", "href": f"/services?state=all&q={quote(a)}"} for a in apps
-        ]
+        items += [{"label": a, "hint": "app", "href": f"/app?name={quote(a)}"} for a in apps]
         return JSONResponse({"items": items[:800]})
 
     @app.get("/services.csv")

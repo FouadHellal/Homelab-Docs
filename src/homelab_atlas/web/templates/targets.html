@@ -82,7 +82,7 @@ Passwords and API keys are stored encrypted and are never shown again.</p>
     <tr id="t-{{ s.source.name }}">
       <td>{% if s.fixed or not v.editable %}{{ s.source.name }}{% else %}<a href="/targets/source?kind={{ kind }}&amp;name={{ s.source.name | urlencode }}">{{ s.source.name }}</a>{% endif %}
         {% if s.fixed %}<span class="pill info">hosts.yaml</span>{% endif %}</td>
-      <td><code>{{ s.source.url }}</code></td>
+      <td class="url"><code>{{ s.source.url }}</code></td>
       <td>{% if s.secret_set %}<span class="pill ok">set</span>{% else %}<span class="pill failed">missing</span>{% endif %}</td>
       <td>{% if s.source.tls.public_pki %}<span class="pill info">cloud (api.ui.com)</span>{% elif s.source.tls.sha256_pin %}<span class="pill ok">pinned</span>{% elif s.source.tls.ca_file %}<span class="pill ok">CA</span>{% else %}<span class="pill failed">none</span>{% endif %}</td>
       <td class="last-scan">{{ last_scan(s.source.name) }}</td>

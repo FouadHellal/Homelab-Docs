@@ -26,7 +26,7 @@
   <div class="app-grid">
     {% for a in apps %}
     <div class="app-card" data-cat="{{ a.category }}">
-      <div class="app-name">{{ a.name }}</div>
+      <a class="app-name" href="/app?name={{ a.name | urlencode }}">{{ a.name }}</a>
       <div class="app-hosts">
         {% for h in a.hosts %}
         <a class="host-chip" href="/entity?key={{ h.key | urlencode }}">{{ h.name }}</a>{% if h.web_port and h.ip %}<a class="open" href="{{ 'https' if h.web_port in (443, 8006, 8007, 9443) else 'http' }}://{{ h.ip }}:{{ h.web_port }}" rel="noopener noreferrer" target="_blank" title="Open web UI">open ↗</a>{% endif %}

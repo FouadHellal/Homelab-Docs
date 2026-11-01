@@ -2,7 +2,7 @@
 <span class="dot st-{{ status | default('unknown', true) }}" aria-label="{{ status }}"></span>
 {%- endmacro %}
 
-{% macro app_chips(apps, limit=8) -%}
+{% macro app_chips(apps, limit=8, link=true) -%}
 {% set shown = apps | rejectattr("category", "equalto", "system") | list %}
-{% if shown %}<div class="chips">{% for a in shown[:limit] %}<span class="chip" data-cat="{{ a.category }}" title="{{ a.category_label }}: {{ a.evidence | join(', ') }}">{{ a.name }}</span>{% endfor %}{% if shown | length > limit %}<span class="chip more">+{{ shown | length - limit }}</span>{% endif %}</div>{% endif %}
+{% if shown %}<div class="chips">{% for a in shown[:limit] %}{% if link %}<a class="chip" href="/app?name={{ a.name | urlencode }}" data-cat="{{ a.category }}" title="{{ a.category_label }}: {{ a.evidence | join(', ') }}">{{ a.name }}</a>{% else %}<span class="chip" data-cat="{{ a.category }}" title="{{ a.category_label }}: {{ a.evidence | join(', ') }}">{{ a.name }}</span>{% endif %}{% endfor %}{% if shown | length > limit %}<span class="chip more">+{{ shown | length - limit }}</span>{% endif %}</div>{% endif %}
 {%- endmacro %}

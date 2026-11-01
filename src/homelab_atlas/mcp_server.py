@@ -49,7 +49,8 @@ INSTRUCTIONS: Final = (
     "NAS), collected read-only by atlas over SSH and APIs. Secrets are redacted at collection "
     "time. Start with list_machines. For 'what is running on X' use whats_running(X); for "
     "services across machines list_services; for Proxmox proxmox_overview; for recent changes "
-    "what_changed (optionally machine=X); for why a machine is missing or stale scan_status. "
+    "what_changed (optionally machine=X); for why a machine is missing or stale scan_status; "
+    "for 'what is this app/agent/service' describe_app(app). "
     "Each answer says when the data was collected (last_scan). If scan_machine is available "
     "and the data is old or the user asks for a live check, call scan_machine(X) first, then "
     "whats_running(X)."
@@ -517,6 +518,37 @@ def build_server(
                 {"what": g["label"], "ports": g["ports"], "machines": [n for n, _ in g["machines"]]}
                 for g in groups
             ]
+        )
+
+    @mcp.tool(annotations=READ_ONLY, structured_output=True)
+    def describe_app(app: Arg) -> dict[str, Any]:
+        """What an app, agent, service or container is (e.g. 'Action1 agent', 'zabbix-agent2',
+        'immich_server') and where it runs: built-in notes (purpose, vendor, link, caveats),
+        machines, evidence, package versions and service state. Use it before searching the
+        web: it says what atlas actually saw on this lab."""
+        log.info("mcp.tool", tool="describe_app", sanitized=sanitize_key is not None)
+        with sessions() as s:
+            d = views.app_detail(s, str(app))
+        info = d["about"]
+        return out(
+            {
+                "name": d["name"],
+                "recognised": d["known"],
+                "category": d["category_label"],
+                "about": (
+                    {"summary": info.summary, "by": info.by, "url": info.url, "note": info.note}
+                    if info
+                    else None
+                ),
+                "unit_descriptions": d["descriptions"],
+                "runs_on": [
+                    {
+                        k: h[k]
+                        for k in ("short", "kind", "node", "ip", "evidence", "version", "states")
+                    }
+                    for h in d["hosts"]
+                ],
+            }
         )
 
     if scanner is not None:

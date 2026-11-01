@@ -2,79 +2,93 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false, "selfRequestsOnly": true, "historyCacheSize": 0}'>
   <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#0b0e17">
   <title>{% block title %}atlas{% endblock %} · atlas</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/static/vendor/fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/app.css?v={{ asset_v }}">
   <script src="/static/vendor/htmx.min.js" nonce="{{ nonce }}" defer></script>
   <script src="/static/app.js?v={{ asset_v }}" nonce="{{ nonce }}" defer></script>
   {% block head %}{% endblock %}
 </head>
-<body{% if user %} hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'{% endif %}>
+{% from "_icons.html" import icon %}
+<body class="{% block body_class %}{% endblock %}{% if user %} has-side{% endif %}"{% if user %} hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'{% endif %}>
 {% if user %}
-{% set groups = [
-  ("Dashboard", "/", []),
-  ("Infrastructure", None, [
-    ("/topology", "Topology", "Proxmox nodes, VMs, network, VLANs"),
-    ("/entities", "Inventory", "Every machine and device"),
-    ("/services", "Services", "All services and containers, CSV"),
-    ("/running", "Apps", "Recognised apps by category"),
+{% set sections = [
+  (None, [("/", "Dashboard", "dashboard", "Overview of the lab")]),
+  ("Infrastructure", [
+    ("/topology", "Topology", "topology", "Proxmox nodes, VMs, network, VLANs"),
+    ("/entities", "Inventory", "inventory", "Every machine and device"),
+    ("/services", "Services", "services", "All services and containers"),
+    ("/running", "Apps", "apps", "Recognised apps by category"),
   ]),
-  ("Network", None, [
-    ("/ips", "IP addresses", "One row per device"),
-    ("/vlans", "VLANs", "Networks and members"),
-    ("/ports", "Ports", "What listens where"),
-    ("/unknown", "Unknown devices", "Seen, not documented"),
+  ("Network", [
+    ("/ips", "IP addresses", "ips", "One row per device"),
+    ("/vlans", "VLANs", "vlans", "Networks and members"),
+    ("/ports", "Ports", "ports", "What listens where"),
+    ("/unknown", "Unknown devices", "unknown", "Seen, not documented"),
   ]),
-  ("Changes", "/changes", []),
-  ("Targets", "/targets", []),
-  ("Docs", "/docs", []),
+  ("Activity", [
+    ("/changes", "Changes", "changes", "What changed between scans"),
+  ]),
+  ("Setup", [
+    ("/targets", "Targets", "targets", "Machines, Proxmox, UniFi"),
+    ("/exports", "Exports", "exports", "Markdown, CSV, JSON, Mermaid"),
+    ("/diagnostics", "Diagnostics", "diagnostics", "Health of atlas"),
+    ("/docs", "Docs", "docs", "How atlas works"),
+  ]),
 ] %}
-<header class="top">
-  <a class="brand" href="/" aria-label="atlas home"><img src="/static/favicon.svg" alt="" width="20" height="20"> atlas{% if lab %} <span class="badge lab">demo lab</span>{% endif %}</a>
-  <nav class="menu" aria-label="Main">
-    {% for label, href, items in groups %}
-      {% if items %}
-      <details class="dropdown">
-        <summary{% for h, _l, _d in items if path.startswith(h) %} aria-current="page"{% endfor %}>{{ label }}</summary>
-        <div class="dropdown-panel" role="menu">
-          {% for h, l, d in items %}
-          <a role="menuitem" href="{{ h }}"{% if path.startswith(h) %} aria-current="page"{% endif %}><strong>{{ l }}</strong><span>{{ d }}</span></a>
-          {% endfor %}
-        </div>
-      </details>
-      {% else %}
-      <a href="{{ href }}"{% if path == href or (href != "/" and path.startswith(href)) %} aria-current="page"{% endif %}>{{ label }}</a>
-      {% endif %}
+<aside class="side" id="side" aria-label="Main navigation">
+  <div class="side-head">
+    <a class="brand" href="/" aria-label="atlas home">
+      <img src="/static/logo.svg?v={{ asset_v }}" alt="" width="30" height="30">
+      <span class="brand-name">atlas</span>
+      {% if lab %}<span class="badge lab">demo</span>{% endif %}
+    </a>
+    <button type="button" class="icon-btn side-close" id="side-close" aria-label="Close menu">{{ icon("close") }}</button>
+  </div>
+  <button type="button" class="find js-palette" id="palette-open" aria-label="Quick find (Ctrl+K)">{{ icon("search") }}<span>Find…</span><kbd>Ctrl K</kbd></button>
+  <nav class="side-nav">
+    {% for title, items in sections %}
+      {% if title %}<p class="nav-sec">{{ title }}</p>{% endif %}
+      {% for href, label, ic, hint in items %}
+      {% set here = path == href or (href != "/" and path.startswith(href)) %}
+      <a class="nav-item" href="{{ href }}" title="{{ hint }}"{% if here %} aria-current="page"{% endif %}>{{ icon(ic) }}<span>{{ label }}</span></a>
+      {% endfor %}
     {% endfor %}
   </nav>
-  <div class="who">
-    <button type="button" id="palette-open" class="ghost palette-btn" aria-label="Quick find (Ctrl+K)" title="Quick find">Find… <kbd>Ctrl K</kbd></button>
-    <button type="button" id="theme-toggle" class="ghost" aria-label="Toggle light/dark">◐</button>
-    <details class="dropdown user-menu">
-      <summary>{{ user.username }}</summary>
-      <div class="dropdown-panel right" role="menu">
-        <a role="menuitem" href="/targets"><strong>Targets</strong><span>Machines, Proxmox, UniFi</span></a>
-        <a role="menuitem" href="/exports"><strong>Exports</strong><span>Markdown, CSV, JSON, Mermaid</span></a>
-        <a role="menuitem" href="/diagnostics"><strong>Diagnostics</strong><span>Health of atlas, support report</span></a>
-        <a role="menuitem" href="/docs"><strong>Documentation</strong><span>How atlas works</span></a>
-        <form method="post" action="/logout" class="inline">
-          <input type="hidden" name="csrf_token" value="{{ csrf }}">
-          <button type="submit" class="menu-logout" role="menuitem">Log out</button>
-        </form>
-      </div>
-    </details>
+  <div class="side-foot">
+    <div class="who">
+      <span class="avatar" aria-hidden="true">{{ user.username[:1] | upper }}</span>
+      <div class="who-text"><strong>{{ user.username }}</strong><span class="muted small">v{{ version }} · read-only</span></div>
+    </div>
+    <div class="side-tools">
+      <button type="button" class="icon-btn" id="theme-toggle" aria-label="Toggle light/dark" title="Light / dark">{{ icon("theme") }}</button>
+      <form method="post" action="/logout" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <button type="submit" class="icon-btn" aria-label="Log out" title="Log out">{{ icon("logout") }}</button>
+      </form>
+    </div>
   </div>
+</aside>
+<div class="scrim" id="scrim" hidden></div>
+<header class="mbar">
+  <button type="button" class="icon-btn" id="side-open" aria-controls="side" aria-expanded="false" aria-label="Open menu">{{ icon("menu") }}</button>
+  <a class="brand" href="/"><img src="/static/logo.svg?v={{ asset_v }}" alt="" width="26" height="26"><span class="brand-name">atlas</span></a>
+  <button type="button" class="icon-btn js-palette" aria-label="Quick find">{{ icon("search") }}</button>
 </header>
 <dialog id="palette" class="palette" aria-label="Quick find">
-  <input id="palette-q" type="search" placeholder="Jump to a page, machine or app…" maxlength="64" autocomplete="off">
+  <div class="palette-in">{{ icon("search") }}<input id="palette-q" type="search" placeholder="Jump to a page, machine or app…" maxlength="64" autocomplete="off"></div>
   <ul id="palette-list" role="listbox"></ul>
   <p class="muted small">↑ ↓ to move · Enter to open · Esc to close</p>
 </dialog>
 {% endif %}
-<main>{% block main %}{% endblock %}</main>
-<footer>homelab-atlas {{ version }} · read-only · <a href="/docs">docs</a></footer>
+<div class="shell">
+  <main>{% block main %}{% endblock %}</main>
+  <footer>homelab-atlas {{ version }} · read-only · <a href="/docs">docs</a></footer>
+</div>
 </body>
 </html>

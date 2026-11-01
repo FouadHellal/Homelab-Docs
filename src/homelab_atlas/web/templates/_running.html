@@ -3,7 +3,7 @@
   <div class="section-head"><h2>Running</h2>
     <span class="muted small">{{ run.services | length }} services · {{ run.containers | length }} containers · {{ run.process_count }} processes · {{ run.sockets | length }} listening ports</span></div>
   {% if run.apps %}
-  <div class="app-strip">{% for a in run.apps %}<span class="chip big" data-cat="{{ a.category }}" title="{{ a.evidence | join(', ') }}">{{ a.name }}{% if a.ports %}<span class="chip-port">:{{ a.ports | join(',') }}</span>{% endif %}</span>{% endfor %}</div>
+  <div class="app-strip">{% for a in run.apps %}<a class="chip big" href="/app?name={{ a.name | urlencode }}" data-cat="{{ a.category }}" title="{{ a.evidence | join(', ') }}">{{ a.name }}{% if a.ports %}<span class="chip-port">:{{ a.ports | join(',') }}</span>{% endif %}</a>{% endfor %}</div>
   {% endif %}
   {% if run.failed %}<p class="error">Failed: {% for s in run.failed %}<code>{{ s.unit }}</code> {% endfor %}</p>{% endif %}
   <div class="tabset" data-tabset>
@@ -16,7 +16,7 @@
       <input type="search" class="table-search" placeholder="Filter…" data-search-target=".tab-panel.on table" maxlength="64">
     </div>
     <div class="tab-panel on" id="t-svc"><table class="data"><thead><tr><th>Unit</th><th>Description</th><th>At boot</th></tr></thead><tbody>
-      {% for s in run.services %}<tr data-search="{{ s.unit }} {{ s.description or '' }}"><td><code>{{ s.unit }}</code></td><td class="muted">{{ s.description or "" }}</td><td>{{ s.enabled or "" }}</td></tr>
+      {% for s in run.services %}<tr data-search="{{ s.unit }} {{ s.description or '' }}"><td><a class="code-link" href="/app?name={{ s.unit | replace(".service", "") | urlencode }}" title="What is this?"><code>{{ s.unit }}</code></a></td><td class="muted">{{ s.description or "" }}</td><td>{{ s.enabled or "" }}</td></tr>
       {% else %}<tr><td colspan="3" class="muted">No running services reported.</td></tr>{% endfor %}</tbody></table></div>
     {% if run.containers %}
     <div class="tab-panel" id="t-ctr"><table class="data"><thead><tr><th>Container</th><th>Image</th><th>State</th><th>Ports</th></tr></thead><tbody>

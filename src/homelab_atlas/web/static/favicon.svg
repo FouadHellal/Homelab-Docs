@@ -1,12 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="atlas">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ffd76a"/>
-      <stop offset="1" stop-color="#f59e0b"/>
+    <linearGradient id="atlas-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8b5cf6"/>
+      <stop offset=".55" stop-color="#4f6bff"/>
+      <stop offset="1" stop-color="#06b6d4"/>
+    </linearGradient>
+    <linearGradient id="atlas-shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".22"/>
+      <stop offset=".5" stop-color="#fff" stop-opacity="0"/>
     </linearGradient>
   </defs>
-  <path d="M32 4.5l7.9 17.3 18.9 2-14.1 12.8 4 18.6L32 45.6 15.3 55.2l4-18.6L5.2 23.8l18.9-2z"
-        fill="url(#g)" stroke="#b45309" stroke-width="2.5" stroke-linejoin="round"/>
-  <path d="M32 14l4.6 10.2 11 1.2-8.2 7.4 2.3 10.8L32 38" fill="none" stroke="#fff6d6"
-        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".7"/>
+  <rect width="64" height="64" rx="16" fill="url(#atlas-bg)"/>
+  <rect width="64" height="64" rx="16" fill="url(#atlas-shine)"/>
+  <ellipse cx="32" cy="35" rx="25" ry="9" transform="rotate(-16 32 35)" fill="none" stroke="#fff" stroke-opacity=".42" stroke-width="2.2"/>
+  <path d="M19.5 48 L32 15 L44.5 48" fill="none" stroke="#fff" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M24.6 37 H39.4" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/>
+  <circle cx="32" cy="15" r="4.6" fill="#fff"/>
+  <circle cx="19.5" cy="48" r="4" fill="#fff"/>
+  <circle cx="44.5" cy="48" r="4" fill="#fff"/>
+  <circle cx="54.5" cy="25.5" r="3" fill="#fde68a"/>
 </svg>

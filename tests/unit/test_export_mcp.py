@@ -280,6 +280,7 @@ def test_mcp_tools_are_all_read_only(rt: Runtime) -> None:
         "proxmox_overview",
         "scan_status",
         "unrecognised_ports",
+        "describe_app",
     }  # no scan_machine unless --allow-scan (tests/unit/test_mcp_v2.py)
     for t in tools:
         a = t.annotations
