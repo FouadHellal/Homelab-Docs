@@ -47,13 +47,21 @@ printf 'git %s\n' "$*" >> "$FAKE_LOG"
 case "$*" in
   *" rev-parse HEAD") echo 0123456789abcdef ;;
   *" pull --ff-only") exit "${FAKE_GIT_RC:-0}" ;;
+  *" rev-parse --abbrev-ref --symbolic-full-name @{u}") echo origin/main ;;
+  *" log --format=%s origin/main..HEAD") printf '%s' "${FAKE_MINE:-}" ;;
+  *" log --format=%s HEAD..origin/main") printf '%s' "${FAKE_THEIRS:-}" ;;
 esac
 exit 0
 """
 
 
 def _run(
-    tmp_path: Path, *args: str, stdin: str = "", pull_rc: int = 0, git_rc: int = 0
+    tmp_path: Path,
+    *args: str,
+    stdin: str = "",
+    pull_rc: int = 0,
+    git_rc: int = 0,
+    git_env: dict[str, str] | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -71,6 +79,7 @@ def _run(
         "FAKE_LOG": log.as_posix(),
         "FAKE_PULL_RC": str(pull_rc),
         "FAKE_GIT_RC": str(git_rc),
+        **(git_env or {}),
         # Git Bash on Windows puts its own git first on PATH: name the fake explicitly.
         "ATLAS_GIT": (bin_dir / "git").as_posix(),
         "ATLAS_BIN_LINK": (bin_dir / "atlas-link").as_posix(),  # never /usr/local/bin in tests
@@ -271,3 +280,35 @@ def test_scripts_are_executable_in_git() -> None:
     assert modes == dict.fromkeys(
         ("deploy/atlas.sh", "docs/targets/atlas-probe", "docs/targets/atlas-probe-gate"), "100755"
     )
+
+
+REWRITTEN = {
+    "FAKE_MINE": "feat: one\nfix: two",
+    "FAKE_THEIRS": "docs: release prep\nfix: two\nfeat: one",
+}
+
+
+def test_update_follows_a_rewritten_upstream_history(tmp_path: Path) -> None:
+    # Upstream rewrote its history (same commits, new hashes): pull --ff-only fails, the clone
+    # has nothing of its own, so atlas keeps the old history as a branch and resets.
+    _installed(tmp_path)
+    res, log = _run(tmp_path, "update", "--no-backup", git_rc=1, git_env=REWRITTEN)
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert "history upstream was rewritten" in res.stdout
+    assert "branch atlas-backup-" in log
+    assert "reset --hard --quiet origin/main" in log
+    assert " pull atlas" in log  # and the update carries on
+
+
+def test_update_never_drops_commits_made_on_the_server(tmp_path: Path) -> None:
+    _installed(tmp_path)
+    mine = {"FAKE_MINE": "my local tweak\nfix: two", "FAKE_THEIRS": "fix: two"}
+    res, log = _run(tmp_path, "update", "--no-backup", git_rc=1, git_env=mine)
+    assert res.returncode != 0
+    assert "my local tweak" in res.stderr
+    assert "sudo atlas update --reset" in res.stderr
+    assert "reset --hard" not in log
+    forced, log = _run(tmp_path, "update", "--no-backup", "--reset", git_rc=1, git_env=mine)
+    assert forced.returncode == 0, forced.stderr
+    assert "branch atlas-backup-" in log  # kept, then reset
+    assert "reset --hard --quiet origin/main" in log

@@ -30,10 +30,12 @@ usage() {
 Usage: atlas.sh <command> [options]
 
   install [--build] [--no-user]   set up $ATLAS_DIR, get the image, create an account, start
-  update  [--build] [--no-pull] [--no-backup]
+  update  [--build] [--no-pull] [--no-backup] [--reset]
                                   git pull this clone, back up the DB, newer image, restart.
                                   Keeps .env, secrets/, config/ and the data volume (targets,
-                                  passwords, accounts, history).
+                                  passwords, accounts, history). A rewritten upstream history
+                                  is followed automatically; --reset also drops commits made
+                                  on this server (kept as an atlas-backup-* branch).
   user add <name>                 create a web account (asks for the password)
   user passwd <name>              change a password (ends that user's sessions)
   status                          containers, health, URL, certificate fingerprint
@@ -232,6 +234,28 @@ repo_git() {  # git in the clone, as the clone's owner: their credentials reach 
     fi
 }
 
+recover_rewritten_history() {  # the remote history was rewritten (e.g. a public-release clean-up)
+    # Reset to it only when the clone has no uncommitted edits and every commit that exists
+    # only here also exists upstream by subject (i.e. a rewritten copy, not work done on this
+    # server), unless --reset was given. The old history is always kept as a branch.
+    local up mine theirs missing stamp
+    up="$(repo_git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)" || return 1
+    repo_git fetch --quiet origin || return 1
+    mine="$(repo_git log --format=%s "$up..HEAD" 2>/dev/null || true)"
+    [ -n "$mine" ] || return 1  # nothing local: the pull failed for another reason
+    theirs="$(repo_git log --format=%s "HEAD..$up" 2>/dev/null || true)"
+    missing="$(printf '%s\n' "$mine" | grep -vxF -f <(printf '%s\n' "$theirs") || true)"
+    if [ -n "$missing" ] && [ "${UPDATE_RESET:-0}" != 1 ]; then
+        warn "these commits exist only on this server, so atlas will not drop them:
+$missing"
+        return 1
+    fi
+    stamp="atlas-backup-$(date +%Y%m%d-%H%M%S)"
+    repo_git branch "$stamp" HEAD || return 1
+    say "the history upstream was rewritten; the old one is kept as branch $stamp"
+    repo_git reset --hard --quiet "$up"
+}
+
 git_pull() {  # fast-forward this clone; never discards local edits; stops loudly on failure
     [ -d "$REPO_DIR/.git" ] || { warn "$REPO_DIR is not a git clone; skipping the code update"; return 1; }
     command -v "$GIT" >/dev/null 2>&1 || die "git is not installed (apt install git), or run: $0 update --no-pull"
@@ -240,12 +264,15 @@ git_pull() {  # fast-forward this clone; never discards local edits; stops loudl
     changed="$(repo_git status --porcelain --untracked-files=no 2>/dev/null || true)"
     say "updating the code in $REPO_DIR"
     if ! repo_git pull --ff-only; then
-        [ -z "$changed" ] || warn "files changed in the clone (git refuses to overwrite them):
+        if [ -n "$changed" ] || ! recover_rewritten_history; then
+            [ -z "$changed" ] || warn "files changed in the clone (git refuses to overwrite them):
 $changed"
-        die "git pull failed, so nothing was updated (atlas still runs the old version).
+            die "git pull failed, so nothing was updated (atlas still runs the old version).
   If git needs credentials, run   git -C $REPO_DIR pull   yourself.
   Local edits? keep them with   git -C $REPO_DIR stash   (or drop them with   git -C $REPO_DIR checkout -- .).
+  History rewritten upstream and you never commit on this server?   sudo atlas update --reset
   Then run   sudo atlas update --no-pull"
+        fi
     fi
     after="$(repo_git rev-parse HEAD 2>/dev/null || true)"
     if [ "$before" != "$after" ]; then
@@ -265,9 +292,11 @@ prune_backups() {  # keep the newest $KEEP_BACKUPS pre-update backups (names sor
 
 cmd_update() {
     local build=0 pull=1 backup=1 a
+    UPDATE_RESET=0
     for a in "$@"; do
         case "$a" in
             --build) build=1 ;; --no-pull) pull=0 ;; --no-backup) backup=0 ;;
+            --reset) UPDATE_RESET=1 ;;
             *) die "unknown option $a" ;;
         esac
     done
