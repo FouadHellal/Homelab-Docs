@@ -154,6 +154,7 @@ def _candidates(facets: list[Facet]) -> dict[str, dict[str, Any]]:
                             "ip": _ip(n.get("ip")),
                             "name": None,
                             "uplink_mac": None,
+                            "uplink_port": None,
                             "seen_via": f"arp@{f.target}",
                         },
                     )
@@ -166,10 +167,18 @@ def _candidates(facets: list[Facet]) -> dict[str, dict[str, Any]]:
                         "ip": _ip(c.get("ip")),
                         "name": c.get("name"),
                         "uplink_mac": c.get("uplink_mac"),
+                        "uplink_port": c.get("uplink_port"),
                         "seen_via": f"unifi@{f.target}",
                         "wired": {"WIRED": True, "WIRELESS": False}.get(str(c.get("type"))),
                     }
     return seen
+
+
+def uplink_name(idx: Index, obs: dict[str, Any]) -> str | None:
+    """The UniFi device a client hangs off, with its switch port if known ("sw-rack · port 5")."""
+    name = idx.names.get(f"unifi:dev:{obs['uplink_mac']}") if obs.get("uplink_mac") else None
+    port = obs.get("uplink_port")
+    return f"{name} · port {port}" if name and isinstance(port, int) else name
 
 
 def reconcile(s: Session, scan_id: int, inventory: Inventory) -> list[EventSpec]:
@@ -198,7 +207,7 @@ def reconcile(s: Session, scan_id: int, inventory: Inventory) -> list[EventSpec]
                 )
             continue
         net, vlan = network_of(idx, obs["ip"])
-        uplink = idx.names.get(f"unifi:dev:{obs['uplink_mac']}") if obs["uplink_mac"] else None
+        uplink = uplink_name(idx, obs)
         verdict = classify(mac, obs["name"], wired=obs.get("wired"), network=net)
         data = {
             **obs,
@@ -273,7 +282,7 @@ def _guest_network(
             if obs is None or not obs["seen_via"].startswith("unifi@"):
                 continue
             net, vlan = network_of(idx, obs["ip"])
-            uplink = idx.names.get(f"unifi:dev:{obs['uplink_mac']}") if obs["uplink_mac"] else None
+            uplink = uplink_name(idx, obs)
             seen.append(
                 {
                     "mac": obs["mac"],
@@ -282,6 +291,7 @@ def _guest_network(
                     "network": net,
                     "vlan": vlan,
                     "uplink": uplink,
+                    "uplink_port": obs.get("uplink_port"),
                     "seen_via": obs["seen_via"],
                 }
             )

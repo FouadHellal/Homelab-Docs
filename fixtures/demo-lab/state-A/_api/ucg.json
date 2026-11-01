@@ -1,4 +1,106 @@
 {
+ "/proxy/network/api/s/default/stat/sta": {
+  "body": {
+   "data": [
+    {
+     "is_wired": true,
+     "mac": "bc:24:11:46:66:ca",
+     "sw_mac": "e4:38:83:00:00:03",
+     "sw_port": 1
+    },
+    {
+     "is_wired": true,
+     "mac": "bc:24:11:7d:a6:cf",
+     "sw_mac": "e4:38:83:00:00:03",
+     "sw_port": 2
+    },
+    {
+     "is_wired": true,
+     "mac": "bc:24:11:3b:46:9e",
+     "sw_mac": "e4:38:83:00:00:03",
+     "sw_port": 3
+    },
+    {
+     "is_wired": true,
+     "mac": "bc:24:11:57:01:46",
+     "sw_mac": "e4:38:83:00:00:03",
+     "sw_port": 4
+    },
+    {
+     "is_wired": true,
+     "mac": "bc:24:11:53:82:ae",
+     "sw_mac": "e4:38:83:00:00:03",
+     "sw_port": 5
+    },
+    {
+     "is_wired": true,
+     "mac": "bc:24:11:19:ed:28",
+     "sw_mac": "e4:38:83:00:00:03",
+     "sw_port": 6
+    },
+    {
+     "is_wired": true,
+     "mac": "bc:24:11:48:e4:a6",
+     "sw_mac": "e4:38:83:00:00:03",
+     "sw_port": 7
+    },
+    {
+     "is_wired": true,
+     "mac": "bc:24:11:6d:a4:eb",
+     "sw_mac": "e4:38:83:00:00:03",
+     "sw_port": 8
+    },
+    {
+     "is_wired": true,
+     "mac": "bc:24:11:60:3f:12",
+     "sw_mac": "e4:38:83:00:00:03",
+     "sw_port": 9
+    },
+    {
+     "is_wired": true,
+     "mac": "bc:24:11:bb:e8:d2",
+     "sw_mac": "e4:38:83:00:00:02",
+     "sw_port": 1
+    },
+    {
+     "is_wired": true,
+     "mac": "bc:24:11:5f:56:46",
+     "sw_mac": "e4:38:83:00:00:02",
+     "sw_port": 2
+    },
+    {
+     "is_wired": true,
+     "mac": "bc:24:11:9e:71:84",
+     "sw_mac": "e4:38:83:00:00:03",
+     "sw_port": 10
+    },
+    {
+     "is_wired": true,
+     "mac": "bc:24:11:6c:fc:fe",
+     "sw_mac": "e4:38:83:00:00:03",
+     "sw_port": 11
+    },
+    {
+     "is_wired": true,
+     "mac": "e4:38:83:00:00:10",
+     "sw_mac": "e4:38:83:00:00:02",
+     "sw_port": 3
+    },
+    {
+     "is_wired": false,
+     "mac": "bc:24:11:8d:ee:92"
+    },
+    {
+     "is_wired": false,
+     "mac": "a2:11:22:33:44:55"
+    }
+   ],
+   "meta": {
+    "rc": "ok"
+   }
+  },
+  "status": 200
+ },
  "/proxy/network/integration/v1/info": {
   "body": {
    "applicationVersion": "10.6.106"
@@ -333,13 +435,117 @@
       },
       "speedMbps": null,
       "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 9,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 10,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 11,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 12,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 13,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 14,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 15,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
+     },
+     {
+      "connector": "RJ45",
+      "idx": 16,
+      "maxSpeedMbps": 1000,
+      "poe": {
+       "enabled": true,
+       "standard": "802.3bt",
+       "state": "UP",
+       "type": 3
+      },
+      "speedMbps": null,
+      "state": "DOWN"
      }
     ],
     "radios": []
    },
    "ipAddress": "10.0.10.3",
    "macAddress": "e4:38:83:00:00:03",
-   "model": "USW-Lite-8-PoE",
+   "model": "USW-Lite-16-PoE",
    "name": "sw-rack",
    "provisionedAt": "2026-10-01T10:00:00Z",
    "state": "ONLINE",
@@ -1033,7 +1239,7 @@
      ],
      "ipAddress": "10.0.10.3",
      "macAddress": "e4:38:83:00:00:03",
-     "model": "USW-Lite-8-PoE",
+     "model": "USW-Lite-16-PoE",
      "name": "sw-rack",
      "state": "ONLINE",
      "supported": true

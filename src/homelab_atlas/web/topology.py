@@ -37,8 +37,9 @@ def _node(c: Ctx, key: str, *, parent: str | None = None, node_id: str | None = 
     return {"data": data}
 
 
-def _edge(src: str, dst: str, kind: str = "link") -> dict[str, Any]:
-    return {"data": {"id": f"{src}->{dst}", "source": src, "target": dst, "kind": kind}}
+def _edge(src: str, dst: str, kind: str = "link", label: str | None = None) -> dict[str, Any]:
+    data = {"id": f"{src}->{dst}", "source": src, "target": dst, "kind": kind}
+    return {"data": data | {"label": label} if label else data}
 
 
 def physical(c: Ctx) -> list[dict[str, Any]]:
@@ -82,8 +83,17 @@ def physical(c: Ctx) -> list[dict[str, Any]]:
                 present.add(key)
             uplink = f"unifi:dev:{cl.get('uplink_mac')}"
             if uplink in present:
+                port = cl.get("uplink_port")
+                port_label = f"port {port}" if isinstance(port, int) else None
+                if port_label:
+                    node["data"]["uplink"] = f"{c.names.get(uplink, '?')} · {port_label}"
                 out.append(
-                    _edge(uplink, key, "wireless" if cl.get("type") == "WIRELESS" else "wired")
+                    _edge(
+                        uplink,
+                        key,
+                        "wireless" if cl.get("type") == "WIRELESS" else "wired",
+                        port_label,
+                    )
                 )
     return _dedupe(out)
 

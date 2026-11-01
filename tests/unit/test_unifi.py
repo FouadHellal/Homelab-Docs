@@ -14,6 +14,7 @@ from homelab_atlas.lab import load_api_recordings, load_lab
 from homelab_atlas.models.unifi import UnifiDeviceFacts, UnifiSiteFacts
 from homelab_atlas.runtime import replay_http
 from homelab_atlas.security.allowlist import DENIED_SEGMENTS
+from homelab_atlas.security.errors import SecurityRefusal
 from homelab_atlas.security.http import ReadOnlyHttpClient, replay_transport
 from homelab_atlas.security.ssh import SshRunner
 from tests.helpers import MemoryAudit
@@ -169,3 +170,67 @@ async def test_devices_list_failure_is_fatal() -> None:
 def test_event_rules(change: Change, expected: str, severity: str) -> None:
     (event,) = unifi_events("k", "x", [change])
     assert (event.type, event.severity) == (expected, severity)
+
+
+def test_classic_ports_keep_only_wired_clients_with_a_sane_port() -> None:
+    body = {
+        "meta": {"rc": "ok"},
+        "data": [
+            {"mac": "AA:BB:CC:00:00:01", "is_wired": True, "sw_port": 5},
+            {"mac": "aa:bb:cc:00:00:02", "is_wired": False, "sw_port": 7},  # wireless
+            {"mac": "aa:bb:cc:00:00:03", "is_wired": True, "sw_port": True},  # bool, not a port
+            {"mac": "aa:bb:cc:00:00:04", "is_wired": True, "sw_port": 0},
+            {"mac": "aa:bb:cc:00:00:05", "is_wired": True, "sw_port": "3"},
+            {"mac": "not-a-mac", "is_wired": True, "sw_port": 2},
+            "junk",
+        ],
+    }
+    assert parse.classic_ports(body) == {"aa:bb:cc:00:00:01": 5}
+    assert parse.classic_ports({"data": "x"}) == {}
+    assert parse.classic_ports(["x"]) == {}
+
+
+def test_classic_url_is_the_sibling_of_the_integration_base() -> None:
+    assert ep.classic_url(BASE + "/") == "https://ucg.lab.example/proxy/network/api"
+    assert ep.classic_url("https://ucg.lab.example/custom") is None
+    for e in ep.CLASSIC:
+        assert e.method == "GET"
+        assert not set(e.path_template.lower().split("/")) & DENIED_SEGMENTS
+
+
+async def test_lab_wired_clients_carry_their_switch_port() -> None:
+    result, audit = await collect()
+    site = next(f.model for f in result.facets if isinstance(f.model, UnifiSiteFacts))
+    assert site.switch_ports == "classic"
+    by_name = {c.name: c for c in site.clients}
+    assert by_name["docker01"].uplink_port == 1
+    assert by_name["pi-garage"].uplink_port is None  # wireless
+    assert any(e.op == "GET /s/{site_name}/stat/sta" for e in audit.events)
+
+
+async def test_refused_classic_api_degrades_without_failing_the_run() -> None:
+    def refuse(r: dict[str, Any]) -> None:
+        r["/proxy/network/api/s/default/stat/sta"] = (401, b"{}")
+
+    result, _ = await collect(mutate=refuse)
+    assert result.status == "ok"
+    site = next(f.model for f in result.facets if isinstance(f.model, UnifiSiteFacts))
+    assert site.switch_ports == "unavailable"
+    assert all(c.uplink_port is None for c in site.clients)
+
+
+@pytest.mark.parametrize("site_name", ["../integration", "default/../../x", "a b", "", "x" * 65])
+async def test_classic_site_name_is_validated_before_any_request(site_name: str) -> None:
+    audit = MemoryAudit()
+    client = ReadOnlyHttpClient(
+        target="ucg",
+        base_url="https://ucg.lab.example/proxy/network/api",
+        endpoints=ep.CLASSIC,
+        audit=audit,
+        tls=None,
+        transport=replay_transport({}),
+    )
+    async with client:
+        with pytest.raises(SecurityRefusal):
+            await client.get(ep.CLASSIC_STA, {"site_name": site_name})
+    assert audit.outcomes == ["refused"]

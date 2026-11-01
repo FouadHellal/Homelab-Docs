@@ -672,3 +672,18 @@ Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a
 - Exposing atlas to the internet for claude.ai connectors: it holds a map of the network.
 - Giving the HTTP MCP service the master key so it could scan: a network listener with scan credentials, for a convenience SSH already provides.
 - Free-form arguments in the sudoers rule (`atlas mcp *`).
+
+## ADR-037 Switch port of every wired client, from the classic client list (v6)
+**Context.** The topology should say which switch *and port* each VM or server is plugged into. The Network Integration API (v10.6.106, the version ADR-012 cites) gives each client its `uplinkDeviceId` but no port, and its device details give port tables without the clients on them. The classic (pre-Integration) client list does carry it. Sources, read 2026-11-01:
+- ubntwiki "UniFi Controller API" (community reference): `GET /api/s/{site}/stat/sta` lists active clients with `mac`, `is_wired`, `sw_mac`, `sw_port`; UniFi OS consoles serve it under `/proxy/network/api/...`.
+- An ioBroker.unifi issue reports (on Network 11.0.97) that the local `X-API-KEY` is accepted on these classic endpoints. Unofficial: Ubiquiti documents only the Integration API.
+- The Site Manager connector (ADR-026) proxies `*path` to `/proxy/<path>` on the console, so the same sibling path works through api.ui.com.
+
+**Decisions.**
+- One extra endpoint, `unifi.classic.clients` = `GET /s/{site_name}/stat/sta`, on the sibling base path (`…/proxy/network/integration` → `…/proxy/network/api`), same host, same key, same `ReadOnlyHttpClient` (GET only, `site_name` regex-validated; the site name is the Integration API's `internalReference`). One request per site per scan.
+- **Optional by design**: a 401/403/404, a non-JSON answer or a refusal yields no ports and `switch_ports: "unavailable"` on the site facet; the run stays `ok`. Only `mac`, `is_wired` and an integer `sw_port` in 1..999 are kept; nothing else from that answer is stored.
+- The port lands on the client (`uplink_port`, volatile like all client data) and flows through reconciliation: "sw-rack · port 5" on machine cards, the machine page, the Proxmox side panel and MCP (`plugged_into`), and as a label on each wired link in the network view.
+
+**Rejected.**
+- Logging in with a local account to get a classic session: a stored password with admin-ish reach, for one field.
+- Reading port tables from device details and guessing by MAC: switch port tables in the Integration API don't list client MACs.

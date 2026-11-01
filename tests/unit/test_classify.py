@@ -65,7 +65,7 @@ def test_guests_get_ip_vlan_uplink_from_unifi(tmp_path: Path) -> None:
         "10.0.30.20",
         "IoT",
         30,
-        "sw-rack",
+        "sw-rack · port 11",
     )
     assert rows["docker01 (VM 101)"]["ip"] == "10.0.20.11"
     assert len(rows) >= 8

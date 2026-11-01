@@ -185,6 +185,11 @@
       { selector: "edge[kind = 'nic2']", style: { "line-style": "dashed", "line-dash-pattern": [4, 4] } },
       { selector: "edge[kind = 'uplink']", style: { "width": 2, "line-color": muted, "line-style": "dashed", "line-dash-pattern": [6, 4] } },
       { selector: "edge[kind = 'wireless']", style: { "line-style": "dotted" } },
+      // Switch port of a wired client (physical view): always shown, small, on the wire.
+      { selector: "edge[kind = 'wired'][label]", style: {
+          "label": "data(label)", "font-size": 8, "color": muted, "text-background-color": bg,
+          "text-background-opacity": 1, "text-background-padding": 1.5, "text-background-shape": "round-rectangle",
+          "text-rotation": "autorotate", "font-family": css("--font") } },
       { selector: "edge[kind = 'runs']", style: { "line-style": "dashed", "line-dash-pattern": [3, 3], "curve-style": "taxi", "taxi-direction": "downward" } },
       { selector: ".faded", style: { "opacity": 0.12 } },
       { selector: "node.hl", style: { "underlay-opacity": 0.25 } },

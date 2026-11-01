@@ -135,7 +135,9 @@ def wan(w: dict[str, Any]) -> Wan | None:
     return Wan(id=wid, name=name) if wid and name else None
 
 
-def client(c: dict[str, Any], mac_by_id: dict[str, str]) -> UnifiClient | None:
+def client(
+    c: dict[str, Any], mac_by_id: dict[str, str], ports: dict[str, int] | None = None
+) -> UnifiClient | None:
     mac = norm_mac(c.get("macAddress"))
     if mac is None:
         return None
@@ -146,8 +148,23 @@ def client(c: dict[str, Any], mac_by_id: dict[str, str]) -> UnifiClient | None:
         ip=norm_ip(ip) if ip else None,
         type=_s(c.get("type"), 16),
         uplink_mac=mac_by_id.get(str(c.get("uplinkDeviceId"))),
+        uplink_port=(ports or {}).get(mac),
         connected_at=_s(c.get("connectedAt"), 64),
     )
+
+
+def classic_ports(body: Any) -> dict[str, int]:
+    """Wired client MAC -> switch port, from a classic `stat/sta` answer
+    ({"meta": {"rc": "ok"}, "data": [{"mac", "is_wired", "sw_mac", "sw_port", ...}]})."""
+    data = body.get("data") if isinstance(body, dict) else None
+    out: dict[str, int] = {}
+    for c in data if isinstance(data, list) else []:
+        if not isinstance(c, dict) or c.get("is_wired") is False:
+            continue
+        mac, port = norm_mac(c.get("mac")), c.get("sw_port")
+        if mac and isinstance(port, int) and not isinstance(port, bool) and 0 < port < 1000:
+            out[mac] = port
+    return out
 
 
 def device(

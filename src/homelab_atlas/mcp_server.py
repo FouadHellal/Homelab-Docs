@@ -111,6 +111,10 @@ def _machine_row(m: dict[str, Any], health: dict[str, str]) -> dict[str, Any]:
         "node": m["node"],
         "vmid": m["vmid"],
         "ip": (m["ips"] or [None])[0],
+        "network": m.get("network"),
+        "vlan": m.get("vlan"),
+        # UniFi device (and switch port, when known) the machine's NIC is plugged into.
+        "plugged_into": m.get("uplink"),
         "os": m["os"],
         "cpu_cores": m["cores"],
         "memory_mb": m["memory_mb"],

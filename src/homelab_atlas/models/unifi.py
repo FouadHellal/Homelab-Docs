@@ -70,6 +70,8 @@ class UnifiClient(Fact):
     ip: str | None = None
     type: str | None = None  # WIRED | WIRELESS | VPN | TELEPORT
     uplink_mac: str | None = None  # resolved from uplinkDeviceId
+    #: Switch port of a wired client, from the classic client list (ADR-037); None if unknown.
+    uplink_port: int | None = None
     connected_at: str | None = None
 
 
@@ -85,6 +87,8 @@ class UnifiSiteFacts(Fact):
     wans: list[Wan] = keyed("name")
     #: Clients churn constantly: kept for reconciliation and the UI, never diffed.
     clients: list[UnifiClient] = volatile(factory=list)
+    #: Where switch ports came from: "classic" (read), "unavailable" (the key was refused).
+    switch_ports: str | None = volatile()
 
 
 class UnifiPort(Fact):

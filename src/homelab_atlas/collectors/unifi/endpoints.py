@@ -60,5 +60,21 @@ COLLECT: Final = frozenset(
     }
 )
 DOCTOR: Final = frozenset({INFO, SITES})
+
+# Classic (pre-Integration) client list, for the one thing the Integration API lacks: the switch
+# port of each wired client (ADR-037). Same host, same key, GET only, a sibling base path:
+# <...>/proxy/network/integration -> <...>/proxy/network/api. Optional: refused keys degrade.
+CLASSIC_STA = Endpoint(
+    "unifi.classic.clients", "GET", "/s/{site_name}/stat/sta", {"site_name": r"[A-Za-z0-9_-]{1,64}"}
+)
+CLASSIC: Final = frozenset({CLASSIC_STA})
+
+
+def classic_url(url: str) -> str | None:
+    """The classic API base next to an Integration API base URL, or None if it has none."""
+    base = url.rstrip("/")
+    return base[: -len("integration")] + "api" if base.endswith("/integration") else None
+
+
 #: Integration API with the endpoints above exists from Network 9.3 (developer.ui.com index).
 MIN_VERSION: Final = (9, 3)

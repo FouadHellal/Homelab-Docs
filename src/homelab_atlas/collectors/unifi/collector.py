@@ -1,6 +1,7 @@
 """unifi collector: local Network Integration API, X-API-KEY, GET-only (ADR-005)."""
 
 import asyncio
+import contextlib
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any, TypeVar
@@ -25,7 +26,7 @@ DETAIL_CONCURRENCY = 4
 class UnifiCollector:
     name = "unifi"
     requires: frozenset[ProbeSection] = frozenset()
-    endpoints = ep.COLLECT
+    endpoints = ep.COLLECT | ep.CLASSIC  # CLASSIC goes through its own client (sibling base)
 
     def targets(self, inventory: Inventory) -> list[str]:
         return [s.name for s in inventory.sources.unifi]
@@ -45,9 +46,18 @@ class UnifiCollector:
             result.errors = ["no HTTP factory configured"]
             return result
         try:
-            client = ctx.http(self.source(ctx.inventory, target), self.endpoints)
-            async with client:
-                await _Run(client, result, target).collect()
+            src = self.source(ctx.inventory, target)
+            client = ctx.http(src, ep.COLLECT)
+            curl = ep.classic_url(src.url)
+            classic = (
+                ctx.http(ApiSource(src.name, curl, src.credential, src.tls, src.auth), ep.CLASSIC)
+                if curl
+                else None
+            )
+            async with client, contextlib.AsyncExitStack() as stack:
+                if classic is not None:
+                    await stack.enter_async_context(classic)
+                await _Run(client, result, target, classic).collect()
         except SecurityRefusal as exc:
             result.status, result.facets = "refused", []
             result.errors.append(f"refused: {exc.reason.value}: {exc.detail}")
@@ -59,9 +69,27 @@ class UnifiCollector:
 
 
 class _Run:
-    def __init__(self, client: ReadOnlyHttpClient, result: CollectorResult, source: str) -> None:
-        self.c, self.r, self.source = client, result, source
+    def __init__(
+        self,
+        client: ReadOnlyHttpClient,
+        result: CollectorResult,
+        source: str,
+        classic: ReadOnlyHttpClient | None = None,
+    ) -> None:
+        self.c, self.r, self.source, self.classic = client, result, source, classic
         self.sem = asyncio.Semaphore(DETAIL_CONCURRENCY)
+
+    async def switch_ports(self, ref: str) -> tuple[dict[str, int], str]:
+        """Wired client -> switch port from the classic API. Never fails the run: the classic
+        API is unofficial, and a key may be refused there (ADR-037)."""
+        if self.classic is None:
+            return {}, "unavailable"
+        try:
+            async with self.sem:
+                body = (await self.classic.get(ep.CLASSIC_STA, {"site_name": ref})).json()
+        except (HttpStatusError, TransportError, SecurityRefusal, ValueError):
+            return {}, "unavailable"
+        return parse.classic_ports(body), "classic"
 
     async def pages(
         self, endpoint: Endpoint, vars_: Mapping[str, str] | None = None
@@ -148,6 +176,7 @@ class _Run:
             return [x for i in items or [] if (x := fn(i)) is not None]
 
         ref = parse._s(site.get("internalReference"), 64) or sid
+        ports, port_source = await self.switch_ports(ref)
         facts = UnifiSiteFacts(
             name=parse._s(site.get("name"), 128) or ref,
             reference=ref,
@@ -162,7 +191,8 @@ class _Run:
             policies=keep(policies, parse.policy),
             acl_rules=keep(acl, parse.acl_rule),
             wans=keep(wans, parse.wan),
-            clients=keep(clients, lambda c: parse.client(c, mac_by_id)),
+            clients=keep(clients, lambda c: parse.client(c, mac_by_id, ports)),
+            switch_ports=port_source,
         )
         skey = f"unifi:site:{self.source}/{ref}"
         self.r.facets.append(FacetResult(skey, "unifi-site", f"{facts.name} (UniFi site)", facts))

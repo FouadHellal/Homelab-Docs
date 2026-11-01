@@ -23,13 +23,17 @@ def gw_mac(n: int) -> str:
 
 
 SITE = uid("site/default")
+#: Switch port per wired client (classic stat/sta, ADR-037). sw-rack has 16 ports, sw-core 26.
+SWITCH_PORTS = {"docker01": 1, "docker02": 2, "web01": 3, "db01": 4, "mediatheque": 5,
+                "backup01": 6, "legacy01": 7, "media01": 8, "adguard": 9, "ipv6only01": 10,
+                "homeassistant": 11, "win11": 12, "pve1": 1, "pve2": 2, "unas": 3}  # fmt: skip
 DEVICES: list[dict[str, Any]] = [
     {"name": "ucg-ultra", "model": "UCG-Ultra", "n": 1, "ip": "10.0.10.1", "fw": "4.3.9",
      "features": ["gateway", "switching"], "uplink": None, "ports": 5, "radios": []},
     {"name": "sw-core", "model": "USW-Pro-24-PoE", "n": 2, "ip": "10.0.10.2", "fw": "7.1.26",
      "features": ["switching"], "uplink": "ucg-ultra", "ports": 26, "radios": []},
-    {"name": "sw-rack", "model": "USW-Lite-8-PoE", "n": 3, "ip": "10.0.10.3", "fw": "7.1.26",
-     "features": ["switching"], "uplink": "sw-core", "ports": 8, "radios": []},
+    {"name": "sw-rack", "model": "USW-Lite-16-PoE", "n": 3, "ip": "10.0.10.3", "fw": "7.1.26",
+     "features": ["switching"], "uplink": "sw-core", "ports": 16, "radios": []},
     {"name": "ap-living", "model": "U7-Pro", "n": 4, "ip": "10.0.10.4", "fw": "8.0.19",
      "features": ["accessPoint"], "uplink": "sw-core", "ports": 1, "radios": ["2.4", "5", "6"]},
     {"name": "ap-office", "model": "U7-Pro", "n": 5, "ip": "10.0.10.5", "fw": "8.0.19",
@@ -135,6 +139,16 @@ def render(s: dict[str, Any], mac: Any) -> dict[str, Any]:
         for c in s["clients"]
     ]  # fmt: skip
     rec[f"{BASE}/sites/{SITE}/clients{PAGE}"] = _page(clients)
+    # Classic client list: switch port of every wired client (ADR-037), fixed per client.
+    classic = []
+    for c in s["clients"]:
+        row = {"mac": c["mac"] or mac(c["name"]), "is_wired": c["type"] == "WIRED"}
+        if c["type"] == "WIRED":
+            sw = next(d["n"] for d in s["devices"] if d["name"] == c["via"])
+            row |= {"sw_mac": gw_mac(sw), "sw_port": SWITCH_PORTS[c["name"]]}
+        classic.append(row)
+    rec["/proxy/network/api/s/default/stat/sta"] = {"status": 200, "body": {"meta": {"rc": "ok"},
+                                                                        "data": classic}}  # fmt: skip
     nets = []
     zone_of = {n: z for z, ns in s["zones"].items() for n in ns}
     for name, vlan, gw in s["networks"]:
