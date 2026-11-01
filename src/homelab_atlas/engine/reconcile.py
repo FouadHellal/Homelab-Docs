@@ -134,10 +134,28 @@ def _correlate(s: Session, facets: list[Facet], idx: Index) -> None:
         }
         match = next((mac_to_guest[m] for m in macs if m in mac_to_guest), None)
         if match is None:
-            match = next((n.entity_key for n in nodes if _ip(n.data.get("ip")) in ips), None)
+            match = _own_node(f.data, nodes, ips)
         entity = s.get(Entity, f.entity_key)
         if entity is not None and entity.same_as != match:
             entity.same_as = match
+
+
+def _own_node(host: dict[str, Any], nodes: list[Facet], ips: set[str]) -> str | None:
+    """The PVE node entity a Linux host is. A node scanned over SSH names itself in its `pve`
+    section; otherwise match the node's IP, then its name against the hostname. Without this
+    a standalone node (no corosync IP) showed twice: as the node and as an empty Linux box."""
+    keys = {n.entity_key for n in nodes}
+    pve = host.get("pve") or {}
+    if pve.get("node"):
+        own = f"pve:node:{pve.get('cluster') or pve['node']}/{pve['node']}"
+        if own in keys:
+            return own
+    by_ip = next((n.entity_key for n in nodes if _ip(n.data.get("ip")) in ips), None)
+    if by_ip is not None:
+        return by_ip
+    hostname = str((host.get("os") or {}).get("hostname") or "").split(".")[0].lower()
+    named = [n.entity_key for n in nodes if str(n.data.get("name") or "").lower() == hostname]
+    return named[0] if hostname and len(named) == 1 else None
 
 
 def _candidates(facets: list[Facet]) -> dict[str, dict[str, Any]]:

@@ -230,7 +230,15 @@ def proxmox(s: Session, c: Ctx) -> list[dict[str, Any]]:
     wired to the bridge their NIC uses (ADR-031). Other machines get their own box."""
     out: list[dict[str, Any]] = []
     cards = {m["key"]: m for m in machines(s)}
-    nodes = {k: m for k, m in cards.items() if m["kind"] == "pve-node" or _is_pve_host(m)}
+    nodes = {k: m for k, m in cards.items() if m["kind"] == "pve-node"}
+    # A Linux host running Proxmox VE but not (yet) linked to its node entity: its own box,
+    # unless a node with the same name or IP already has one (never the same machine twice).
+    seen = {m["short"].lower() for m in nodes.values()} | {
+        ip for m in nodes.values() for ip in m["ips"]
+    }
+    for k, m in cards.items():
+        if _is_pve_host(m) and m["short"].lower() not in seen and not set(m["ips"]) & seen:
+            nodes[k] = m
     guests_of: dict[str, list[dict[str, Any]]] = {k: [] for k in nodes}
     by_name = {m["short"].lower(): k for k, m in nodes.items()}
     for key, m in cards.items():
@@ -276,7 +284,9 @@ def proxmox(s: Session, c: Ctx) -> list[dict[str, Any]]:
                 }
             )
     others = [
-        m for m in cards.values() if m["kind"] in ("linux-host", "nas") and m["key"] not in nodes
+        m
+        for m in cards.values()
+        if m["kind"] in ("linux-host", "nas") and m["key"] not in nodes and not _is_pve_host(m)
     ]
     if others or any(d["data"].get("parent") == "group:other" for d in out):
         out.append(

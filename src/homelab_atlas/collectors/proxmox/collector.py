@@ -27,6 +27,22 @@ from homelab_atlas.security.errors import (
 from homelab_atlas.security.http import ReadOnlyHttpClient
 
 PER_GUEST_CONCURRENCY = 4
+
+
+def http_hint(status: int) -> str:
+    """What a failing first API call usually means, in the owner's words."""
+    if status == 401:
+        return (
+            "HTTP 401: the token was refused. The token id is user@realm!name (for example "
+            "atlas@pve!atlas) and the secret is the UUID shown once when it was created"
+        )
+    if status == 403:
+        return "HTTP 403: the token lacks permission: give it the PVEAuditor role on /"
+    if status in (500, 501, 595, 596):
+        return f"HTTP {status}: the Proxmox API answered with an error (is pveproxy running?)"
+    return f"HTTP {status} from the Proxmox API"
+
+
 NO_VISIBILITY = (
     "the token works but sees no nodes or guests: give the TOKEN itself the PVEAuditor role "
     "on / (Datacenter > Permissions > Add > API Token Permission), or untick privilege "
@@ -67,7 +83,10 @@ class ProxmoxCollector:
         except SecurityRefusal as exc:
             result.status, result.facets = "refused", []
             result.errors.append(f"refused: {exc.reason.value}: {exc.detail}")
-        except (TransportError, HttpStatusError) as exc:
+        except HttpStatusError as exc:
+            result.status, result.facets = "failed", []
+            result.errors.append(http_hint(exc.status))
+        except TransportError as exc:
             result.status, result.facets = "failed", []
             result.errors.append(f"unreachable: {exc}")
         result.duration_ms = int((time.monotonic() - start) * 1000)

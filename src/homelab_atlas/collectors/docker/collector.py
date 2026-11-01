@@ -13,6 +13,13 @@ from homelab_atlas.inventory.hosts import Inventory
 from homelab_atlas.models.docker import DockerHostFacts
 from homelab_atlas.security.allowlist import Endpoint, ProbeSection
 
+NOT_INSTALLED = "docker: engine: docker not installed"
+UNREADABLE = "docker: engine: unreadable"
+UNREADABLE_HINT = (
+    "docker could not be read (no permission, or the daemon is stopped): tick 'use for sudo' "
+    "on this target, or add the login to the docker group"
+)
+
 
 def _build(frame: Frame, errors: list[str]) -> DockerHostFacts | None:
     parsed = parse_docker(frame)
@@ -47,7 +54,7 @@ class DockerCollector:
         return docker_events(key, name, changes)
 
     async def collect(self, target: str, ctx: CollectContext) -> CollectorResult:
-        return await collect_section(
+        result = await collect_section(
             ctx,
             target,
             collector=self.name,
@@ -56,3 +63,9 @@ class DockerCollector:
             build=_build,
             children=_children,
         )
+        if result.status == "failed" and NOT_INSTALLED in result.errors:
+            # Nothing to collect is not a failure: the Targets page should not show red.
+            result.status, result.errors = "ok", ["docker is not installed on this machine"]
+        elif result.status == "failed" and UNREADABLE in result.errors:
+            result.errors = [e for e in result.errors if e != UNREADABLE] + [UNREADABLE_HINT]
+        return result
