@@ -2,7 +2,17 @@
 
 All notable changes. Versions follow [SemVer](https://semver.org/); dates are UTC.
 
-## Unreleased
+## 0.6.0 (2026-11-01)
+
+### Added
+- Switch ports: the network view labels every wired link with its port, and machine cards, the
+  machine page, the Proxmox side panel and MCP (`plugged_into`) say "sw-rack · port 5". Read
+  from UniFi's classic client list with the same key; left out if the key is refused there
+  (ADR-037).
+- `sudo atlas update` follows a rewritten upstream history (the old one is kept as an
+  `atlas-backup-<date>` branch) instead of failing on `git pull`; `--reset` also drops commits
+  made on the server.
+- MCP machine rows include `network` and `vlan`.
 
 ### Changed
 - The repository is public. The README is shorter; setup per target, pages, settings and

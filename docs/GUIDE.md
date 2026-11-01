@@ -57,8 +57,10 @@ The cloud option goes through Ubiquiti's connector at api.ui.com, which allows 1
 minute; atlas paces itself. Either way atlas only sends GET requests and never reads Wi-Fi
 passwords.
 
-UniFi gives you switches, APs and clients with the port or AP each one is on, and the IP, VLAN
-and switch of every Proxmox VM, matched by MAC (no guest agent needed). Devices you haven't
+UniFi gives you switches, APs and clients with the port or AP each one is on, and the IP, VLAN,
+switch and switch port of every Proxmox VM, matched by MAC (no guest agent needed). Switch ports
+come from the Network app's older client list; if your key isn't allowed there, everything else
+still works and ports are just left out. Devices you haven't
 added show up under **Unknown**: servers, Pis and NAS boxes first, with an **Add as target**
 button; phones, TVs and IoT stay hidden behind *show everything*.
 
@@ -113,7 +115,10 @@ sudo atlas update
 This fast-forwards your clone (`git pull --ff-only`, as the clone's owner), writes a backup to
 `/opt/atlas/backups/pre-update-<date>.tar.gz` (the last 5 are kept), pulls or rebuilds the
 image and restarts. It prints the old and new version. If the pull fails it stops and tells you
-why rather than reinstalling the old code. Options: `--no-pull`, `--no-backup`, `--build`.
+why rather than reinstalling the old code. Options: `--no-pull`, `--no-backup`, `--build`,
+`--reset`. If the project's history was rewritten upstream, the update follows it by itself and
+keeps the old history as an `atlas-backup-<date>` branch; it refuses only when your clone has
+commits of its own, and `--reset` drops those too (still kept in that branch).
 
 Targets, credentials, accounts, notes and history live in the data volume and in `/opt/atlas`
 (`.env`, `secrets/`, `config/`). Updates never touch them, and database migrations run on start.
@@ -146,6 +151,6 @@ Settings live in `/opt/atlas/.env`. Run `sudo atlas start` after editing.
 | UniFi cloud: *the key was refused* | A unifi.ui.com key entered as Local, or the other way round. |
 | UniFi local: certificate error | The gateway's certificate changed (often after an update). Fetch and confirm it again. |
 | No Proxmox nodes or VMs anywhere | The token lacks PVEAuditor itself; run the last `pveum acl modify … --tokens` line above. Or add a node as `proxmox-node`. |
-| `sudo atlas update` changed nothing | Check `sudo atlas version`. If the commit is old, `git pull` failed: run it yourself in the clone, then `sudo atlas update --no-pull`, then Ctrl+F5. |
+| `sudo atlas update` changed nothing | Check `sudo atlas version`. If the commit is old, `git pull` failed: it says why. History rewritten upstream and you never commit on the server: `sudo atlas update --reset`. Otherwise run `git pull` yourself in the clone, then `sudo atlas update --no-pull`, then Ctrl+F5. |
 | A machine never gets documented | Check its last scan on Targets. *Not scanned yet*: press Scan. *Failed*: open it for the reason. |
 | A box shows no services | It isn't a target yet. Add it as a machine and scan it. |
