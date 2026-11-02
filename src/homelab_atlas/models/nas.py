@@ -4,6 +4,11 @@ from typing import Literal
 
 from homelab_atlas.models.base import Fact, keyed, volatile
 
+#: Pool states that are not failures. "noDataProtectionYet" = no redundancy (one disk, or a
+#: RAID still being built): worth knowing, not an outage.
+POOL_OK: frozenset[str] = frozenset({"fullyOperational"})
+POOL_NOTE: frozenset[str] = frozenset({"noDataProtectionYet"})
+
 
 class NasPool(Fact):
     id: str

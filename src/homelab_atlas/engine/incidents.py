@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from homelab_atlas.engine import media
 from homelab_atlas.engine.notify import Notification
 from homelab_atlas.inventory.hosts import Inventory
+from homelab_atlas.models.nas import POOL_NOTE, POOL_OK
 from homelab_atlas.store.tables import CollectorRun, Facet, Incident
 
 COOLDOWN: Final = timedelta(minutes=30)
@@ -108,7 +109,7 @@ def conditions(
             )
     for f in s.scalars(select(Facet).where(Facet.collector == "nas")):
         for p in f.data.get("pools") or []:
-            if p.get("status") and p["status"] != "fullyOperational":
+            if p.get("status") and p["status"] not in POOL_OK | POOL_NOTE:
                 out.append(
                     Condition(
                         f"nas.pool:{f.target}:{p.get('id')}",

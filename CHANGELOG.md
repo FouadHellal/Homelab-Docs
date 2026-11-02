@@ -2,6 +2,13 @@
 
 All notable changes. Versions follow [SemVer](https://semver.org/); dates are UTC.
 
+## 0.8.2 (2026-11-02)
+
+### Fixed
+- n8n token: a token pasted with its `Bearer ` prefix (or with spaces) no longer causes HTTP 403.
+- A UniFi NAS pool reported as `noDataProtectionYet` (no redundancy yet) is a notice on the
+  Command Center, no longer an incident.
+
 ## 0.8.1 (2026-11-02)
 
 ### Changed

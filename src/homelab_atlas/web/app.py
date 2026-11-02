@@ -42,6 +42,7 @@ from homelab_atlas.engine.notify import (
     TOKEN_SECRET,
     Notification,
     WebhookNotifier,
+    clean_token,
     save_webhook_settings,
 )
 from homelab_atlas.export import build as export_build
@@ -707,8 +708,8 @@ def create_app(cfg: WebConfig) -> FastAPI:
             raise HTTPException(403, "read-only here")
         try:
             save_webhook_settings(cfg.data_dir, url.strip(), bool(allow_http))
-            if token.strip():
-                svc.set_secret(TOKEN_SECRET, SecretStr(token.strip()), "ui.n8n.token")
+            if (cleaned := clean_token(SecretStr(token))) is not None:
+                svc.set_secret(TOKEN_SECRET, cleaned, "ui.n8n.token")
         except (ValueError, TargetError) as exc:
             return RedirectResponse(f"/integrations?{urlencode({'msg': str(exc)[:180]})}", 303)
         log.info("n8n.saved", by=user.username)

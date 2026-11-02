@@ -26,7 +26,7 @@ from homelab_atlas.engine.notify import Notification
 from homelab_atlas.lab import load_api_recordings, load_lab
 from homelab_atlas.runtime import Inputs, Runtime, replay_http
 from homelab_atlas.security.ssh import SshRunner
-from homelab_atlas.store.tables import Incident
+from homelab_atlas.store.tables import Entity, Facet, Incident, Scan
 from tests.helpers import MemoryAudit
 
 LAB = Path(__file__).resolve().parents[2] / "fixtures" / "demo-lab"
@@ -324,3 +324,26 @@ def test_incidents_table_is_migrated(tmp_path: Path) -> None:
         assert s.execute(select(Incident)).all() == []
         version = s.connection().exec_driver_sql("select version_num from alembic_version").scalar()
     assert version == "0005"
+
+
+def test_pool_without_redundancy_is_not_an_incident(tmp_path: Path) -> None:
+    rt = Runtime.open(tmp_path, mode="demo")
+    inv, _ = load_lab("A", LAB)
+    with rt.sessions() as s:
+        s.add(Scan(mode="demo"))
+        s.flush()
+        s.add(Entity(key="nas:x", kind="nas", display_name="unas"))
+        s.flush()
+        for pid, status in (("1", "noDataProtectionYet"), ("2", "degraded")):
+            s.merge(
+                Facet(
+                    entity_key="nas:x",
+                    collector="nas",
+                    target="unas",
+                    scan_id=1,
+                    data={"pools": [{"id": pid, "status": status}]},
+                )
+            )
+            s.flush()
+            keys = {c.key for c in incidents.conditions(s, inv, {}, datetime.now(UTC))}
+            assert ("nas.pool:unas:2" in keys) is (pid == "2")

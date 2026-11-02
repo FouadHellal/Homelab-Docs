@@ -13,6 +13,7 @@ from homelab_atlas.engine.notify import (
     Notification,
     WebhookConfig,
     WebhookNotifier,
+    clean_token,
     webhook_from_env,
 )
 from homelab_atlas.inventory.hosts import JellyfinSource
@@ -268,3 +269,25 @@ def test_notification_shape_is_closed() -> None:
         Notification.model_validate({"kind": "test", "title": "x", "command": "rm -rf /"})
     with pytest.raises(ValueError):
         Notification(kind="restart.vm", title="x")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "pasted",
+    ["tok-ATLASFAKE", "  tok-ATLASFAKE  ", "Bearer tok-ATLASFAKE", "bearer  tok-ATLASFAKE"],
+)
+async def test_pasted_bearer_prefix_is_tolerated(pasted: str) -> None:
+    hook = Hook()
+    n = WebhookNotifier(
+        WebhookConfig("http://10.0.0.5:5678/webhook/atlas", allow_http=True),
+        SecretStr(pasted),
+        MemoryAudit(),
+        transport=httpx.MockTransport(hook),
+    )
+    ok, _ = await n.send(Notification(kind="test", title="x"))
+    assert ok
+    assert hook.requests[0].headers["authorization"] == "Bearer tok-ATLASFAKE"
+
+
+def test_blank_token_means_no_header() -> None:
+    assert clean_token(SecretStr("Bearer ")) is None
+    assert clean_token(None) is None

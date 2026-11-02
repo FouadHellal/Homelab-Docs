@@ -133,6 +133,15 @@ def webhook_from_env(
     return WebhookConfig(url, env.get("ATLAS_N8N_ALLOW_HTTP", "") in ("1", "true", "yes"), ca_path)
 
 
+def clean_token(token: SecretStr | None) -> SecretStr | None:
+    """The token as n8n expects it after "Bearer ": tolerate a pasted "Bearer " prefix and
+    surrounding spaces (the most common copy-paste mistake)."""
+    if token is None:
+        return None
+    value = re.sub(r"(?i)^bearer(\s+|$)", "", token.get_secret_value().strip()).strip()
+    return SecretStr(value) if value else None
+
+
 class WebhookNotifier:
     """POSTs `Notification`s to one n8n webhook. Never raises: returns (ok, message)."""
 
@@ -145,7 +154,7 @@ class WebhookNotifier:
         transport: object | None = None,
     ) -> None:
         self.cfg = cfg
-        self._token = token
+        self._token = clean_token(token)
         self._audit = audit
         self._redactor = redactor
         self._transport = transport

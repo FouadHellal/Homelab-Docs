@@ -25,6 +25,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from homelab_atlas.engine.apps import CATEGORY_LABELS
+from homelab_atlas.models.nas import POOL_NOTE, POOL_OK
 from homelab_atlas.store.facets import facet_views
 from homelab_atlas.store.tables import CollectorRun, Entity, Event, Facet
 from homelab_atlas.web.queries import latest_runs
@@ -543,11 +544,13 @@ def issues(
                 )
         elif v.collector == "nas":
             for p in v.data.get("pools") or []:
-                if p.get("status") and p["status"] != "fullyOperational":
+                if p.get("status") and p["status"] not in POOL_OK:
+                    note = p["status"] in POOL_NOTE
                     out.append(
                         {
-                            "sev": "warning",
-                            "title": f"NAS pool {p.get('id')}: {p['status']}",
+                            "sev": "notice" if note else "warning",
+                            "title": f"NAS pool {p.get('id')}: "
+                            + ("no data protection (no redundancy)" if note else p["status"]),
                             "detail": v.data.get("name") or "",
                             "since": None,
                             "href": f"/entity?key={v.entity_key}",
