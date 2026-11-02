@@ -1,0 +1,79 @@
+{
+  "name": "atlas notifications",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "atlas",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "b6f0f7a1-0001-4a7e-9c1d-atlaswebhook01",
+      "name": "atlas webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "atlas",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "jsCode": "// atlas -> n8n (ADR-040). The body is one fixed shape; see docs/GUIDE.md, \"n8n\".\nconst b = $json.body || {};\nconst icon = { warning: '🔴', notice: '🟠', info: '🟢' }[b.severity] || '🔵';\nconst lines = [`${icon} ${b.title || 'atlas'}`];\nif (b.kind === 'summary.daily' && b.summary) {\n  for (const [k, v] of Object.entries(b.summary)) lines.push(`• ${k.replace(/_/g, ' ')}: ${v}`);\n}\nfor (const e of (b.evidence || []).slice(0, 10)) lines.push(`– ${e}`);\nif (b.opened_at) lines.push(`since ${b.opened_at}`);\nreturn [{ json: { kind: b.kind, severity: b.severity, key: b.key, text: lines.join('\\n') } }];\n"
+      },
+      "id": "b6f0f7a1-0002-4a7e-9c1d-atlasformat01",
+      "name": "Format message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "b6f0f7a1-0003-4a7e-9c1d-atlassend0001",
+      "name": "Send it (replace with Telegram, Discord, email…)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        520,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "atlas webhook": {
+      "main": [
+        [
+          {
+            "node": "Format message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format message": {
+      "main": [
+        [
+          {
+            "node": "Send it (replace with Telegram, Discord, email…)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

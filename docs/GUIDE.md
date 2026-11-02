@@ -84,11 +84,41 @@ and **Scan**.
 and keys are stored encrypted and never shown again. Process command lines are redacted before
 they're stored.
 
+### Jellyfin
+
+Targets → Jellyfin → **+ add**: a name, the address, and an API key created in Jellyfin under
+*Dashboard → API Keys → +* (call it "atlas" so you can revoke it alone). If Jellyfin answers on
+plain `http://<LAN IP>:8096`, tick *Plain HTTP on my LAN*; HTTPS (port 8920 or a reverse proxy)
+is better because the key then never crosses the network in clear text. Set *Machine running
+Jellyfin* to its atlas target (or leave it empty to match by IP): that machine's SSH scan tells
+whether the library folders are really on the NAS.
+
+The key can do anything in Jellyfin (keys are not scoped), so atlas only lets itself make six GET
+calls: server info, sessions, item counts, libraries, scheduled tasks and recently added items.
+
+### n8n notifications (optional)
+
+1. In n8n, import `docs/integrations/n8n/atlas-notifications.json`. Give its *atlas webhook* node
+   a Header Auth credential: name `Authorization`, value `Bearer <a long random token>`. Replace
+   the last node with Telegram, Discord, email or anything else, then **activate** the workflow
+   and copy its production URL (`…/webhook/atlas`).
+2. In atlas: Integrations → paste the URL and the token (the part after `Bearer `), tick
+   *Plain HTTP on my LAN* if n8n runs on `http://<LAN IP>:5678`, Save, **Send a test
+   notification**.
+
+atlas then posts one JSON message when an incident opens (after it has lasted 5 minutes) and
+when it resolves, a daily summary at 07:00 UTC, and a diagnosis when you press *Send diagnosis
+to n8n* on the Media page. Fields: `kind`, `title`, `severity`, `key`, `entity`, `opened_at`,
+`resolved_at`, `evidence` (list of strings), `summary` (daily counts).
+
 ## Pages
 
 | Page | What's there |
 |---|---|
-| Dashboard | Proxmox nodes and guests, one card per machine with the apps found on it, targets that need attention, undocumented devices, recent changes, **Scan now** |
+| Command Center | The home page: overall health, open incidents, cards (nodes, VMs, LXCs, containers, network devices, apps, storage, unknown devices) that open the matching list, what needs attention, recent changes with filters, every recognised app with its state (healthy / degraded / down / stale / unknown), resources at the last scan, quick access to web UIs, data sources |
+| Overview | Proxmox nodes and guests, one card per machine with the apps found on it, **Scan now** |
+| Media | Jellyfin: a diagnosis (API, machine, VM, service, NAS mounts, NAS) with a checklist, now playing (direct play / transcoding, hardware acceleration when Jellyfin reports it), libraries and where their folders really are, failed tasks, media incidents |
+| Integrations | Data sources and their freshness; n8n notifications (set up and test here) |
 | Topology | Proxmox view (node → bridges → VMs/LXCs), network view (gateway → switches → APs → hosts) and VLANs. Click for details, right-click for actions, PNG export. Keys: `/` `F` `R` `C` |
 | Services | Every systemd unit and container on every machine, filterable, with CSV export |
 | Apps | Recognised apps and agents (Pi-hole, Home Assistant, Jellyfin, Action1, Zabbix, Wazuh…) and where they run. Click any app, chip or service name for its page: what it is, who makes it, caveats, every machine it runs on with version and state, and search buttons that open in your browser. Unrecognised listening ports are listed too; name one once and it's recognised everywhere |
@@ -137,6 +167,10 @@ Settings live in `/opt/atlas/.env`. Run `sudo atlas start` after editing.
 | `ATLAS_PORT` | Published port (default `8443`) |
 | `ATLAS_INTERVAL_UNIFI`, `…_PROXMOX`, `…_LINUX_SSH`, `…_DOCKER` | Scan intervals in seconds; `0` turns one off |
 | `ATLAS_SNAPSHOT_DAYS` | How long detailed snapshots are kept (default 90; the change history is kept forever) |
+| `ATLAS_INTERVAL_JELLYFIN` | Jellyfin scan interval (default 300 s) |
+| `ATLAS_MEDIA_SHOW_USERS=1` | Show Jellyfin user names on the live Media page (never stored; default: pseudonyms) |
+| `ATLAS_DAILY_SUMMARY_HOUR` | Hour (UTC) of the daily n8n summary, default 7; empty turns it off |
+| `ATLAS_N8N_WEBHOOK_URL`, `ATLAS_N8N_ALLOW_HTTP`, `ATLAS_N8N_CA_FILE` | n8n webhook set by environment instead of the Integrations page |
 | `ATLAS_MODE=proxy` | Serve plain HTTP on 127.0.0.1:8080 behind your own reverse proxy ([DEPLOY.md](DEPLOY.md)) |
 
 ## Troubleshooting
@@ -153,6 +187,9 @@ Settings live in `/opt/atlas/.env`. Run `sudo atlas start` after editing.
 | The browser doesn't fill in the saved password | Browsers only auto-fill on `https://` pages; on plain HTTP click the username field and pick the saved login. |
 | UniFi cloud: *the key was refused* | A unifi.ui.com key entered as Local, or the other way round. |
 | UniFi local: certificate error | The gateway's certificate changed (often after an update). Fetch and confirm it again. |
+| Media says *storage not mounted* but Jellyfin plays | The library folder exists on the machine's own disk: the NAS share is not mounted there (files may be cached or partly present). Check `findmnt /mnt/…` and the share on the NAS; atlas never remounts it. |
+| Media checks show *unknown* | atlas has no SSH scan of the Jellyfin machine. Add it on Targets and set *Machine running Jellyfin*. |
+| n8n test: *HTTP 404* | The workflow is not active, or you pasted the test URL (`/webhook-test/…`) instead of the production one. |
 | No Proxmox nodes or VMs anywhere | The token lacks PVEAuditor itself; run the last `pveum acl modify … --tokens` line above. Or add a node as `proxmox-node`. |
 | `sudo atlas update` changed nothing | Check `sudo atlas version`. If the commit is old, `git pull` failed: it says why. History rewritten upstream and you never commit on the server: `sudo atlas update --reset`. Otherwise run `git pull` yourself in the clone, then `sudo atlas update --no-pull`, then Ctrl+F5. |
 | A machine never gets documented | Check its last scan on Targets. *Not scanned yet*: press Scan. *Failed*: open it for the reason. |

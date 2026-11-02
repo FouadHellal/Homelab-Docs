@@ -2,6 +2,26 @@
 
 All notable changes. Versions follow [SemVer](https://semver.org/); dates are UTC.
 
+## 0.8.0 (2026-11-02)
+
+### Added
+- **Command Center** is the new home page (the old dashboard is now *Overview*): overall health,
+  open incidents, clickable summary cards, what needs attention, recent changes with filters,
+  every recognised app with an evidence-based state (healthy, degraded, down, stale, unknown),
+  resources at the last scan, quick access to web UIs and data source freshness.
+- **Jellyfin** as a target (Targets → Jellyfin): server health, live sessions with direct
+  play / transcoding and hardware acceleration when reported, libraries, failed scheduled
+  tasks, recently added. User names are never stored.
+- **Media** page: a diagnosis that tells "Jellyfin down" from "VM down", "service stopped",
+  "NAS share not mounted" (folder on the local disk), "NAS down", "network?" and "stale data",
+  with a checklist and the dependency chain.
+- **Incidents**: deduplicated, with recovery; **n8n notifications** (incident opened/resolved,
+  daily summary, diagnosis on request) configured on the new Integrations page. Importable
+  workflow in `docs/integrations/n8n/`.
+- MCP: `media_status`.
+- Plain `http://` is accepted for Jellyfin and n8n only when you opt in, and only to a private
+  LAN IP address (ADR-039).
+
 ## 0.7.0 (2026-11-01)
 
 ### Added

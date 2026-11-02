@@ -12,11 +12,15 @@ What it collects:
 
 - **Proxmox**: nodes, bridges, every VM and LXC, and how they're wired together.
 - **UniFi**: switches, APs, clients, VLANs, and the IP and switch port of each VM (matched by MAC).
+- **Jellyfin** (optional): server health, sessions and transcoding, libraries, failed tasks.
 - **Each machine** over SSH: OS, systemd services, processes, listening ports, Docker
   containers, packages, disks, users and cron jobs. About 70 common apps (Pi-hole, Home
   Assistant, Jellyfin, NetBox…) are recognised from that.
 
-From that you get a topology view, searchable tables, a change history ("port 8080 opened on
+From that you get a **Command Center** (what runs, what's down or stale, what changed, quick
+access to every web UI), a **Media** page that tells you whether Jellyfin is down or just lost
+its NAS share, optional n8n notifications for incidents, a topology view, searchable tables, a
+change history ("port 8080 opened on
 docker01", "image updated", "new device on VLAN 20"), and exports to Markdown, MkDocs, JSON, CSV
 and Mermaid. There's also a read-only [MCP server](docs/MCP.md), so an assistant like Claude
 can answer "what's running on that VM?" from your actual inventory.
