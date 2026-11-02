@@ -193,3 +193,8 @@ class Incident(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(default=None, index=True)
     notified_open_at: Mapped[datetime | None] = mapped_column(default=None)
     notified_resolved_at: Mapped[datetime | None] = mapped_column(default=None)
+    #: ADR-041: the owner saw it (no more announcements or reminders) / silenced it until.
+    acknowledged_at: Mapped[datetime | None] = mapped_column(default=None)
+    acknowledged_by: Mapped[str | None] = mapped_column(String(64), default=None)
+    snoozed_until: Mapped[datetime | None] = mapped_column(default=None)
+    last_reminded_at: Mapped[datetime | None] = mapped_column(default=None)

@@ -42,30 +42,39 @@ def daily_summary(
         ).all()
     )
     views = list(facet_views(s.scalars(select(Facet))))
-    full = 0
+    full: list[str] = []
     for v in views:
         for m in v.data.get("mounts") or [] if v.collector == "linux-ssh" else []:
             size, used = m.get("size_bytes"), m.get("used_bytes")
-            if (
-                isinstance(size, int)
-                and size > 0
-                and isinstance(used, int)
-                and used * 100 >= size * FULL_PCT
-            ):
-                full += 1
-    no_backup = sum(
-        1
+            if isinstance(size, int) and size > 0 and isinstance(used, int):
+                pct = used * 100 // size
+                if pct >= FULL_PCT:
+                    full.append(f"{m.get('target')} on {v.target} ({pct}%)")
+    no_backup = sorted(
+        str(v.data.get("name"))
         for v in views
         if v.collector == "proxmox"
         and "vmid" in v.data
         and v.data.get("backed_up") is False
         and not v.data.get("template")
     )
+    warnings = list(
+        s.scalars(
+            select(Event.summary)
+            .where(Event.created_at >= now - timedelta(hours=24), Event.severity == "warning")
+            .order_by(Event.id.desc())
+            .limit(6)
+        )
+    )
     incidents = open_incidents(s)
     media_states = [media.diagnose(s, inv, src, intervals, now) for src in inv.sources.jellyfin]
-    evidence = [f"failing: {', '.join(failing[:8])}"] if failing else []
-    evidence += [f"incident: {i.title}" for i in incidents[:8]]
+    evidence = [f"failing scans: {', '.join(failing[:8])}"] if failing else []
+    evidence += [f"open incident: {i.title}" for i in incidents[:6]]
     evidence += [f"media {d.source}: {d.headline}" for d in media_states]
+    evidence += [f"storage nearly full: {x}" for x in full[:4]]
+    if no_backup:
+        evidence.append(f"no backup job covers: {', '.join(no_backup[:10])}")
+    evidence += [f"change (warning): {w}" for w in warnings]
     worst: Literal["warning", "info"] = "warning" if failing or incidents else "info"
     return Notification(
         kind="summary.daily",
@@ -79,8 +88,8 @@ def daily_summary(
             "open_incidents": len(incidents),
             "changes_24h": sum(events.values()),
             "warnings_24h": int(events.get("warning", 0)),
-            "storage_over_90pct": full,
-            "guests_without_backup": no_backup,
+            "storage_over_90pct": len(full),
+            "guests_without_backup": len(no_backup),
         },
         evidence=evidence[:20],
     )

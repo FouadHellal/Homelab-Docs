@@ -56,6 +56,35 @@
   <p class="muted small">atlas only posts to that one URL, with a fixed message format, through its audited read-only HTTP client. Webhooks never trigger anything on your machines from atlas's side.</p>
 </section>
 
+{% if hook %}
+<section class="card" aria-labelledby="rules-h">
+  <h2 id="rules-h">What to send</h2>
+  {% if editable %}
+  <form method="post" action="/integrations/n8n/rules" class="target-form rules">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label class="check"><input type="checkbox" name="incidents" value="1"{% if rules.incidents %} checked{% endif %}><span><strong>Incidents</strong>: when something stays broken for 5 minutes</span></label>
+    <label class="check"><input type="checkbox" name="resolved" value="1"{% if rules.resolved %} checked{% endif %}><span><strong>Recoveries</strong>: when an announced incident clears</span></label>
+    <label>Reminders for open, unacknowledged incidents
+      <select name="reminder_hours">{% for h, l in ((0, "never"), (6, "every 6 h"), (12, "every 12 h"), (24, "every day"), (72, "every 3 days")) %}<option value="{{ h }}"{% if rules.reminder_hours == h %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></label>
+    <label>Change digest after each scan
+      <select name="changes">{% for v, l in (("warning", "warnings only (new unknown device, VM stopped, container unhealthy…)"), ("notice", "warnings and notices (also ports, images, firmware…)"), ("off", "off")) %}<option value="{{ v }}"{% if rules.changes == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></label>
+    <label class="check"><input type="checkbox" name="daily" value="1"{% if rules.daily %} checked{% endif %}><span><strong>Daily summary</strong> (07:00 UTC; <code>ATLAS_DAILY_SUMMARY_HOUR</code> changes the hour)</span></label>
+    <fieldset><legend>Quiet hours (UTC)</legend>
+      <div class="actions">
+        <label>from <select name="quiet_start"><option value="">off</option>{% for h in range(24) %}<option value="{{ h }}"{% if rules.quiet_start == h %} selected{% endif %}>{{ "%02d:00" | format(h) }}</option>{% endfor %}</select></label>
+        <label>to <select name="quiet_end"><option value="">off</option>{% for h in range(24) %}<option value="{{ h }}"{% if rules.quiet_end == h %} selected{% endif %}>{{ "%02d:00" | format(h) }}</option>{% endfor %}</select></label>
+      </div>
+      <p class="muted small">Only warnings go out during quiet hours. Other incident messages wait until it ends; digests are skipped (the daily summary has them).</p>
+    </fieldset>
+    <label>atlas address for links in messages <input name="atlas_url" maxlength="200" placeholder="https://10.10.10.50:8443" value="{{ rules.atlas_url or '' }}"></label>
+    <div class="actions"><button type="submit">Save rules</button>
+      <button type="button" class="ghost" hx-post="/integrations/n8n/summary" hx-target="#summary-result">Send the daily summary now</button>
+      <span id="summary-result" aria-live="polite"></span></div>
+  </form>
+  {% else %}<p class="muted small">Read-only here.</p>{% endif %}
+</section>
+{% endif %}
+
 <section class="card" aria-labelledby="inc-h">
   <h2 id="inc-h">Recent incidents</h2>
   {% if sent %}
@@ -71,6 +100,6 @@
     </tbody>
   </table>
   {% else %}<p class="muted">No incidents yet.</p>{% endif %}
-  <p class="muted small">An incident opens when a condition is seen after a scan, is announced once it has lasted 5 minutes, and is resolved (and announced) when it clears. A condition that returns within 30 minutes reopens the same incident.</p>
+  <p class="muted small">An incident opens when a condition is seen after a scan, is announced once it has lasted 5 minutes, and is resolved (and announced) when it clears. A condition that returns within 30 minutes reopens the same incident. Acknowledge or snooze them on <a href="/incidents">Incidents</a>.</p>
 </section>
 {% endblock %}

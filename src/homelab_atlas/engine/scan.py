@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Final, Literal
 
 import structlog
 from filelock import FileLock, Timeout
@@ -15,7 +15,7 @@ from homelab_atlas.collectors.base import CollectContext, Collector, CollectorRe
 from homelab_atlas.engine import incidents
 from homelab_atlas.engine.diff import body_sha256, diff
 from homelab_atlas.engine.events import EventSpec
-from homelab_atlas.engine.notify import WebhookNotifier
+from homelab_atlas.engine.notify import Notification, WebhookNotifier
 from homelab_atlas.engine.reconcile import reconcile
 from homelab_atlas.models.base import canonical
 from homelab_atlas.redact import Redactor
@@ -54,6 +54,39 @@ class ScanSummary:
         for r in self.runs:
             out[r.status] = out.get(r.status, 0) + 1
         return out
+
+
+DIGEST_MAX: Final = 15
+#: First discovery is not news: these only describe what atlas found, not what changed.
+DIGEST_SKIP: Final = frozenset({"entity.added"})
+
+
+def change_digest(events: Sequence[EventSpec], level: str) -> Notification | None:
+    """One message per scan with its notable changes, or None (ADR-041)."""
+    if level == "off":
+        return None
+    wanted = {"warning"} if level == "warning" else {"warning", "notice"}
+    picked = [e for e in events if e.severity in wanted and e.type not in DIGEST_SKIP]
+    if not picked:
+        return None
+    worst: Literal["warning", "notice"] = (
+        "warning" if any(e.severity == "warning" for e in picked) else "notice"
+    )
+    n = len(picked)
+    lines = [f"[{e.severity}] {e.summary}"[:400] for e in picked[:DIGEST_MAX]]
+    if n > DIGEST_MAX:
+        lines.append(f"... and {n - DIGEST_MAX} more on the Changes page")
+    return Notification(
+        kind="changes.digest",
+        title=f"{n} notable change{'s' if n != 1 else ''} in your homelab",
+        severity=worst,
+        evidence=lines[:20],
+        summary={"changes": n, "warnings": sum(1 for e in picked if e.severity == "warning")},
+    )
+
+
+def incident_link(key: str) -> str:
+    return "/media" if key.startswith("media.") else "/incidents"
 
 
 class ScanEngine:
@@ -151,23 +184,35 @@ class ScanEngine:
             except Exception:
                 s.rollback()
                 log.exception("incidents.evaluate_failed")
-        await self.notify_due()
+        await self.notify_due(summary.events)
         log.info("scan.done", scan_id=scan_id, runs=summary.counts, events=len(summary.events))
         return summary
 
-    async def notify_due(self) -> None:
-        """Send due incident notifications (if a webhook is configured); record what went."""
+    async def notify_due(self, events: Sequence[EventSpec] = ()) -> None:
+        """Send due incident notifications and this scan's change digest (if a webhook is
+        configured), following the owner's rules; record what went (ADR-040/041)."""
         if self._notifier is None:
             return
+        rules = self._notifier.rules
+        now = utcnow()
         with self._sessions() as s:
-            for row, note in incidents.due_notifications(s):
+            for row, due in incidents.due_notifications(s, now, rules.reminder_hours):
+                if not rules.allows(due, now):
+                    continue  # held: quiet hours or switched off (retried after next scan)
+                note = due.model_copy(update={"link": rules.link(incident_link(row.key))})
                 ok, msg = await self._notifier.send(note)
                 if ok:
-                    incidents.mark_sent(row, note)
+                    incidents.mark_sent(row, note, now)
                 else:
                     log.warning("notify.failed", key=row.key, reason=msg)
                     break  # n8n down: try again after the next scan, in order
             s.commit()
+        digest = change_digest(events, rules.changes)
+        if digest is not None and rules.allows(digest, now):
+            digest = digest.model_copy(update={"link": rules.link("/changes")})
+            ok, msg = await self._notifier.send(digest)
+            if not ok:
+                log.warning("notify.digest_failed", reason=msg)
 
     async def _collect(self, target: str, collector: Collector) -> CollectorResult:
         async with self._sem:

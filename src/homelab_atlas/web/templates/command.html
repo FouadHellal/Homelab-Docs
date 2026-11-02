@@ -20,12 +20,13 @@
 
 {% if c.incidents %}
 <section class="card cc-incidents" aria-label="Open incidents">
-  <h2>{{ icon("diagnostics") }} Open incidents <span class="muted small">({{ c.incidents | length }})</span></h2>
+  <h2>{{ icon("diagnostics") }} Open incidents <span class="muted small">({{ c.incidents | length }})</span> <a class="more" href="/incidents">acknowledge or snooze →</a></h2>
   <ul class="plain">
   {% for i in c.incidents %}
     <li><span class="sev {{ i.severity }}">{{ i.severity }}</span> <strong>{{ i.title }}</strong>
       <span class="muted small">since <time datetime="{{ i.opened_at.isoformat() }}">{{ i.opened_at | ago }}</time>{% if i.notified_open_at %} · notified{% endif %}</span>
-      {% if i.key.startswith("media.") %}<a class="small" href="/media">Media diagnosis →</a>{% endif %}</li>
+      {% if i.key.startswith("media.") %}<a class="small" href="/media">Media diagnosis →</a>{% endif %}
+      {% if i.acknowledged_at %}<span class="pill info">acknowledged</span>{% elif i.snoozed_until and i.snoozed_until > (c.overall.last_ok or i.opened_at) %}<span class="pill info">snoozed</span>{% endif %}</li>
   {% endfor %}
   </ul>
 </section>

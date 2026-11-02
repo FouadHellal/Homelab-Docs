@@ -6,6 +6,7 @@ import secrets
 import shutil
 import sys
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -155,7 +156,9 @@ def make_scheduler(rt: Runtime, *, lab: bool) -> Scheduler:
         inputs = live_inputs(rt.data_dir)
         with rt.sessions() as s:
             note = daily_summary(s, inputs.inventory, safe_intervals())
-        ok, msg = await notifier.send(note)
+        if not notifier.rules.allows(note, datetime.now(UTC)):
+            return
+        ok, msg = await notifier.send(note.model_copy(update={"link": notifier.rules.link("/")}))
         log.info("notify.daily", ok=ok, detail=msg)
 
     hour = os.environ.get("ATLAS_DAILY_SUMMARY_HOUR", "7").strip()

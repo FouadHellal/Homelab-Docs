@@ -21,8 +21,17 @@ from homelab_atlas.collectors.jellyfin import (
     tasks,
 )
 from homelab_atlas.engine import incidents, media
+from homelab_atlas.engine.events import EventSpec
 from homelab_atlas.engine.media import Check, _storage, _verdict, mount_for
-from homelab_atlas.engine.notify import Notification
+from homelab_atlas.engine.notify import (
+    Notification,
+    NotifyRules,
+    notify_rules,
+    save_notify_rules,
+    save_webhook_settings,
+    webhook_settings,
+)
+from homelab_atlas.engine.scan import DIGEST_MAX, change_digest
 from homelab_atlas.lab import load_api_recordings, load_lab
 from homelab_atlas.runtime import Inputs, Runtime, replay_http
 from homelab_atlas.security.ssh import SshRunner
@@ -283,9 +292,10 @@ def test_unannounced_incidents_resolve_silently(
 
 
 class FakeNotifier:
-    def __init__(self, ok: bool = True) -> None:
+    def __init__(self, ok: bool = True, rules: NotifyRules | None = None) -> None:
         self.sent: list[Notification] = []
         self.ok = ok
+        self.rules = rules or NotifyRules()
 
     async def send(self, note: Notification) -> tuple[bool, str]:
         self.sent.append(note)
@@ -323,7 +333,7 @@ def test_incidents_table_is_migrated(tmp_path: Path) -> None:
     with rt.sessions() as s:
         assert s.execute(select(Incident)).all() == []
         version = s.connection().exec_driver_sql("select version_num from alembic_version").scalar()
-    assert version == "0005"
+    assert version == "0006"
 
 
 def test_pool_without_redundancy_is_not_an_incident(tmp_path: Path) -> None:
@@ -347,3 +357,112 @@ def test_pool_without_redundancy_is_not_an_incident(tmp_path: Path) -> None:
             s.flush()
             keys = {c.key for c in incidents.conditions(s, inv, {}, datetime.now(UTC))}
             assert ("nas.pool:unas:2" in keys) is (pid == "2")
+
+
+# ---------------------------------------------------- rules, digest and reminders, v9
+
+
+def test_rules_quiet_hours_and_links() -> None:
+    r = NotifyRules(quiet_start=22, quiet_end=7, atlas_url="https://10.10.10.50:8443/")
+    night = datetime(2026, 11, 2, 23, tzinfo=UTC)
+    day = datetime(2026, 11, 2, 12, tzinfo=UTC)
+    notice = Notification(kind="incident.opened", title="x", severity="notice")
+    warning = Notification(kind="incident.opened", title="x", severity="warning")
+    assert r.quiet(night) and not r.quiet(day) and r.quiet(datetime(2026, 11, 2, 6, tzinfo=UTC))
+    assert not r.allows(notice, night) and r.allows(warning, night) and r.allows(notice, day)
+    assert r.allows(Notification(kind="test", title="x"), night)  # on demand: always
+    assert r.link("/incidents") == "https://10.10.10.50:8443/incidents"
+    off = NotifyRules(incidents=False, changes="off", daily=False, reminder_hours=0)
+    for kind in ("incident.opened", "incident.reminder", "changes.digest", "summary.daily"):
+        assert not off.allows(Notification(kind=kind, title="x"), day)
+    with pytest.raises(ValueError):
+        NotifyRules(atlas_url="javascript:alert(1)")
+
+
+def test_rules_roundtrip_keeps_the_webhook(tmp_path: Path) -> None:
+    save_webhook_settings(tmp_path, "https://n8n.example.net/webhook/atlas", False)
+    save_notify_rules(tmp_path, NotifyRules(changes="notice", quiet_start=1, quiet_end=5))
+    assert notify_rules(tmp_path).changes == "notice"
+    cfg = webhook_settings(tmp_path)
+    assert cfg is not None and cfg.url.endswith("/webhook/atlas")
+    (tmp_path / "n8n.yaml").write_text("rules: {changes: loud}\n", encoding="utf-8")
+    assert notify_rules(tmp_path) == NotifyRules()  # invalid -> defaults
+
+
+def _ev(type_: str, sev: str, text: str) -> EventSpec:
+    return EventSpec("k", type_, sev, text)  # type: ignore[arg-type]
+
+
+def test_change_digest() -> None:
+    evs = [
+        _ev("entity.added", "warning", "found x"),
+        _ev("port.opened", "notice", "port 8080"),
+        _ev("device.unknown_seen", "warning", "new device"),
+    ]
+    d = change_digest(evs, "warning")
+    assert d is not None and d.evidence == ["[warning] new device"] and d.severity == "warning"
+    d = change_digest(evs, "notice")
+    assert d is not None and d.summary == {"changes": 2, "warnings": 1}
+    assert change_digest(evs, "off") is None
+    assert change_digest([_ev("x", "info", "meh")], "notice") is None
+    many = change_digest([_ev("x", "notice", f"n{i}") for i in range(40)], "notice")
+    assert many is not None and len(many.evidence) == DIGEST_MAX + 1
+    assert many.evidence[-1].startswith("... and 25 more")
+
+
+def test_reminders_ack_and_snooze(tmp_path: Path) -> None:
+    rt = Runtime.open(tmp_path, mode="demo")
+    t0 = datetime(2026, 11, 2, 10, tzinfo=UTC)
+    with rt.sessions() as s:
+        i = Incident(
+            key="k", kind="x", title="disk", severity="warning", opened_at=t0, notified_open_at=t0
+        )
+        s.add(i)
+        s.flush()
+        assert incidents.due_notifications(s, t0 + timedelta(hours=23)) == []
+        ((row, note),) = incidents.due_notifications(s, t0 + timedelta(hours=25))
+        assert note.kind == "incident.reminder" and note.title == "Still open: disk"
+        incidents.mark_sent(row, note, t0 + timedelta(hours=25))
+        assert incidents.due_notifications(s, t0 + timedelta(hours=30)) == []
+        assert incidents.due_notifications(s, t0 + timedelta(hours=60), reminder_hours=0) == []
+        assert incidents.snooze(s, i.id, 48, t0 + timedelta(hours=49))
+        assert incidents.due_notifications(s, t0 + timedelta(hours=60)) == []
+        assert incidents.snooze(s, i.id, 0)
+        assert incidents.acknowledge(s, i.id, "admin")
+        assert incidents.due_notifications(s, t0 + timedelta(days=9)) == []
+        i.resolved_at = t0 + timedelta(days=10)  # acknowledged but announced: recovery goes out
+        ((_, note),) = incidents.due_notifications(s, t0 + timedelta(days=10))
+        assert note.kind == "incident.resolved"
+        assert not incidents.acknowledge(s, i.id, "admin")  # resolved: nothing to ack
+        assert not incidents.snooze(s, 999, 4)
+
+
+def test_quiet_hours_hold_incidents_and_digest_carries_a_link(tmp_path: Path) -> None:
+    rt = Runtime.open(tmp_path, mode="demo")
+    with rt.sessions() as s:
+        s.add(
+            Incident(
+                key="media.storage:m",
+                kind="x",
+                title="share",
+                severity="notice",
+                opened_at=datetime.now(UTC) - timedelta(minutes=30),
+            )
+        )
+        s.commit()
+    inv, ssh = load_lab("A", LAB)
+    engine = rt.scan_engine(Inputs(inv, ssh, replay_http(load_api_recordings("A", LAB)), LAB))
+    hour = datetime.now(UTC).hour
+    quiet = FakeNotifier(
+        rules=NotifyRules(
+            quiet_start=hour, quiet_end=(hour + 1) % 24, atlas_url="https://atlas.lan"
+        )
+    )
+    engine._notifier = quiet  # type: ignore[assignment]
+    asyncio.run(engine.notify_due([_ev("device.unknown_seen", "warning", "new device")]))
+    assert [n.kind for n in quiet.sent] == ["changes.digest"]  # notice held; warning digest out
+    assert quiet.sent[0].link == "https://atlas.lan/changes"
+    loud = FakeNotifier(rules=NotifyRules(atlas_url="https://atlas.lan"))
+    engine._notifier = loud  # type: ignore[assignment]
+    asyncio.run(engine.notify_due())
+    assert [(n.kind, n.link) for n in loud.sent] == [("incident.opened", "https://atlas.lan/media")]

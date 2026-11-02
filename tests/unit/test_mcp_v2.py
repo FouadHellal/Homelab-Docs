@@ -188,3 +188,11 @@ def test_media_status_tool(rt: Runtime) -> None:
     )
     assert any("media storage" in i["title"] for i in got["open_incidents"])
     assert _call(build_server(rt.sessions), "media_status") == {"configured": False, "servers": []}
+
+
+def test_list_incidents_tool(rt: Runtime) -> None:
+    srv = build_server(rt.sessions)
+    got = _call(srv, "list_incidents")
+    assert got["count"] >= 1
+    assert {"title", "severity", "acknowledged", "evidence"} <= set(got["items"][0])
+    assert _call(srv, "list_incidents", include_resolved=True)["count"] >= got["count"]

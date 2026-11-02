@@ -17,8 +17,9 @@ Configuration (environment, nothing in the browser):
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import Final, Literal
+from typing import Any, Final, Literal
 from urllib.parse import urlsplit
 
 import yaml
@@ -44,8 +45,16 @@ TOKEN_SECRET: Final = "n8n_webhook_token"  # noqa: S105 - a secret *name*, not a
 WEBHOOK_PATH_RE: Final = re.compile(r"/webhook(-test)?/[A-Za-z0-9_-]{1,128}")
 LIMITS: Final = HttpLimits(connect_s=5.0, read_s=10.0, total_s=15.0, max_bytes=64 * 1024)
 NotificationKind = Literal[
-    "incident.opened", "incident.resolved", "summary.daily", "diagnostic.requested", "test"
+    "incident.opened",
+    "incident.reminder",
+    "incident.resolved",
+    "changes.digest",
+    "summary.daily",
+    "diagnostic.requested",
+    "test",
 ]
+#: Kinds the owner asked for explicitly: never held back by rules or quiet hours.
+ON_DEMAND: Final = frozenset({"diagnostic.requested", "test"})
 
 
 class Notification(BaseModel):
@@ -63,6 +72,51 @@ class Notification(BaseModel):
     evidence: list[str] = Field(default_factory=list, max_length=20)
     summary: dict[str, int | str] = Field(default_factory=dict)
     link: str | None = Field(default=None, max_length=512)
+
+
+class NotifyRules(BaseModel):
+    """What to send (Integrations page, `rules:` in `<data>/n8n.yaml`). Defaults are sane."""
+
+    model_config = ConfigDict(extra="forbid")
+    incidents: bool = True
+    resolved: bool = True
+    #: Re-announce an incident still open and not acknowledged every N hours (0 = never).
+    reminder_hours: int = Field(default=24, ge=0, le=168)
+    #: Change digest after each scan: only events at least this severe ("off" = none).
+    changes: Literal["off", "warning", "notice"] = "warning"
+    daily: bool = True
+    #: Quiet hours (UTC, start inclusive, end exclusive): only warnings go out; incident
+    #: notices wait for the end of the quiet period, digests are skipped (the daily summary
+    #: covers them).
+    quiet_start: int | None = Field(default=None, ge=0, le=23)
+    quiet_end: int | None = Field(default=None, ge=0, le=23)
+    #: How you open atlas (for links in messages), e.g. https://10.10.10.50:8443
+    atlas_url: str | None = Field(
+        default=None, max_length=200, pattern=r"^https?://[A-Za-z0-9.\-]+(:[0-9]{1,5})?/?$"
+    )
+
+    def quiet(self, now: datetime) -> bool:
+        s, e = self.quiet_start, self.quiet_end
+        if s is None or e is None or s == e:
+            return False
+        return s <= now.hour < e if s < e else (now.hour >= s or now.hour < e)
+
+    def allows(self, note: "Notification", now: datetime) -> bool:
+        if note.kind in ON_DEMAND:
+            return True
+        wanted = {
+            "incident.opened": self.incidents,
+            "incident.reminder": self.incidents and self.reminder_hours > 0,
+            "incident.resolved": self.resolved,
+            "changes.digest": self.changes != "off",
+            "summary.daily": self.daily,
+        }.get(note.kind, False)
+        if not wanted:
+            return False
+        return not (self.quiet(now) and note.severity != "warning")
+
+    def link(self, path: str) -> str | None:
+        return f"{self.atlas_url.rstrip('/')}{path}" if self.atlas_url else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +148,39 @@ def webhook_settings(data_dir: Path | None) -> WebhookConfig | None:
     return webhook_from_env({"ATLAS_N8N_WEBHOOK_URL": raw["url"], "ATLAS_N8N_ALLOW_HTTP": allow})
 
 
+def notify_rules(data_dir: Path | None) -> NotifyRules:
+    """Rules saved on the Integrations page; defaults when absent or invalid."""
+    raw = _settings(data_dir)
+    try:
+        return NotifyRules.model_validate(raw.get("rules") or {})
+    except ValueError:
+        return NotifyRules()
+
+
+def _settings(data_dir: Path | None) -> dict[str, Any]:
+    if data_dir is None:
+        return {}
+    path = data_dir / SETTINGS_FILE
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) if path.is_file() else None
+    except (OSError, yaml.YAMLError):
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _write_settings(data_dir: Path, data: dict[str, Any]) -> None:
+    data_dir.mkdir(parents=True, exist_ok=True)
+    tmp = data_dir / f".{SETTINGS_FILE}.tmp"
+    tmp.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    tmp.replace(data_dir / SETTINGS_FILE)
+
+
+def save_notify_rules(data_dir: Path, rules: NotifyRules) -> None:
+    data = _settings(data_dir)
+    data["rules"] = rules.model_dump(exclude_defaults=True)
+    _write_settings(data_dir, data)
+
+
 def save_webhook_settings(data_dir: Path, url: str, allow_http: bool) -> WebhookConfig:
     """Validate and store the webhook URL (never the token: that goes to the vault)."""
     allow = "1" if allow_http else ""
@@ -103,11 +190,9 @@ def save_webhook_settings(data_dir: Path, url: str, allow_http: bool) -> Webhook
     host = urlsplit(cfg.url).hostname or ""
     if cfg.url.startswith("http://") and not (allow_http and lan_ip_literal(host)):
         raise ValueError("http:// only to a private LAN IP, with “plain HTTP on my LAN” ticked")
-    data_dir.mkdir(parents=True, exist_ok=True)
-    tmp = data_dir / f".{SETTINGS_FILE}.tmp"
-    body = yaml.safe_dump({"url": cfg.url, "allow_http": cfg.allow_http})
-    tmp.write_text(body, encoding="utf-8")
-    tmp.replace(data_dir / SETTINGS_FILE)
+    data = _settings(data_dir)
+    data.update({"url": cfg.url, "allow_http": cfg.allow_http})
+    _write_settings(data_dir, data)
     return cfg
 
 
@@ -150,9 +235,12 @@ class WebhookNotifier:
         cfg: WebhookConfig,
         token: SecretStr | None,
         audit: AuditSink,
+        *,
         redactor: Redactor | None = None,
         transport: object | None = None,
+        rules: NotifyRules | None = None,
     ) -> None:
+        self.rules = rules or NotifyRules()
         self.cfg = cfg
         self._token = clean_token(token)
         self._audit = audit

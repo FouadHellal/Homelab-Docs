@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Incidents{% endblock %}
+{% block main %}
+<header class="page-head"><div>
+  <h1>Incidents</h1>
+  <p class="muted">Ongoing problems atlas found after its scans. One incident per problem, however long it lasts; it resolves by itself when the problem clears.
+    {% if rules.reminder_hours %}Unacknowledged incidents are re-announced every {{ rules.reminder_hours }} h.{% endif %}</p>
+</div></header>
+
+<section class="card" aria-labelledby="open-h">
+  <h2 id="open-h">Open <span class="muted small">({{ open_ | length }})</span></h2>
+  {% if open_ %}
+  <ul class="incidents">
+    {% for i in open_ %}
+    <li class="incident sev-{{ i.severity }}">
+      <div class="incident-top">
+        <span class="sev {{ i.severity }}">{{ i.severity }}</span>
+        <strong>{{ i.title }}</strong>
+        {% if i.acknowledged_at %}<span class="pill info">acknowledged by {{ i.acknowledged_by }} {{ i.acknowledged_at | ago }}</span>
+        {% elif i.snoozed_until and i.snoozed_until > now %}<span class="pill info">snoozed until {{ i.snoozed_until.strftime("%Y-%m-%d %H:%M UTC") }}</span>{% endif %}
+      </div>
+      <div class="muted small">since <time datetime="{{ i.opened_at.isoformat() }}">{{ i.opened_at | ago }}</time> · last seen {{ i.last_seen_at | ago }}
+        · {% if i.notified_open_at %}announced{% if i.last_reminded_at %}, reminded {{ i.last_reminded_at | ago }}{% endif %}{% else %}not announced yet{% endif %}
+        {% if i.key.startswith("media.") %}· <a href="/media">media diagnosis</a>{% endif %}</div>
+      {% if i.evidence %}<ul class="plain small evidence">{% for e in i.evidence[:8] %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+      <div class="actions">
+        {% if not i.acknowledged_at %}
+        <form method="post" action="/incidents/{{ i.id }}/ack" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button type="submit" class="small">Acknowledge</button></form>
+        {% endif %}
+        <form method="post" action="/incidents/{{ i.id }}/snooze" class="inline snooze">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <label class="sr-only" for="sn-{{ i.id }}">Snooze for</label>
+          <select id="sn-{{ i.id }}" name="hours">{% for h, l in ((4, "4 hours"), (24, "1 day"), (168, "1 week"), (0, "no snooze")) %}<option value="{{ h }}">{{ l }}</option>{% endfor %}</select>
+          <button type="submit" class="small ghost">Snooze</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="muted small">Acknowledge: you know about it, so no more announcements or reminders (you still get the "resolved" message if it was announced). Snooze: silence for a while. Neither changes anything on your machines.</p>
+  {% else %}
+  <p class="muted">Nothing open. 🎉</p>
+  {% endif %}
+</section>
+
+<section class="card" aria-labelledby="res-h">
+  <h2 id="res-h">Recently resolved</h2>
+  {% if recent %}
+  <table class="data">
+    <thead><tr><th>Incident</th><th>Opened</th><th>Resolved</th><th>Lasted</th></tr></thead>
+    <tbody>
+    {% for i in recent %}
+    <tr><td class="wrap"><span class="sev {{ i.severity }}">{{ i.severity }}</span> {{ i.title }}</td>
+      <td>{{ i.opened_at | ago }}</td><td>{{ i.resolved_at | ago }}</td>
+      <td>{% set mins = ((i.resolved_at - i.opened_at).total_seconds() // 60) | int %}{{ (mins // 60) ~ " h " if mins >= 60 }}{{ mins % 60 }} min</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">None yet.</p>{% endif %}
+</section>
+{% endblock %}

@@ -282,6 +282,7 @@ def test_mcp_tools_are_all_read_only(rt: Runtime) -> None:
         "unrecognised_ports",
         "describe_app",
         "media_status",
+        "list_incidents",
     }  # no scan_machine unless --allow-scan (tests/unit/test_mcp_v2.py)
     for t in tools:
         a = t.annotations

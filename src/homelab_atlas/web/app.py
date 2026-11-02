@@ -41,10 +41,14 @@ from homelab_atlas.engine.notify import (
     SETTINGS_FILE,
     TOKEN_SECRET,
     Notification,
+    NotifyRules,
     WebhookNotifier,
     clean_token,
+    notify_rules,
+    save_notify_rules,
     save_webhook_settings,
 )
+from homelab_atlas.engine.report import daily_summary
 from homelab_atlas.export import build as export_build
 from homelab_atlas.export.build import csv_table
 from homelab_atlas.inventory import annotations as ann
@@ -664,6 +668,7 @@ def create_app(cfg: WebConfig) -> FastAPI:
             key=f"media.diagnostic:{source.name}",
             entity=f"jellyfin:{source.name}",
             evidence=[f"{c.label}: {c.state} - {c.detail}" for c in d.checks],
+            link=notify_rules(cfg.data_dir).link("/media"),
         )
         ok, info = await notifier.send(note)
         log.info("media.diagnostic_sent", source=source.name, ok=ok, by=user.username)
@@ -691,6 +696,7 @@ def create_app(cfg: WebConfig) -> FastAPI:
             hook=hook,
             token=notifier is not None and notifier.has_token,
             sent=incidents.recent_incidents(s, None, 15),
+            rules=notify_rules(cfg.data_dir),
             editable=cfg.targets is not None and cfg.targets.editable and cfg.data_dir is not None,
             msg=request.query_params.get("msg", "")[:200],
         )
@@ -715,6 +721,88 @@ def create_app(cfg: WebConfig) -> FastAPI:
         log.info("n8n.saved", by=user.username)
         return RedirectResponse("/integrations?msg=Saved.+Send+a+test+notification.", 303)
 
+    @app.post("/integrations/n8n/rules")
+    def n8n_rules(
+        user: Csrf,
+        incidents_on: Annotated[str, Form(alias="incidents", max_length=4)] = "",
+        resolved: Annotated[str, Form(max_length=4)] = "",
+        daily: Annotated[str, Form(max_length=4)] = "",
+        reminder_hours: Annotated[int, Form(ge=0, le=168)] = 24,
+        changes: Annotated[str, Form(max_length=8)] = "warning",
+        quiet_start: Annotated[str, Form(max_length=2)] = "",
+        quiet_end: Annotated[str, Form(max_length=2)] = "",
+        atlas_url: Annotated[str, Form(max_length=200)] = "",
+    ) -> Response:
+        """Which notifications go out, quiet hours, and the link back to atlas (ADR-041)."""
+        svc = targets_svc()
+        if cfg.data_dir is None or not svc.editable:
+            raise HTTPException(403, "read-only here")
+        try:
+            rules = NotifyRules(
+                incidents=bool(incidents_on),
+                resolved=bool(resolved),
+                daily=bool(daily),
+                reminder_hours=reminder_hours,
+                changes=changes,  # type: ignore[arg-type]
+                quiet_start=int(quiet_start) if quiet_start.strip() else None,
+                quiet_end=int(quiet_end) if quiet_end.strip() else None,
+                atlas_url=atlas_url.strip() or None,
+            )
+        except ValueError as exc:
+            msg = "; ".join(str(e.get("msg")) for e in getattr(exc, "errors", lambda: [])()[:2])
+            return RedirectResponse(f"/integrations?{urlencode({'msg': msg or 'invalid'})}", 303)
+        save_notify_rules(cfg.data_dir, rules)
+        log.info("n8n.rules_saved", by=user.username)
+        return RedirectResponse("/integrations?msg=Notification+rules+saved.", 303)
+
+    @app.post("/integrations/n8n/summary", response_class=HTMLResponse)
+    async def n8n_summary(s: DB, user: Csrf) -> Response:
+        """Send the daily summary now (same content as the 07:00 one)."""
+        notifier = cfg.notifier() if cfg.notifier else None
+        if notifier is None or cfg.targets is None:
+            raise HTTPException(404, "no n8n webhook configured")
+        inv, _ = cfg.targets.inventory()
+        note = daily_summary(s, inv, _intervals())
+        note = note.model_copy(update={"link": notify_rules(cfg.data_dir).link("/")})
+        ok, info = await notifier.send(note)
+        log.info("n8n.summary_now", ok=ok, by=user.username)
+        return HTMLResponse(
+            f"<span class='pill {'ok' if ok else 'failed'}' role='status'>{escape(info)}</span>"
+        )
+
+    # ------------------------------------------------------------------ incidents (ADR-041)
+
+    @app.get("/incidents", response_class=HTMLResponse)
+    def incidents_page(request: Request, s: DB, user: User) -> Response:
+        now = datetime.now(UTC)
+        return page(
+            request,
+            "incidents.html",
+            user,
+            open_=incidents.open_incidents(s),
+            recent=[i for i in incidents.recent_incidents(s, None, 40) if i.resolved_at],
+            now=now,
+            rules=notify_rules(cfg.data_dir),
+        )
+
+    @app.post("/incidents/{incident_id}/ack")
+    def incident_ack(s: DB, user: Csrf, incident_id: int) -> Response:
+        if not incidents.acknowledge(s, incident_id, user.username):
+            raise HTTPException(404, "no such open incident")
+        s.commit()
+        log.info("incident.ack", incident=incident_id, by=user.username)
+        return RedirectResponse("/incidents", 303)
+
+    @app.post("/incidents/{incident_id}/snooze")
+    def incident_snooze(
+        s: DB, user: Csrf, incident_id: int, hours: Annotated[int, Form(ge=0, le=168)] = 24
+    ) -> Response:
+        if not incidents.snooze(s, incident_id, hours):
+            raise HTTPException(404, "no such open incident")
+        s.commit()
+        log.info("incident.snooze", incident=incident_id, hours=hours, by=user.username)
+        return RedirectResponse("/incidents", 303)
+
     @app.post("/integrations/n8n/delete")
     def n8n_delete(user: Csrf) -> Response:
         svc = targets_svc()
@@ -730,7 +818,12 @@ def create_app(cfg: WebConfig) -> FastAPI:
         if notifier is None:
             raise HTTPException(404, "no n8n webhook configured")
         ok, info = await notifier.send(
-            Notification(kind="test", title="atlas test notification", severity="info")
+            Notification(
+                kind="test",
+                title="atlas test notification",
+                severity="info",
+                link=notify_rules(cfg.data_dir).link("/integrations"),
+            )
         )
         log.info("n8n.test", ok=ok, by=user.username)
         return HTMLResponse(

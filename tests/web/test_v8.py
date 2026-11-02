@@ -4,13 +4,20 @@ import re
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
-from homelab_atlas.engine.notify import Notification, webhook_settings
+from homelab_atlas.engine import incidents as inc
+from homelab_atlas.engine.notify import (
+    Notification,
+    NotifyRules,
+    WebhookNotifier,
+    notify_rules,
+    webhook_settings,
+)
 from homelab_atlas.lab import load_lab
 from homelab_atlas.runtime import Runtime
 from homelab_atlas.security.vault import Vault
@@ -37,6 +44,7 @@ class FakeNotifier:
         self.sent: list[Notification] = []
         self.cfg = type("C", (), {"url": "http://10.0.0.5:5678/webhook/atlas"})()
         self.has_token = True
+        self.rules = NotifyRules()
 
     async def send(self, note: Notification) -> tuple[bool, str]:
         self.sent.append(note)
@@ -369,3 +377,81 @@ def test_n8n_settings_saved_from_the_ui(rt: Runtime, tmp_path: Path) -> None:
         assert c.post("/integrations/n8n", data={"url": "x"}).status_code == 403  # CSRF
         c.post("/integrations/n8n/delete", headers=h)
         assert webhook_settings(tmp_path) is None and not vault.has("n8n_webhook_token")
+
+
+# ------------------------------------------------------------------ v9: incidents page, rules
+
+
+def test_incidents_page_ack_and_snooze(web: tuple[TestClient, str], rt: Runtime) -> None:
+    c, csrf = web
+    html = c.get("/incidents").text
+    assert "<h1>Incidents</h1>" in html and "Acknowledge" in html
+    assert 'href="/incidents"' in c.get("/").text
+    with rt.sessions() as s:
+        first = inc.open_incidents(s)[0].id
+    h = {"X-CSRF-Token": csrf}
+    assert c.post(f"/incidents/{first}/ack").status_code == 403  # CSRF
+    r = c.post(f"/incidents/{first}/snooze", data={"hours": 4}, headers=h, follow_redirects=False)
+    assert r.status_code == 303
+    assert "snoozed until" in c.get("/incidents").text
+    assert c.post(f"/incidents/{first}/ack", headers=h, follow_redirects=False).status_code == 303
+    assert "acknowledged by admin" in c.get("/incidents").text
+    assert c.post("/incidents/999999/ack", headers=h).status_code == 404
+    assert c.post(f"/incidents/{first}/snooze", data={"hours": 9999}, headers=h).status_code == 422
+
+
+def test_rules_form_and_summary_now(rt: Runtime, tmp_path: Path) -> None:
+    vault = Vault(tmp_path / "vault.json", b"k" * 32)
+    svc = TargetsService(
+        config_dir=tmp_path / "cfg", data_dir=tmp_path, vault=vault, audit=MemoryAudit()
+    )
+    fake = FakeNotifier()
+    app = create_app(
+        WebConfig(
+            sessions=rt.sessions,
+            annotations_dir=tmp_path,
+            allowed_hosts=["testserver"],
+            targets=svc,
+            data_dir=tmp_path,
+            notifier=lambda: cast(WebhookNotifier, fake),
+        )
+    )
+    with TestClient(app, base_url="https://testserver") as c:
+        csrf = _login(c)
+        h = {"X-CSRF-Token": csrf}
+        page = c.get("/integrations").text
+        assert "What to send" in page and "Send the daily summary now" in page
+        r = c.post(
+            "/integrations/n8n/rules",
+            headers=h,
+            follow_redirects=False,
+            data={
+                "incidents": "1",
+                "daily": "1",
+                "reminder_hours": 6,
+                "changes": "notice",
+                "quiet_start": "22",
+                "quiet_end": "7",
+                "atlas_url": "https://10.10.10.50:8443",
+            },
+        )
+        assert r.status_code == 303 and "saved" in r.headers["location"]
+        rules = notify_rules(tmp_path)
+        assert (rules.resolved, rules.reminder_hours, rules.changes, rules.quiet_start) == (
+            False,
+            6,
+            "notice",
+            22,
+        )
+        bad = c.post(
+            "/integrations/n8n/rules",
+            headers=h,
+            follow_redirects=False,
+            data={"atlas_url": "ftp://x"},
+        )
+        assert "msg=" in bad.headers["location"] and notify_rules(tmp_path).changes == "notice"
+        sent = c.post("/integrations/n8n/summary", headers=h)
+    assert sent.status_code == 200 and "delivered" in sent.text
+    note = fake.sent[-1]
+    assert note.kind == "summary.daily" and note.link == "https://10.10.10.50:8443/"
+    assert "open_incidents" in note.summary

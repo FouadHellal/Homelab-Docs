@@ -31,6 +31,7 @@ from homelab_atlas.collectors.unifi.sitemanager import CLOUD_MIN_INTERVAL_S
 from homelab_atlas.engine.notify import (
     TOKEN_SECRET,
     WebhookNotifier,
+    notify_rules,
     webhook_from_env,
     webhook_settings,
 )
@@ -154,7 +155,9 @@ class Runtime:
             token = live_secrets(self.data_dir).resolve(TOKEN_SECRET)
         except (KeyError, OSError, ValueError):
             log.warning("notify.no_token", secret=TOKEN_SECRET)
-        return WebhookNotifier(cfg, token, self.audit, self.redactor)
+        return WebhookNotifier(
+            cfg, token, self.audit, redactor=self.redactor, rules=notify_rules(self.data_dir)
+        )
 
 
 @dataclass(frozen=True, slots=True)

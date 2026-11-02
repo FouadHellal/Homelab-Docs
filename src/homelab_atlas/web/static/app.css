@@ -603,3 +603,13 @@ th[data-sort]:focus-visible { outline: 2px solid var(--accent); outline-offset: 
 
 #resources .gauge:not(.wide) { grid-template-columns: minmax(90px, 150px) 1fr auto; }
 @media (max-width: 960px) { .verdict-head { flex-direction: column; gap: 8px; } }
+
+/* incidents (v9) */
+.incidents { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.incident { padding: 12px 14px; border: 1px solid var(--line); border-left: 3px solid var(--info); border-radius: 0 12px 12px 0; background: var(--raised); }
+.incident.sev-warning { border-left-color: var(--bad); } .incident.sev-notice { border-left-color: var(--warn); }
+.incident-top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 2px; }
+.incident .evidence { margin: 6px 0; color: var(--muted); }
+.incident .actions { margin-top: 6px; }
+.snooze select { font-size: 12px; padding: 4px 8px; }
+.rules label.check span { font-size: 13.5px; }

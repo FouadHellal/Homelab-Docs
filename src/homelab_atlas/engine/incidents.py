@@ -163,14 +163,26 @@ def evaluate(
             row.resolved_at = now  # cleared, or its source/host no longer exists
 
 
+def _quiet(i: Incident, now: datetime) -> bool:
+    """Acknowledged (no announcements or reminders) or snoozed (none until it ends)."""
+    return i.acknowledged_at is not None or (i.snoozed_until is not None and i.snoozed_until > now)
+
+
 def due_notifications(
-    s: Session, now: datetime | None = None
+    s: Session, now: datetime | None = None, reminder_hours: int = 24
 ) -> list[tuple[Incident, Notification]]:
     now = now or datetime.now(UTC)
     out: list[tuple[Incident, Notification]] = []
-    for i in s.scalars(select(Incident).where(Incident.notified_open_at.is_(None))):
-        if i.resolved_at is None and now - i.opened_at >= NOTIFY_AFTER:
-            out.append((i, _note("incident.opened", i)))
+    for i in s.scalars(select(Incident).where(Incident.resolved_at.is_(None))):
+        if _quiet(i, now):
+            continue
+        if i.notified_open_at is None:
+            if now - i.opened_at >= NOTIFY_AFTER:
+                out.append((i, _note("incident.opened", i)))
+        elif reminder_hours > 0:
+            last = i.last_reminded_at or i.notified_open_at
+            if now - last >= timedelta(hours=reminder_hours):
+                out.append((i, _note("incident.reminder", i)))
     for i in s.scalars(
         select(Incident).where(
             Incident.resolved_at.is_not(None),
@@ -186,14 +198,34 @@ def mark_sent(i: Incident, note: Notification, now: datetime | None = None) -> N
     now = now or datetime.now(UTC)
     if note.kind == "incident.opened":
         i.notified_open_at = now
+    elif note.kind == "incident.reminder":
+        i.last_reminded_at = now
     else:
         i.notified_resolved_at = now
 
 
+def acknowledge(s: Session, incident_id: int, who: str, now: datetime | None = None) -> bool:
+    i = s.get(Incident, incident_id)
+    if i is None or i.resolved_at is not None:
+        return False
+    i.acknowledged_at, i.acknowledged_by = now or datetime.now(UTC), who[:64]
+    return True
+
+
+def snooze(s: Session, incident_id: int, hours: int, now: datetime | None = None) -> bool:
+    """Silence an open incident for `hours` (0 = wake it up again)."""
+    i = s.get(Incident, incident_id)
+    if i is None or i.resolved_at is not None or not 0 <= hours <= 24 * 7:
+        return False
+    i.snoozed_until = (now or datetime.now(UTC)) + timedelta(hours=hours) if hours else None
+    return True
+
+
 def _note(kind: Any, i: Incident) -> Notification:
+    prefix = {"incident.resolved": "Resolved: ", "incident.reminder": "Still open: "}
     return Notification(
         kind=kind,
-        title=("Resolved: " if kind == "incident.resolved" else "") + i.title,
+        title=prefix.get(kind, "") + i.title,
         severity="info" if kind == "incident.resolved" else i.severity,  # type: ignore[arg-type]
         key=i.key,
         entity=i.entity_key,

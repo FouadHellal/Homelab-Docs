@@ -53,7 +53,8 @@ INSTRUCTIONS: Final = (
     "time. Start with list_machines. For 'what is running on X' use whats_running(X); for "
     "services across machines list_services; for Proxmox proxmox_overview; for recent changes "
     "what_changed (optionally machine=X); for why a machine is missing or stale scan_status; "
-    "for 'what is this app/agent/service' describe_app(app); for Jellyfin health media_status. "
+    "for 'what is this app/agent/service' describe_app(app); for Jellyfin health "
+    "media_status; for ongoing problems list_incidents. "
     "Each answer says when the data was collected (last_scan). If scan_machine is available "
     "and the data is old or the user asks for a live check, call scan_machine(X) first, then "
     "whats_running(X)."
@@ -509,6 +510,33 @@ def build_server(
             h = str(r["health"])
             tally[h] = tally.get(h, 0) + 1
         return out({"summary": tally, "items": rows, "live_scan_available": scanner is not None})
+
+    @mcp.tool(annotations=READ_ONLY, structured_output=True)
+    def list_incidents(include_resolved: bool = False) -> dict[str, Any]:
+        """Ongoing problems atlas found (deduplicated incidents): title, severity, since when,
+        evidence, and whether the owner acknowledged or snoozed it. include_resolved adds the
+        recently resolved ones."""
+        log.info("mcp.tool", tool="list_incidents", sanitized=sanitize_key is not None)
+        with sessions() as s:
+            rows = (
+                incidents.recent_incidents(s, None, 30)
+                if include_resolved
+                else incidents.open_incidents(s)
+            )
+            items = [
+                {
+                    "title": i.title,
+                    "severity": i.severity,
+                    "kind": i.kind,
+                    "opened": i.opened_at.isoformat(),
+                    "resolved": i.resolved_at.isoformat() if i.resolved_at else None,
+                    "acknowledged": i.acknowledged_at is not None,
+                    "snoozed_until": i.snoozed_until.isoformat() if i.snoozed_until else None,
+                    "evidence": list(i.evidence or [])[:8],
+                }
+                for i in rows
+            ]
+        return out(items)
 
     @mcp.tool(annotations=READ_ONLY, structured_output=True)
     def unrecognised_ports() -> dict[str, Any]:
