@@ -2,6 +2,19 @@
 
 All notable changes. Versions follow [SemVer](https://semver.org/); dates are UTC.
 
+## 0.9.0 (2026-11-02)
+
+### Added
+- **Notification rules** (Integrations → What to send): incidents, recoveries, reminders,
+  change digests (warnings / notices / off), daily summary, quiet hours, and the atlas address
+  for *Open in atlas* links in every message.
+- **Change digest**: one message per scan with its notable changes.
+- **Incidents page**: acknowledge or snooze an incident; reminders while it stays open.
+- **Send the daily summary now**; the summary now names the failing scans, full storage,
+  guests without backups and the day's warnings.
+- MCP: `list_incidents`.
+- The n8n template sends a styled HTML email (severity colour, figures, evidence, button).
+
 ## 0.8.2 (2026-11-02)
 
 ### Fixed

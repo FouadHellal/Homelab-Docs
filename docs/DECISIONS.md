@@ -736,3 +736,19 @@ Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a
 **Rejected.**
 - Creating or running n8n workflows from atlas: atlas only posts to a webhook the owner created. An importable template is in `docs/integrations/n8n/atlas-notifications.json`.
 - A new probe section to `stat` mounts live: findmnt sizes already show whether statfs worked at scan time, without a new command on targets.
+
+## ADR-041 Notification rules, change digests, incident acknowledge/snooze/reminders (v9)
+**Context.** With n8n delivering email, the owner asked to "make the maximum" of atlas + n8n. Without controls, notifications either miss things (only incidents) or become noise (every scan, every night).
+
+**Decisions.**
+- **Rules** (`NotifyRules`, Integrations page, `rules:` in `<data>/n8n.yaml`): incidents on/off, recoveries on/off, reminders every N hours (0 = never), change digest level (`warning` default, `notice`, `off`), daily summary on/off, quiet hours (UTC) and the atlas address used for links. Invalid or missing rules fall back to defaults; on-demand kinds (test, diagnosis) always go.
+- **Quiet hours** hold everything but warnings: an incident notice waits (it is retried after each scan and goes out when the quiet period ends); a digest is skipped, because the daily summary covers the day.
+- **Change digest** (`changes.digest`): at most one message per scan, built from that scan's events at the chosen level, `entity.added` excluded (discovery is not news), capped at 15 lines plus a count. Events are per scan, so no extra deduplication is needed.
+- **Incidents** gain `acknowledged_at/_by`, `snoozed_until`, `last_reminded_at` (migration 0006). Acknowledged = no more announcements or reminders, but the recovery is still sent if the opening was; snoozed = silent until the time passes (max 7 days); reminders = "Still open: …" every N hours for announced, unacknowledged incidents. New page `/incidents` (CSRF-protected Acknowledge / Snooze); MCP `list_incidents`.
+- **Links**: every message carries `link` (`/incidents`, `/media`, `/changes`, `/`) when the owner set the atlas address; nothing else about atlas's network is sent.
+- **Daily summary** lists names, not just counts: failing scans, open incidents, media status, storage over 90 %, guests no backup job covers, the day's warnings. "Send the daily summary now" on the Integrations page.
+- The n8n template (`docs/integrations/n8n/atlas-notifications.json`) builds an HTML email (severity colour, summary tiles, evidence list, "Open in atlas" button) with a text fallback; all fields are HTML-escaped in the Code node.
+
+**Rejected.**
+- Server-side message templates in atlas: the shape stays a typed JSON contract and presentation stays in n8n, where the owner can change it without a release.
+- Acknowledging from email links: it would need a write endpoint reachable without a session (signed tokens), for little gain.

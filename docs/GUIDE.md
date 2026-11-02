@@ -109,8 +109,17 @@ calls: server info, sessions, item counts, libraries, scheduled tasks and recent
    `ATLAS_N8N_CA_FILE`.
 
 atlas then posts one JSON message when an incident opens (after it has lasted 5 minutes) and
-when it resolves, a daily summary at 07:00 UTC, and a diagnosis when you press *Send diagnosis
-to n8n* on the Media page. Fields: `kind`, `title`, `severity`, `key`, `entity`, `opened_at`,
+when it resolves, a reminder every day while it stays open and unacknowledged, one digest per
+scan with the notable changes (new unknown device, VM stopped, container unhealthy…), a daily
+summary at 07:00 UTC, and a diagnosis when you press *Send diagnosis to n8n* on the Media page.
+
+Choose what you get under **Integrations → What to send**: incidents, recoveries, reminder
+interval, digest level (warnings only, warnings and notices, off), daily summary, quiet hours
+(only warnings get through) and the address you open atlas with, so every email has an
+*Open in atlas* button. **Send the daily summary now** sends one immediately.
+
+On **Incidents**, *Acknowledge* stops announcements and reminders for one incident (you still
+hear when it is resolved) and *Snooze* silences it for 4 hours, a day or a week. Fields: `kind`, `title`, `severity`, `key`, `entity`, `opened_at`,
 `resolved_at`, `evidence` (list of strings), `summary` (daily counts).
 
 ## Pages
