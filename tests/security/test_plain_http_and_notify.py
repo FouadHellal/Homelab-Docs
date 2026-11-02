@@ -180,10 +180,59 @@ async def test_notifier_reports_failures_without_raising(status: int, hint: str)
     assert not ok and hint in msg
 
 
-async def test_notifier_refuses_https_without_anchor_and_public_http() -> None:
-    https = WebhookNotifier(WebhookConfig("https://n8n.example/webhook/a"), None, MemoryAudit())
-    ok, msg = await https.send(Notification(kind="test", title="x"))
+async def test_notifier_https_public_cert_for_that_host_only() -> None:
+    hook = Hook()
+    cfg = WebhookConfig("https://n8n.example.net/webhook/atlas")
+    n = WebhookNotifier(
+        cfg, SecretStr("tok-ATLASFAKE"), MemoryAudit(), transport=httpx.MockTransport(hook)
+    )
+    client = n._client()
+    assert client._tls is not None and client._tls.public_pki  # host names always checked
+    ok, msg = await n.send(Notification(kind="test", title="x"))
+    assert ok, msg
+    assert hook.requests[0].url.host == "n8n.example.net"
+    # An https IP literal cannot use public CAs (no host name to check): refused.
+    ip = WebhookNotifier(WebhookConfig("https://203.0.113.9/webhook/a"), None, MemoryAudit())
+    ok, msg = await ip.send(Notification(kind="test", title="x"))
     assert not ok and "refused" in msg
+
+
+@pytest.mark.parametrize(
+    ("url", "host", "public"),
+    [
+        ("https://n8n.example.net", "other.example.net", True),  # not the URL's host
+        ("https://203.0.113.9", "203.0.113.9", True),  # IP literal
+        ("https://n8n.example.net", "n8n.example.net", False),  # no public-PKI policy
+        ("https://localhost", "localhost", True),  # not a qualified DNS name
+    ],
+)
+def test_public_pki_host_refusals(url: str, host: str, public: bool, tmp_path: Path) -> None:
+    ca = tmp_path / "ca.pem"
+    ca.write_text("x")
+    tls = TlsPolicy(ca_file=None, public_pki=True) if public else TlsPolicy(ca_file=ca)
+    with pytest.raises(SecurityRefusal):
+        ReadOnlyHttpClient(
+            target="n8n",
+            base_url=url,
+            endpoints=ENDPOINTS,
+            audit=MemoryAudit(),
+            tls=tls,
+            public_pki_host=host,
+        )
+
+
+def test_public_pki_still_refused_for_unlisted_hosts() -> None:
+    with pytest.raises(SecurityRefusal):
+        ReadOnlyHttpClient(
+            target="x",
+            base_url="https://n8n.example.net",
+            endpoints=ENDPOINTS,
+            audit=MemoryAudit(),
+            tls=TlsPolicy(ca_file=None, public_pki=True),
+        )
+
+
+async def test_notifier_refuses_public_http() -> None:
     public = WebhookNotifier(
         WebhookConfig("http://8.8.8.8/webhook/a", allow_http=True), None, MemoryAudit()
     )

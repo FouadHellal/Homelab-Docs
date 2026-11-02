@@ -2,6 +2,14 @@
 
 All notable changes. Versions follow [SemVer](https://semver.org/); dates are UTC.
 
+## 0.8.1 (2026-11-02)
+
+### Changed
+- n8n notifications work with an `https://` n8n that has a normal public certificate (for
+  example behind a Let's Encrypt reverse proxy): public CAs are accepted for that one
+  configured host name, with host name checking. Collector sources still require a pinned
+  certificate (ADR-040).
+
 ## 0.8.0 (2026-11-02)
 
 ### Added

@@ -154,6 +154,24 @@ def lan_ip_literal(host: str) -> bool:
     return ip in ipaddress.ip_network("fc00::/7")
 
 
+def _owner_public_host(url: httpx.URL, tls: TlsPolicy | None, host: str) -> bool:
+    """public_pki_host is legal only as: https, a DNS name (not an IP), equal to the URL's
+    host, with a public-PKI TLS policy (which always checks host names)."""
+    try:
+        ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        pass
+    else:
+        return False
+    return (
+        url.scheme == "https"
+        and url.host == host.lower()
+        and tls is not None
+        and tls.public_pki
+        and "." in host
+    )
+
+
 _RFC1918: Final = tuple(
     ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
 )
@@ -172,6 +190,7 @@ class ReadOnlyHttpClient:
         limits: HttpLimits | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
         plain_http_lan: bool = False,
+        public_pki_host: str | None = None,
     ) -> None:
         self._target = target
         self._audit = audit
@@ -208,7 +227,16 @@ class ReadOnlyHttpClient:
         self._base_path = url.path.rstrip("/")
         if transport is None and tls is None and url.scheme == "https":
             raise SecurityRefusal(RefusalReason.TLS_POLICY, "a TlsPolicy is required")
-        if tls is not None and tls.public_pki and url.host not in PUBLIC_PKI_HOSTS:
+        if public_pki_host is not None and not _owner_public_host(url, tls, public_pki_host):
+            # ADR-040: an owner-configured host name (the n8n webhook) may use public CAs;
+            # only that exact DNS name, over https, with host name checking.
+            raise SecurityRefusal(RefusalReason.TLS_POLICY, "public_pki_host does not fit")
+        if (
+            tls is not None
+            and tls.public_pki
+            and url.host not in PUBLIC_PKI_HOSTS
+            and url.host != (public_pki_host or "").lower()
+        ):
             raise SecurityRefusal(
                 RefusalReason.TLS_POLICY, f"public PKI not allowed for {url.host}"
             )

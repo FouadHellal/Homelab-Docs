@@ -103,8 +103,10 @@ calls: server info, sessions, item counts, libraries, scheduled tasks and recent
    the last node with Telegram, Discord, email or anything else, then **activate** the workflow
    and copy its production URL (`…/webhook/atlas`).
 2. In atlas: Integrations → paste the URL and the token (the part after `Bearer `), tick
-   *Plain HTTP on my LAN* if n8n runs on `http://<LAN IP>:5678`, Save, **Send a test
-   notification**.
+   *Plain HTTP on my LAN* only if n8n runs on `http://<LAN IP>:5678`, Save, **Send a test
+   notification**. An `https://` name with a normal certificate (Let's Encrypt, a reverse
+   proxy) works as is; for a self-signed one put its PEM in the config dir and set
+   `ATLAS_N8N_CA_FILE`.
 
 atlas then posts one JSON message when an incident opens (after it has lasted 5 minutes) and
 when it resolves, a daily summary at 07:00 UTC, and a diagnosis when you press *Send diagnosis

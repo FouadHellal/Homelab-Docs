@@ -9,7 +9,8 @@ path, a typed body, timeouts, the audit log; no redirects, no other URL.
 Configuration (environment, nothing in the browser):
     ATLAS_N8N_WEBHOOK_URL        https://n8n.lan:5678/webhook/atlas  (or http://<LAN IP>/...)
     ATLAS_N8N_ALLOW_HTTP=1       needed for plain http://, private LAN IPs only
-    ATLAS_N8N_CA_FILE            PEM anchor for a self-signed https n8n (in the config dir)
+    ATLAS_N8N_CA_FILE            PEM anchor for a self-signed https n8n (in the config dir);
+                                 without it, https uses public CAs for that host name only
     secret `n8n_webhook_token`   sent as `Authorization: Bearer <token>` (n8n "Header Auth")
 """
 
@@ -28,7 +29,6 @@ from homelab_atlas.security.allowlist import Endpoint
 from homelab_atlas.security.audit import AuditSink
 from homelab_atlas.security.errors import (
     HttpStatusError,
-    RefusalReason,
     SecurityRefusal,
     TransportError,
 )
@@ -168,12 +168,15 @@ class WebhookNotifier:
         parts = urlsplit(self.cfg.url)
         base = f"{parts.scheme}://{parts.netloc}"
         tls = None
+        public_host = None
         if parts.scheme == "https":
-            if self.cfg.ca_file is None and self._transport is None:
-                raise SecurityRefusal(
-                    RefusalReason.TLS_POLICY, "https n8n needs ATLAS_N8N_CA_FILE (a pinned anchor)"
-                )
-            tls = TlsPolicy(ca_file=self.cfg.ca_file) if self.cfg.ca_file else None
+            if self.cfg.ca_file is not None:
+                tls = TlsPolicy(ca_file=self.cfg.ca_file)  # pinned anchor (self-signed n8n)
+            else:
+                # A normal public certificate (e.g. Let's Encrypt behind a reverse proxy):
+                # public CAs for this one configured host name, host name checked (ADR-040).
+                tls = TlsPolicy(ca_file=None, public_pki=True)
+                public_host = parts.hostname
         return ReadOnlyHttpClient(
             target="n8n",
             base_url=base,
@@ -186,6 +189,7 @@ class WebhookNotifier:
             limits=LIMITS,
             transport=self._transport,  # type: ignore[arg-type]
             plain_http_lan=self.cfg.allow_http,
+            public_pki_host=public_host,
         )
 
     async def send(self, note: Notification) -> tuple[bool, str]:

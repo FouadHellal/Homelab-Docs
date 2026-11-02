@@ -46,7 +46,7 @@
     <label>Token (the part after “Bearer ”) {% if token %}<span class="pill ok">stored</span> <span class="muted small">leave empty to keep it</span>{% endif %}
       <input name="token" type="password" maxlength="512" autocomplete="off"></label>
     <label class="check"><input type="checkbox" name="allow_http" value="1"{% if hook and hook.scheme == "http" %} checked{% endif %}>
-      <span>Plain HTTP on my LAN (n8n's default <code>http://&lt;LAN IP&gt;:5678</code>). Private IPs only; the token then crosses your network unencrypted.</span></label>
+      <span>Plain HTTP on my LAN (n8n's default <code>http://&lt;LAN IP&gt;:5678</code>). Private IPs only; the token then crosses your network unencrypted. Not needed for an <code>https://</code> address with a normal certificate (for example behind a reverse proxy).</span></label>
     <div class="actions"><button type="submit">Save</button></div>
   </form>
   {% if hook %}<form method="post" action="/integrations/n8n/delete" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button type="submit" class="ghost small">Remove n8n notifications</button></form>{% endif %}
