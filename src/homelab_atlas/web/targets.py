@@ -24,6 +24,7 @@ from homelab_atlas.inventory.hosts import (
     HostEntry,
     Inventory,
     InventoryError,
+    JellyfinSource,
     ProxmoxSource,
     SshSettings,
     TlsSettings,
@@ -49,6 +50,7 @@ HOST_COLLECTORS: Final = ("linux-ssh", "docker", "pi")
 PVE_TOKEN_RE: Final = re.compile(
     r"[A-Za-z0-9._-]{1,64}@[A-Za-z0-9._-]{1,64}![A-Za-z0-9._-]{1,64}=[0-9a-fA-F-]{36}"
 )
+JELLYFIN_KEY_RE: Final = re.compile(r"[0-9a-fA-F]{32}")
 HOSTPORT_RE: Final = re.compile(
     r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}(:\d{1,5})?|\[[0-9A-Fa-f:.]{2,45}\](:\d{1,5})?"
 )
@@ -87,11 +89,18 @@ class SourceForm:
     #: UniFi only: "local" (gateway API) or "cloud" (unifi.ui.com key via the connector)
     connection: Literal["local", "cloud"] = "local"
     console_id: str = ""
+    #: Jellyfin only: plain http:// on the LAN (opt-in), and the machine target running it.
+    allow_http: bool = False
+    jf_host: str = ""
 
 
-def normalize_url(kind: str, value: str) -> str:
-    """Accept a bare IP/host name and fill in the API path, or a full https:// URL."""
+def normalize_url(kind: str, value: str, *, allow_http: bool = False) -> str:
+    """Accept a bare IP/host name and fill in the API path, or a full https:// URL.
+
+    Jellyfin alone may use http:// (its default :8096), when the owner opted in (ADR-039).
+    """
     value = value.strip()
+    plain = kind == "jellyfin" and allow_http
     if not value:
         raise TargetError("address or URL is required")
     if "://" not in value:
@@ -102,10 +111,16 @@ def normalize_url(kind: str, value: str) -> str:
             return f"https://{host}{'' if re.search(r':\d+$', host) else ':8006'}/api2/json"
         if kind == "unifi":
             return f"https://{host}/proxy/network/integration"
+        if kind == "jellyfin":
+            port = "" if re.search(r":\d+$", host) else (":8096" if plain else ":8920")
+            return f"{'http' if plain else 'https'}://{host}{port}"
         return f"https://{host}"
     parts = urlsplit(value)
-    if parts.scheme != "https" or not parts.hostname:
-        raise TargetError("the URL must start with https://")
+    if not parts.hostname or parts.scheme not in (("https", "http") if plain else ("https",)):
+        raise TargetError(
+            "the URL must start with https://"
+            + (" (or http:// with “plain HTTP on my LAN”)" if kind == "jellyfin" else "")
+        )
     return value.rstrip("/")
 
 
@@ -151,6 +166,16 @@ class TargetsService:
                 names |= {f"{kind}:{s.name}" for s in getattr(inv.sources, kind)}
             return inv, names
         return effective_inventory(self._config_dir, self._store.path.parent)
+
+    def set_secret(self, name: str, value: SecretStr | None, op: str) -> None:
+        """Store (or, with None, delete) an integration secret in the encrypted vault."""
+        if not self.editable or self._vault is None:
+            raise TargetError("read-only here")
+        if value is None:
+            self._vault.delete(name)
+        else:
+            self._vault.put(name, value)
+        self._record(op, name)
 
     def has_secret(self, name: str | None) -> bool:
         if not name or self._vault is None:
@@ -314,7 +339,8 @@ class TargetsService:
         taken = (s.name for s in getattr(inv.sources, form.kind))
         self._refuse_taken(taken, form.name, form.original)
         cloud = form.kind == "unifi" and form.connection == "cloud"
-        url = form.url if cloud else normalize_url(form.kind, form.url)
+        url = form.url if cloud else normalize_url(form.kind, form.url, allow_http=form.allow_http)
+        plain_http = url.startswith("http://")
         existing = self.source(form.kind, form.original or form.name)
         tls = existing.tls if existing and not cloud else TlsSettings()
         if cloud:
@@ -330,13 +356,17 @@ class TargetsService:
                 raise TargetError("certificate fingerprint missing; fetch it again")
             ca_file = self._store.save_certificate(form.name, form.cert_pem)
             tls = TlsSettings(ca_file=ca_file, check_hostname=False, sha256_pin=form.cert_sha256)
-        if tls.ca_file is None and not tls.public_pki:
+        if plain_http:
+            tls = TlsSettings()  # no TLS on plain HTTP; the model checks LAN-only + opt-in
+        elif tls.ca_file is None and not tls.public_pki:
             raise TargetError("fetch and confirm the server certificate first")
         cred_name = secret_name(form.kind, form.name)
         if credential is not None:
             value = credential.get_secret_value().strip()
             if form.kind == "proxmox" and not PVE_TOKEN_RE.fullmatch(value):
                 raise TargetError("Proxmox token must look like user@realm!tokenid=<uuid>")
+            if form.kind == "jellyfin" and not JELLYFIN_KEY_RE.fullmatch(value):
+                raise TargetError("a Jellyfin API key is 32 hex characters (Dashboard → API Keys)")
             credential = SecretStr(value)
         elif not self.has_secret(cred_name) and not (
             existing and self.has_secret(existing.credential)
@@ -347,6 +377,8 @@ class TargetsService:
             extra: dict[str, Any] = {"drive_api": True} if form.kind == "unas" else {}
             if cloud:
                 extra = {"connection": "cloud", "console_id": form.console_id}
+            if form.kind == "jellyfin":
+                extra = {"allow_http": plain_http, "host": form.jf_host or None}
             source = model(name=form.name, url=url, credential=cred_name, tls=tls, **extra)
         except ValidationError as exc:
             raise TargetError(_errors(exc)) from None
@@ -449,7 +481,8 @@ class TargetsService:
     async def fetch_certificate(self, kind: str, name: str, url: str) -> discover.PeerCertificate:
         if not self.editable:
             raise TargetError("read-only here")
-        return await discover.fetch_certificate(name or kind, normalize_url(kind, url), self._audit)
+        target = normalize_url(kind, url)
+        return await discover.fetch_certificate(name or kind, target, self._audit)
 
 
 def host_form_from(entry: HostEntry | None, inv: Inventory | None = None) -> HostForm:
@@ -474,10 +507,13 @@ def host_form_from(entry: HostEntry | None, inv: Inventory | None = None) -> Hos
 
 
 def source_form_from(
-    kind: SourceKind, src: ProxmoxSource | UnifiSource | UnasSource | None
+    kind: SourceKind, src: ProxmoxSource | UnifiSource | UnasSource | JellyfinSource | None
 ) -> SourceForm:
     if src is None:
-        return SourceForm(kind=kind, name="", url="")
+        return SourceForm(kind=kind, name="", url="", allow_http=kind == "jellyfin")
+    if isinstance(src, JellyfinSource):
+        return SourceForm(kind=kind, name=src.name, url=src.url, original=src.name,
+                          allow_http=src.allow_http, jf_host=src.host or "")  # fmt: skip
     if isinstance(src, UnifiSource) and src.connection == "cloud":
         return SourceForm(
             kind=kind,

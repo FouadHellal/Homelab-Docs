@@ -9,11 +9,13 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Annotated
 
+import structlog
 import typer
 from rich.console import Console
 from sqlalchemy import func, select
 
 from homelab_atlas.cli_export import sanitize_key
+from homelab_atlas.engine.report import daily_summary
 from homelab_atlas.engine.scan import ScanEngine
 from homelab_atlas.lab import load_lab
 from homelab_atlas.runtime import (
@@ -21,9 +23,11 @@ from homelab_atlas.runtime import (
     Runtime,
     config_dir,
     default_data_dir,
+    jellyfin_live,
     lab_inputs,
     live_inputs,
     live_secrets,
+    safe_intervals,
     test_source,
     test_ssh_login,
 )
@@ -34,6 +38,7 @@ from homelab_atlas.web import auth
 from homelab_atlas.web.targets import TargetsService
 from homelab_atlas.web.tls import ensure_self_signed, fingerprint
 
+log = structlog.get_logger()
 console = Console()
 user_app = typer.Typer(help="Local web accounts (argon2id).", no_args_is_help=True)
 
@@ -143,7 +148,30 @@ def make_scheduler(rt: Runtime, *, lab: bool) -> Scheduler:
         with rt.sessions() as s:
             prune(s, days=days)
 
-    return Scheduler(engine, retention=retention)
+    async def daily() -> None:
+        notifier = rt.notifier()
+        if notifier is None:
+            return
+        inputs = live_inputs(rt.data_dir)
+        with rt.sessions() as s:
+            note = daily_summary(s, inputs.inventory, safe_intervals())
+        ok, msg = await notifier.send(note)
+        log.info("notify.daily", ok=ok, detail=msg)
+
+    hour = os.environ.get("ATLAS_DAILY_SUMMARY_HOUR", "7").strip()
+    daily_hour = int(hour) if hour.isdigit() and int(hour) < 24 else None
+    return Scheduler(
+        engine,
+        retention=retention,
+        daily=None if lab else daily,
+        daily_hour_utc=daily_hour,
+    )
+
+
+async def _media_live(rt: Runtime, lab: bool, name: str) -> dict[str, object]:
+    inputs = lab_inputs("B") if lab else live_inputs(rt.data_dir)
+    show = os.environ.get("ATLAS_MEDIA_SHOW_USERS", "") in ("1", "true", "yes")
+    return await jellyfin_live(inputs, rt.audit, name, show_names=show)
 
 
 def serve(
@@ -206,6 +234,8 @@ def serve(
             setup_token_file=setup_file,
             data_dir=rt.data_dir,
             export_key=sanitize_key(rt),
+            media_live=functools.partial(_media_live, rt, bool(lab)),
+            notifier=rt.notifier,
         )
     )
     scheme = "https" if tls_cert else "http"

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% set titles = {"proxmox": "Proxmox VE", "unifi": "UniFi gateway", "unas": "UniFi UNAS"} %}
-{% set placeholders = {"proxmox": "192.168.1.10", "unifi": "192.168.1.1", "unas": "192.168.1.30"} %}
-{% set names = {"proxmox": "homelab", "unifi": "ucg", "unas": "unas"} %}
-{% set cred_labels = {"proxmox": "API token (user@realm!tokenid=secret)", "unifi": "API key", "unas": "Drive API key"} %}
+{% set titles = {"proxmox": "Proxmox VE", "unifi": "UniFi gateway", "unas": "UniFi UNAS", "jellyfin": "Jellyfin"} %}
+{% set placeholders = {"proxmox": "192.168.1.10", "unifi": "192.168.1.1", "unas": "192.168.1.30", "jellyfin": "192.168.1.40 (or http://192.168.1.40:8096)"} %}
+{% set names = {"proxmox": "homelab", "unifi": "ucg", "unas": "unas", "jellyfin": "jellyfin"} %}
+{% set cred_labels = {"proxmox": "API token (user@realm!tokenid=secret)", "unifi": "API key", "unas": "Drive API key", "jellyfin": "API key (Jellyfin → Dashboard → API Keys → +)"} %}
 {% block title %}{{ titles[f.kind] }}{% endblock %}
 {% block main %}
 <p class="crumbs"><a href="/targets">Targets</a> /</p>
@@ -37,9 +37,18 @@
   </fieldset>
   {% endif %}
 
+  {% if f.kind == "jellyfin" %}
+  <fieldset><legend>Jellyfin</legend>
+    <label class="check"><input type="checkbox" name="allow_http" value="1"{% if f.allow_http %} checked{% endif %}>
+      <span><strong>Plain HTTP on my LAN</strong> (Jellyfin's default port 8096). Only to a private IP address. The API key then crosses your network unencrypted; prefer HTTPS (port 8920 or a reverse proxy) and leave this unticked.</span></label>
+    <label>Machine running Jellyfin (an atlas target, for mount and service checks)
+      <input name="jf_host" value="{{ f.jf_host }}" maxlength="64" placeholder="leave empty to match it by IP"></label>
+  </fieldset>
+  {% endif %}
   <fieldset><legend>{{ "Local key: gateway address and certificate" if f.kind == "unifi" else "Address and certificate" }}</legend>
     <label>IP address or URL <input name="url" value="{{ f.url if f.connection != 'cloud' else '' }}" maxlength="512" placeholder="{{ placeholders[f.kind] }}"></label>
     {% if pinned and pinned.sha256_pin %}<p>Pinned: <code class="fp">{{ pinned.sha256_pin }}</code></p>{% elif pinned and pinned.ca_file %}<p>CA file: <code>{{ pinned.ca_file }}</code></p>{% endif %}
+    {% if f.kind == "jellyfin" %}<p class="muted small">Plain HTTP needs no certificate. For HTTPS, fetch and confirm it below.</p>{% endif %}
     <div id="cert">
       <button type="button" class="ghost" hx-post="/targets/cert" hx-include="[name=url],[name=kind],[name=name],[name=csrf_token]" hx-target="#cert">{{ "Re-fetch certificate" if pinned else "Fetch certificate" }}</button>
     </div>
@@ -48,6 +57,7 @@
   <p class="muted small">
   {% if f.kind == "proxmox" %}Create the token with <code>pveum user token add atlas@pve collector --privsep 1</code> and give user and token the <strong>PVEAuditor</strong> role on <code>/</code> (read-only). See docs/SETUP-TARGETS.md §4.
   {% elif f.kind == "unifi" %}Any key works for reading. A UniFi key carries the rights of whoever created it, and atlas only ever sends GET requests.
+  {% elif f.kind == "jellyfin" %}Jellyfin API keys are not scoped (they act as an administrator), so atlas only allows itself six read-only GET calls: server info, sessions, item counts, libraries, scheduled tasks and recently added items. The key is stored encrypted on the atlas server and never sent to your browser. Make a dedicated key named “atlas” so you can revoke it alone.
   {% else %}The UNAS API is only community-documented; leaving the UNAS out is fine.{% endif %}</p>
   <div class="actions">
     <button type="submit"{% if not editable %} disabled{% endif %}>Save</button>

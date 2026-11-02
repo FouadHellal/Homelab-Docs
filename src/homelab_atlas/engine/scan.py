@@ -1,7 +1,7 @@
 """Scan orchestration: collect → redact → snapshot → diff → events → persist."""
 
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -12,8 +12,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from homelab_atlas.collectors.base import CollectContext, Collector, CollectorResult, FacetResult
+from homelab_atlas.engine import incidents
 from homelab_atlas.engine.diff import body_sha256, diff
 from homelab_atlas.engine.events import EventSpec
+from homelab_atlas.engine.notify import WebhookNotifier
 from homelab_atlas.engine.reconcile import reconcile
 from homelab_atlas.models.base import canonical
 from homelab_atlas.redact import Redactor
@@ -66,6 +68,8 @@ class ScanEngine:
         mode: str,
         concurrency: int = DEFAULT_CONCURRENCY,
         collector_timeout_s: float = DEFAULT_COLLECTOR_TIMEOUT_S,
+        intervals: Mapping[str, int] | None = None,
+        notifier: WebhookNotifier | None = None,
     ) -> None:
         self._sessions = sessions
         self._ctx = ctx
@@ -75,6 +79,8 @@ class ScanEngine:
         self._mode = mode
         self._sem = asyncio.Semaphore(concurrency)
         self._timeout = collector_timeout_s
+        self._intervals = dict(intervals or {})
+        self._notifier = notifier
 
     def plan(
         self, targets: Sequence[str] | None = None, collectors: Sequence[str] | None = None
@@ -139,8 +145,29 @@ class ScanEngine:
                     )
                 )
             s.commit()
+            try:  # incidents never break a scan (ADR-040)
+                incidents.evaluate(s, self._ctx.inventory, self._intervals)
+                s.commit()
+            except Exception:
+                s.rollback()
+                log.exception("incidents.evaluate_failed")
+        await self.notify_due()
         log.info("scan.done", scan_id=scan_id, runs=summary.counts, events=len(summary.events))
         return summary
+
+    async def notify_due(self) -> None:
+        """Send due incident notifications (if a webhook is configured); record what went."""
+        if self._notifier is None:
+            return
+        with self._sessions() as s:
+            for row, note in incidents.due_notifications(s):
+                ok, msg = await self._notifier.send(note)
+                if ok:
+                    incidents.mark_sent(row, note)
+                else:
+                    log.warning("notify.failed", key=row.key, reason=msg)
+                    break  # n8n down: try again after the next scan, in order
+            s.commit()
 
     async def _collect(self, target: str, collector: Collector) -> CollectorResult:
         async with self._sem:

@@ -157,10 +157,44 @@ class UnasSource(_Strict):
         return self
 
 
+class JellyfinSource(_Strict):
+    """Jellyfin media server (ADR-039): GET-only API calls with a dedicated API key."""
+
+    name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+    url: str = Field(pattern=r"^https?://")
+    credential: str
+    tls: TlsSettings = TlsSettings()
+    #: Owner opt-in for Jellyfin's default plain http://<LAN IP>:8096. Private IPs only.
+    allow_http: bool = False
+    #: The atlas machine target that runs Jellyfin (mount and service checks). Inferred from
+    #: the URL's IP when unset.
+    host: str | None = Field(default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+    #: Media mounts with less free space than this raise a warning.
+    min_free_pct: int = Field(default=10, ge=1, le=50)
+    _cred = field_validator("credential")(_secret_name)
+
+    @model_validator(mode="after")
+    def _scheme(self) -> "JellyfinSource":
+        host = self.url.split("://", 1)[1].split("/", 1)[0].rsplit(":", 1)[0].strip("[]")
+        if self.url.startswith("http://"):
+            if not self.allow_http:
+                raise ValueError(f"{self.name}: http:// needs allow_http: true (LAN only)")
+            try:
+                ip = ipaddress.ip_address(host)
+            except ValueError:
+                raise ValueError(f"{self.name}: http:// only to an IP address") from None
+            if not ip.is_private or ip.is_loopback or ip.is_link_local:
+                raise ValueError(f"{self.name}: http:// only to a private LAN IP")
+        elif self.allow_http:
+            raise ValueError(f"{self.name}: allow_http is only for http:// URLs")
+        return self
+
+
 class Sources(_Strict):
     proxmox: tuple[ProxmoxSource, ...] = ()
     unifi: tuple[UnifiSource, ...] = ()
     unas: tuple[UnasSource, ...] = ()
+    jellyfin: tuple[JellyfinSource, ...] = ()
 
 
 class Match(_Strict):

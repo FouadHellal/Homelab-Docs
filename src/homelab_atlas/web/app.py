@@ -18,12 +18,14 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from html import escape
 from importlib.resources import files
 from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Annotated, Any, Final
 from urllib.parse import quote, urlencode, urlsplit
 
+import structlog
 from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -34,17 +36,24 @@ from sqlalchemy.orm import Session
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from homelab_atlas import __version__
-from homelab_atlas.engine import apps
+from homelab_atlas.engine import apps, incidents, media
+from homelab_atlas.engine.notify import (
+    SETTINGS_FILE,
+    TOKEN_SECRET,
+    Notification,
+    WebhookNotifier,
+    save_webhook_settings,
+)
 from homelab_atlas.export import build as export_build
 from homelab_atlas.export.build import csv_table
 from homelab_atlas.inventory import annotations as ann
 from homelab_atlas.inventory.managed import SourceKind
-from homelab_atlas.scheduler import Scheduler
+from homelab_atlas.scheduler import DEFAULT_INTERVALS_S, Scheduler, intervals_from_env
 from homelab_atlas.security.audit import verify as audit_verify
 from homelab_atlas.security.errors import HttpStatusError, SecurityRefusal, TransportError
 from homelab_atlas.store.tables import Annotation, CollectorRun, Entity, Event, Facet, Scan
 from homelab_atlas.store.tables import User as UserRow
-from homelab_atlas.web import auth, queries, topology, views
+from homelab_atlas.web import auth, command, queries, topology, views
 from homelab_atlas.web.targets import (
     HOST_COLLECTORS,
     HOST_TYPES,
@@ -57,6 +66,7 @@ from homelab_atlas.web.targets import (
 )
 
 SESSION_COOKIE: Final = "__Host-atlas"
+log = structlog.get_logger()
 LOGIN_COOKIE: Final = "__Host-atlas-login"
 LOGIN_RATE: Final = (20, 600.0)  # attempts per window (seconds) per client address
 PKG: Final = files("homelab_atlas.web")
@@ -87,6 +97,10 @@ class WebConfig:
     data_dir: Path | None = None
     #: Key for --sanitize style pseudonymised exports from the Exports page (None: not offered).
     export_key: bytes | None = None
+    #: Live Jellyfin sessions for the media page: source name -> result (ADR-039).
+    media_live: Callable[[str], Awaitable[dict[str, Any]]] | None = None
+    #: Builds the n8n webhook notifier (ADR-040); None or returning None = not configured.
+    notifier: Callable[[], WebhookNotifier | None] | None = None
 
 
 class LoginThrottle:
@@ -467,7 +481,262 @@ def create_app(cfg: WebConfig) -> FastAPI:
 
     # ------------------------------------------------------------------ pages
 
+    def _configured() -> dict[str, list[str]]:
+        if cfg.targets is None:
+            return {}
+        inv, _ = cfg.targets.inventory()
+        hosts = inv.hosts
+        return {
+            "proxmox": [x.name for x in inv.sources.proxmox],
+            "unifi": [x.name for x in inv.sources.unifi],
+            "nas": [x.name for x in inv.sources.unas],
+            "jellyfin": [x.name for x in inv.sources.jellyfin],
+            "linux-ssh": [h.name for h in hosts if "linux-ssh" in h.collectors],
+            "docker": [h.name for h in hosts if "docker" in h.collectors],
+        }
+
+    def _unifi_urls() -> list[str]:
+        if cfg.targets is None:
+            return []
+        inv, _ = cfg.targets.inventory()
+        out = []
+        for u in inv.sources.unifi:
+            if u.connection == "cloud":
+                out.append("https://unifi.ui.com")
+            else:
+                parts = urlsplit(u.url)
+                out.append(f"https://{parts.netloc}")
+        return out
+
+    def _jellyfin_urls() -> dict[str, str]:
+        if cfg.targets is None:
+            return {}
+        inv, _ = cfg.targets.inventory()
+        out = {}
+        for j in inv.sources.jellyfin:
+            parts = urlsplit(j.url)
+            out[j.name] = f"{parts.scheme}://{parts.netloc}/web/"
+        return out
+
+    command_cache: dict[str, Any] = {}
+
+    def _command(s: Session) -> dict[str, Any]:
+        """Built once per new collector run (or every 30 s for ages), not on every render."""
+        stamp = (command.last_run_id(s), int(time.monotonic() // 30))
+        if command_cache.get("stamp") == stamp:
+            return dict(command_cache["data"])
+        try:
+            intervals = intervals_from_env()
+        except ValueError:
+            intervals = dict(DEFAULT_INTERVALS_S)
+        cards = views.machines(s)
+        fresh = command.freshness(s, intervals)
+        svc = command.services(s, cards, fresh)
+        problems = command.issues(s, cards, fresh, svc)
+        data = {
+            "summary": command.summary(s, cards, fresh),
+            "services": svc,
+            "issues": problems,
+            "overall": command.overall(fresh, problems),
+            "resources": command.resources(s),
+            "quick": command.quick_links(cards, _unifi_urls(), cfg.data_dir, _jellyfin_urls()),
+            "integrations": command.integrations(s, fresh, _configured()),
+            "groups": command.GROUPS,
+        }
+        command_cache.update(stamp=stamp, data=data)
+        return dict(data)
+
     @app.get("/", response_class=HTMLResponse)
+    def command_center(
+        request: Request,
+        s: DB,
+        user: User,
+        hours: Annotated[int, Query(ge=1, le=24 * 30)] = 24,
+        sev: Annotated[str, Query(max_length=16)] = "",
+        q: Annotated[str, Query(max_length=64)] = "",
+    ) -> Response:
+        data = _command(s)
+        data["timeline"] = command.timeline(s, hours=hours, severity=sev or None, q=q or None)
+        data["incidents"] = incidents.open_incidents(s)
+        if partial(request) and request.headers.get("hx-target") == "timeline":
+            return page(request, "_timeline.html", user, c=data, hours=hours, sev=sev, q=q)
+        return page(request, "command.html", user, c=data, hours=hours, sev=sev, q=q,
+                    sched=cfg.scheduler, scheduled=cfg.schedule)  # fmt: skip
+
+    # ------------------------------------------------------------------ media (ADR-039/040)
+
+    live_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+    LIVE_TTL_S = 15.0
+
+    def _jellyfin(name: str | None) -> tuple[Any, Any]:
+        if cfg.targets is None:
+            return None, None
+        inv, _ = cfg.targets.inventory()
+        srcs = list(inv.sources.jellyfin)
+        src = next((x for x in srcs if x.name == name), srcs[0] if srcs else None)
+        return inv, src
+
+    @app.get("/media", response_class=HTMLResponse)
+    def media_page(
+        request: Request,
+        s: DB,
+        user: User,
+        src: Annotated[str, Query(max_length=64)] = "",
+        msg: Annotated[str, Query(max_length=200)] = "",
+    ) -> Response:
+        inv, source = _jellyfin(src or None)
+        diag = facts = None
+        if source is not None:
+            diag = media.diagnose(s, inv, source, _intervals())
+            row = s.get(Facet, (f"jellyfin:{source.name}", "jellyfin"))
+            facts = dict(row.data) if row is not None else None
+        notifier = cfg.notifier() if cfg.notifier else None
+        return page(
+            request,
+            "media.html",
+            user,
+            sources=[x.name for x in inv.sources.jellyfin] if inv else [],
+            source=source,
+            diag=diag,
+            facts=facts,
+            history=incidents.recent_incidents(s, "media.", 20),
+            can_notify=notifier is not None,
+            sched=cfg.scheduler,
+            msg=msg,
+            jellyfin_url=_ui_url(source.url) if source else None,
+        )
+
+    def _ui_url(url: str) -> str:
+        parts = urlsplit(url)
+        return f"{parts.scheme}://{parts.netloc}/web/"
+
+    @app.get("/media/sessions", response_class=HTMLResponse)
+    async def media_sessions(
+        request: Request, s: DB, user: User, src: Annotated[str, Query(max_length=64)] = ""
+    ) -> Response:
+        """Live sessions (htmx poll while the page is open), cached 15 s, never stored."""
+        _inv, source = _jellyfin(src or None)
+        live: dict[str, Any] | None = None
+        if source is not None and cfg.media_live is not None:
+            hit = live_cache.get(source.name)
+            if hit and time.monotonic() - hit[0] < LIVE_TTL_S:
+                live = hit[1]
+            else:
+                live = await cfg.media_live(source.name)
+                live_cache[source.name] = (time.monotonic(), live)
+        stored = None
+        if source is not None:
+            row = s.get(Facet, (f"jellyfin:{source.name}", "jellyfin"))
+            stored = dict(row.data) if row is not None else None
+        return page(request, "_media_sessions.html", user, live=live, stored=stored, source=source)
+
+    @app.post("/media/refresh", response_class=HTMLResponse)
+    async def media_refresh(
+        request: Request, user: Csrf, src: Annotated[str, Form(max_length=64)] = ""
+    ) -> Response:
+        """Rescan the Jellyfin source and its machine now (the normal read-only scan)."""
+        inv, source = _jellyfin(src or None)
+        if source is None or cfg.scheduler is None:
+            raise HTTPException(404, "no Jellyfin source or no scheduler")
+        hosts = [source.name, *([h] if (h := media.jellyfin_host(inv, source)) else [])]
+        state = cfg.scheduler.trigger(hosts)
+        live_cache.pop(source.name, None)
+        text = "Refresh started" if state == "started" else "Refresh queued after the current scan"
+        return HTMLResponse(
+            f"<span role='status'>{escape(text)}: {escape(', '.join(hosts))}.</span>"
+        )
+
+    @app.post("/media/diagnose", response_class=HTMLResponse)
+    async def media_notify(
+        request: Request, s: DB, user: Csrf, src: Annotated[str, Form(max_length=64)] = ""
+    ) -> Response:
+        """Send the current diagnosis to the n8n webhook (a 'diagnostic request')."""
+        inv, source = _jellyfin(src or None)
+        notifier = cfg.notifier() if cfg.notifier else None
+        if source is None or notifier is None:
+            raise HTTPException(404, "no Jellyfin source or no n8n webhook configured")
+        d = media.diagnose(s, inv, source, _intervals())
+        note = Notification(
+            kind="diagnostic.requested",
+            title=f"Media diagnosis for {source.name}: {d.headline}",
+            severity="warning" if d.status in ("down", "degraded") else "info",
+            key=f"media.diagnostic:{source.name}",
+            entity=f"jellyfin:{source.name}",
+            evidence=[f"{c.label}: {c.state} - {c.detail}" for c in d.checks],
+        )
+        ok, info = await notifier.send(note)
+        log.info("media.diagnostic_sent", source=source.name, ok=ok, by=user.username)
+        cls = "ok" if ok else "failed"
+        return HTMLResponse(f"<span class='pill {cls}' role='status'>{escape(info)}</span>")
+
+    def _intervals() -> dict[str, int]:
+        try:
+            return intervals_from_env()
+        except ValueError:
+            return dict(DEFAULT_INTERVALS_S)
+
+    @app.get("/integrations", response_class=HTMLResponse)
+    def integrations_page(request: Request, s: DB, user: User) -> Response:
+        notifier = cfg.notifier() if cfg.notifier else None
+        hook = None
+        if notifier is not None:
+            parts = urlsplit(notifier.cfg.url)
+            hook = {"host": parts.netloc, "path": parts.path, "scheme": parts.scheme}
+        return page(
+            request,
+            "integrations.html",
+            user,
+            c=_command(s),
+            hook=hook,
+            token=notifier is not None and notifier.has_token,
+            sent=incidents.recent_incidents(s, None, 15),
+            editable=cfg.targets is not None and cfg.targets.editable and cfg.data_dir is not None,
+            msg=request.query_params.get("msg", "")[:200],
+        )
+
+    @app.post("/integrations/n8n")
+    def n8n_save(
+        user: Csrf,
+        url: Annotated[str, Form(max_length=512)],
+        token: Annotated[str, Form(max_length=512)] = "",
+        allow_http: Annotated[str, Form(max_length=4)] = "",
+    ) -> Response:
+        """Save the n8n webhook: URL to <data>/n8n.yaml, token to the encrypted vault."""
+        svc = targets_svc()
+        if cfg.data_dir is None or not svc.editable:
+            raise HTTPException(403, "read-only here")
+        try:
+            save_webhook_settings(cfg.data_dir, url.strip(), bool(allow_http))
+            if token.strip():
+                svc.set_secret(TOKEN_SECRET, SecretStr(token.strip()), "ui.n8n.token")
+        except (ValueError, TargetError) as exc:
+            return RedirectResponse(f"/integrations?{urlencode({'msg': str(exc)[:180]})}", 303)
+        log.info("n8n.saved", by=user.username)
+        return RedirectResponse("/integrations?msg=Saved.+Send+a+test+notification.", 303)
+
+    @app.post("/integrations/n8n/delete")
+    def n8n_delete(user: Csrf) -> Response:
+        svc = targets_svc()
+        if cfg.data_dir is None or not svc.editable:
+            raise HTTPException(403, "read-only here")
+        (cfg.data_dir / SETTINGS_FILE).unlink(missing_ok=True)
+        svc.set_secret(TOKEN_SECRET, None, "ui.n8n.delete")
+        return RedirectResponse("/integrations?msg=n8n+notifications+removed.", 303)
+
+    @app.post("/integrations/n8n/test", response_class=HTMLResponse)
+    async def n8n_test(request: Request, user: Csrf) -> Response:
+        notifier = cfg.notifier() if cfg.notifier else None
+        if notifier is None:
+            raise HTTPException(404, "no n8n webhook configured")
+        ok, info = await notifier.send(
+            Notification(kind="test", title="atlas test notification", severity="info")
+        )
+        log.info("n8n.test", ok=ok, by=user.username)
+        return HTMLResponse(
+            f"<span class='pill {'ok' if ok else 'failed'}' role='status'>{escape(info)}</span>"
+        )
+
+    @app.get("/overview", response_class=HTMLResponse)
     def dashboard(request: Request, s: DB, user: User) -> Response:
         cards = views.machines(s)
         names, addresses = _target_names()
@@ -1042,12 +1311,12 @@ def create_app(cfg: WebConfig) -> FastAPI:
             return None, set()
         inv, _ = cfg.targets.inventory()
         names = {h.name for h in inv.hosts}
-        for kind in ("proxmox", "unifi", "unas"):
+        for kind in ("proxmox", "unifi", "unas", "jellyfin"):
             names |= {src.name for src in getattr(inv.sources, kind)}
         return names, {h.address for h in inv.hosts}
 
     def _kind(kind: str) -> SourceKind:
-        if kind not in ("proxmox", "unifi", "unas"):
+        if kind not in ("proxmox", "unifi", "unas", "jellyfin"):
             raise HTTPException(404, "unknown source kind")
         return kind  # type: ignore[return-value]
 
@@ -1249,6 +1518,8 @@ def create_app(cfg: WebConfig) -> FastAPI:
         original: Annotated[str, Form(max_length=64)] = "",
         connection: Annotated[str, Form(max_length=8)] = "local",
         console_id: Annotated[str, Form(max_length=160)] = "",
+        allow_http: Annotated[str, Form(max_length=4)] = "",
+        jf_host: Annotated[str, Form(max_length=64)] = "",
     ) -> Response:
         svc = targets_svc()
         form = SourceForm(
@@ -1261,6 +1532,8 @@ def create_app(cfg: WebConfig) -> FastAPI:
             original=original,
             connection="cloud" if connection == "cloud" and kind == "unifi" else "local",
             console_id=console_id.strip(),
+            allow_http=bool(allow_http) and kind == "jellyfin",
+            jf_host=jf_host.strip() if kind == "jellyfin" else "",
         )
         try:
             if form.connection == "cloud":

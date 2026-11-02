@@ -171,3 +171,25 @@ class Annotation(Base):
     acknowledged: Mapped[bool] = mapped_column(default=False)
     source_file: Mapped[str] = mapped_column(String(256))
     updated_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class Incident(Base):
+    """An ongoing condition (ADR-040): opened once, updated while it lasts, resolved once.
+
+    Deduplicated by `key` (one open incident per key); notifications are tracked here so a
+    long outage sends one "opened" and one "resolved", not one message per scan.
+    """
+
+    __tablename__ = "incidents"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(128), index=True)
+    kind: Mapped[str] = mapped_column(String(48))
+    title: Mapped[str] = mapped_column(String(256))
+    severity: Mapped[str] = mapped_column(String(16))
+    entity_key: Mapped[str | None] = mapped_column(String(256), default=None)
+    evidence: Mapped[list[Any]] = mapped_column(default=list)
+    opened_at: Mapped[datetime] = mapped_column(default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(default=utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column(default=None, index=True)
+    notified_open_at: Mapped[datetime | None] = mapped_column(default=None)
+    notified_resolved_at: Mapped[datetime | None] = mapped_column(default=None)

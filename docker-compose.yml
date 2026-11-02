@@ -15,6 +15,7 @@
 #   ATLAS_BIND      host address to publish on (default 0.0.0.0 = every interface of this VM)
 #   ATLAS_VERSION   image tag (default latest)
 #   ATLAS_INTERVAL_<COLLECTOR>, ATLAS_SNAPSHOT_DAYS (optional tuning)
+#   ATLAS_DAILY_SUMMARY_HOUR, ATLAS_MEDIA_SHOW_USERS, ATLAS_N8N_* (optional, see docs/GUIDE.md)
 
 name: atlas
 
@@ -55,6 +56,11 @@ services:
       ATLAS_INTERVAL_DOCKER: ${ATLAS_INTERVAL_DOCKER:-3600}
       ATLAS_INTERVAL_PI: ${ATLAS_INTERVAL_PI:-3600}
       ATLAS_INTERVAL_NAS: ${ATLAS_INTERVAL_NAS:-21600}
+      ATLAS_INTERVAL_JELLYFIN: ${ATLAS_INTERVAL_JELLYFIN:-300}
+      ATLAS_DAILY_SUMMARY_HOUR: ${ATLAS_DAILY_SUMMARY_HOUR-7}
+      ATLAS_MEDIA_SHOW_USERS: ${ATLAS_MEDIA_SHOW_USERS:-}
+      ATLAS_N8N_WEBHOOK_URL: ${ATLAS_N8N_WEBHOOK_URL:-}
+      ATLAS_N8N_ALLOW_HTTP: ${ATLAS_N8N_ALLOW_HTTP:-}
     volumes:
       - atlas-data:/data
       - ./config:/config:ro

@@ -18,7 +18,11 @@
 <body class="{% block body_class %}{% endblock %}{% if user %} has-side{% endif %}"{% if user %} hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'{% endif %}>
 {% if user %}
 {% set sections = [
-  (None, [("/", "Dashboard", "dashboard", "Overview of the lab")]),
+  (None, [
+    ("/", "Command Center", "dashboard", "Health, services, changes, quick access"),
+    ("/overview", "Overview", "inventory", "Machines and Proxmox at a glance"),
+    ("/media", "Media", "media", "Jellyfin, playback and its storage"),
+  ]),
   ("Infrastructure", [
     ("/topology", "Topology", "topology", "Proxmox nodes, VMs, network, VLANs"),
     ("/entities", "Inventory", "inventory", "Every machine and device"),
@@ -36,6 +40,7 @@
   ]),
   ("Setup", [
     ("/targets", "Targets", "targets", "Machines, Proxmox, UniFi"),
+    ("/integrations", "Integrations", "integrations", "Data sources and n8n"),
     ("/exports", "Exports", "exports", "Markdown, CSV, JSON, Mermaid"),
     ("/diagnostics", "Diagnostics", "diagnostics", "Health of atlas"),
     ("/docs", "Docs", "docs", "How atlas works"),

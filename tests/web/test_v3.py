@@ -152,7 +152,7 @@ def test_targets_page_shows_last_scan(web: TestClient) -> None:
 
 
 def test_dashboard_lists_failed_targets_with_reason(web: TestClient) -> None:
-    body = web.get("/").text
+    body = web.get("/overview").text
     assert "Needs attention" in body
     assert "/targets#t-" in body
     assert "Every collector answered on the last scan" not in body

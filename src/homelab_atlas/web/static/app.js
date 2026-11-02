@@ -237,7 +237,67 @@
     });
   }
 
+  // ------------------------------------------------------------ facet filters + sortable tables
+  // <div data-facets="#table"><button data-facet="state" data-value="healthy">  → rows' data-state
+  function wireFacets(root) {
+    root.querySelectorAll("[data-facets]").forEach(function (box) {
+      var table = document.querySelector(box.dataset.facets);
+      if (!table) return;
+      var active = {};
+      function apply() {
+        table.querySelectorAll("tbody tr").forEach(function (tr) {
+          var ok = Object.keys(active).every(function (k) { return !active[k] || tr.dataset[k] === active[k]; });
+          tr.classList.toggle("is-hidden", !ok);
+        });
+      }
+      box.querySelectorAll("[data-facet]").forEach(function (btn) {
+        btn.setAttribute("aria-pressed", btn.classList.contains("on") ? "true" : "false");
+        btn.addEventListener("click", function () {
+          var f = btn.dataset.facet;
+          active[f] = btn.dataset.value;
+          box.querySelectorAll("[data-facet='" + f + "']").forEach(function (b) {
+            b.classList.toggle("on", b === btn);
+            b.setAttribute("aria-pressed", b === btn ? "true" : "false");
+          });
+          apply();
+        });
+      });
+    });
+  }
+  function wireSort(root) {
+    root.querySelectorAll("table.sortable").forEach(function (table) {
+      table.querySelectorAll("th[data-sort]").forEach(function (th, col) {
+        th.tabIndex = 0;
+        th.setAttribute("role", "button");
+        function sort() {
+          var asc = th.getAttribute("aria-sort") !== "ascending";
+          table.querySelectorAll("th[data-sort]").forEach(function (o) { o.removeAttribute("aria-sort"); });
+          th.setAttribute("aria-sort", asc ? "ascending" : "descending");
+          var body = table.tBodies[0];
+          var rows = Array.prototype.slice.call(body.rows);
+          var idx = Array.prototype.indexOf.call(th.parentNode.children, th);
+          function key(r) {
+            var c = r.cells[idx];
+            if (!c) return "";
+            var v = c.dataset.sortValue;
+            return v !== undefined ? parseFloat(v) : c.textContent.trim().toLowerCase();
+          }
+          rows.sort(function (a, b) {
+            var x = key(a), y = key(b);
+            var r = (typeof x === "number" && typeof y === "number") ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true });
+            return asc ? r : -r;
+          });
+          rows.forEach(function (r) { body.appendChild(r); });
+        }
+        th.addEventListener("click", sort);
+        th.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sort(); } });
+      });
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
+    wireFacets(document);
+    wireSort(document);
     wireSide();
     wrapTables(document);
     wireDropdowns();

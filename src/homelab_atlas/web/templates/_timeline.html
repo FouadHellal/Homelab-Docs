@@ -1,0 +1,18 @@
+<div id="timeline">
+{% if c.timeline %}
+<ol class="tl">
+  {% for row in c.timeline %}{% set e = row.e %}
+  <li class="tl-item sev-{{ e.severity }}">
+    <span class="tl-dot" aria-hidden="true"></span>
+    <div class="tl-body">
+      <a href="/entity?key={{ e.entity_key | urlencode }}">{{ e.summary }}</a>
+      <div class="muted small"><span class="sev {{ e.severity }}">{{ e.severity }}</span> <code>{{ e.type }}</code> · <time datetime="{{ e.created_at.isoformat() }}" title="{{ e.created_at.strftime('%Y-%m-%d %H:%M UTC') }}">{{ e.created_at | ago }}</time></div>
+    </div>
+  </li>
+  {% endfor %}
+</ol>
+<p class="small"><a href="/changes">All changes, with filters and CSV →</a></p>
+{% else %}
+<p class="muted">No changes in this window{% if sev or q %} that match{% endif %}. Changes appear after the second scan of a target.</p>
+{% endif %}
+</div>

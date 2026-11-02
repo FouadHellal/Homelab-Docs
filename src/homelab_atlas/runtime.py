@@ -8,6 +8,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+import structlog
 from pydantic import SecretStr
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -19,12 +20,20 @@ from homelab_atlas.collectors.base import (
     HttpFactory,
 )
 from homelab_atlas.collectors.docker.collector import DockerCollector
+from homelab_atlas.collectors.jellyfin import SYSTEM_INFO as JF_SYSTEM_INFO
+from homelab_atlas.collectors.jellyfin import JellyfinCollector
 from homelab_atlas.collectors.linux_ssh.collector import LinuxSshCollector
 from homelab_atlas.collectors.nas import NasCollector
 from homelab_atlas.collectors.pi import PiCollector
 from homelab_atlas.collectors.proxmox.collector import ProxmoxCollector
 from homelab_atlas.collectors.unifi.collector import UnifiCollector
 from homelab_atlas.collectors.unifi.sitemanager import CLOUD_MIN_INTERVAL_S
+from homelab_atlas.engine.notify import (
+    TOKEN_SECRET,
+    WebhookNotifier,
+    webhook_from_env,
+    webhook_settings,
+)
 from homelab_atlas.engine.scan import ScanEngine
 from homelab_atlas.inventory.hosts import Inventory
 from homelab_atlas.inventory.managed import CA_DIR, effective_inventory
@@ -46,6 +55,7 @@ from homelab_atlas.security.ssh import AsyncSshTransport, SecretSource, SshRunne
 from homelab_atlas.security.vault import ChainedSecrets, Vault, load_master_key
 from homelab_atlas.store.db import make_engine, migrate, session_factory
 
+log = structlog.get_logger()
 LAB_DATA_DIR = Path("data/demo-lab")
 VAULT_FILE = "vault.json"
 COLLECTORS: tuple[Collector, ...] = (
@@ -55,6 +65,7 @@ COLLECTORS: tuple[Collector, ...] = (
     ProxmoxCollector(),
     UnifiCollector(),
     NasCollector(),
+    JellyfinCollector(),
 )
 
 
@@ -123,7 +134,27 @@ class Runtime:
             redactor=self.redactor,
             lock_path=self.data_dir / "scan.lock",
             mode=self.mode,
+            intervals=safe_intervals(),
+            notifier=self.notifier(),
         )
+
+    def notifier(self) -> WebhookNotifier | None:
+        """The n8n webhook notifier when ATLAS_N8N_WEBHOOK_URL is set (live mode only)."""
+        if self.mode != "live":
+            return None
+        try:
+            cfg = webhook_from_env(os.environ, [config_dir()]) or webhook_settings(self.data_dir)
+        except ValueError as exc:
+            log.warning("notify.config_invalid", reason=str(exc))
+            return None
+        if cfg is None:
+            return None
+        token = None
+        try:
+            token = live_secrets(self.data_dir).resolve(TOKEN_SECRET)
+        except (KeyError, OSError, ValueError):
+            log.warning("notify.no_token", secret=TOKEN_SECRET)
+        return WebhookNotifier(cfg, token, self.audit, self.redactor)
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,6 +170,7 @@ PVE_TOKEN_RE = re.compile(
     r"[A-Za-z0-9._-]{1,64}@[A-Za-z0-9._-]{1,64}![A-Za-z0-9._-]{1,64}=[0-9a-fA-F-]{36}"
 )
 CA_FILE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+JELLYFIN_KEY_RE = re.compile(r"[0-9a-fA-F]{32}")
 
 
 def auth_header(scheme: AuthScheme, secret: SecretStr) -> AuthHeader:
@@ -149,6 +181,14 @@ def auth_header(scheme: AuthScheme, secret: SecretStr) -> AuthHeader:
                 RefusalReason.CONFIG, "PVE token must look like user@realm!id=<uuid>"
             )
         return AuthHeader("Authorization", SecretStr(f"PVEAPIToken={token}"))
+    if scheme == "jellyfin-token":
+        key = secret.get_secret_value().strip()
+        if not JELLYFIN_KEY_RE.fullmatch(key):
+            raise SecurityRefusal(RefusalReason.CONFIG, "Jellyfin API key must be 32 hex digits")
+        # The documented scheme (Jellyfin OpenAPI securitySchemes: header Authorization).
+        return AuthHeader("Authorization", SecretStr(f'MediaBrowser Token="{key}"'))
+    if scheme == "bearer":
+        return AuthHeader("Authorization", SecretStr(f"Bearer {secret.get_secret_value().strip()}"))
     return AuthHeader("X-API-KEY", secret)
 
 
@@ -156,7 +196,10 @@ def live_http(secrets: SecretSource, ca_dirs: Sequence[Path]) -> Callable[[Audit
     def bind(audit: AuditSink) -> HttpFactory:
         def make(source: ApiSource, endpoints: Iterable[Endpoint]) -> ReadOnlyHttpClient:
             limits = None
-            if source.tls.public_pki:  # UniFi cloud connector only (validated by the model)
+            tls: TlsPolicy | None
+            if source.plain_http_lan:  # owner opt-in, private IP literal only (ADR-039)
+                tls = None
+            elif source.tls.public_pki:  # UniFi cloud connector only (validated by the model)
                 tls = TlsPolicy(ca_file=None, public_pki=True)
                 limits = HttpLimits(min_interval_s=CLOUD_MIN_INTERVAL_S)
             else:
@@ -178,6 +221,7 @@ def live_http(secrets: SecretSource, ca_dirs: Sequence[Path]) -> Callable[[Audit
                 tls=tls,
                 auth=auth_header(source.auth, secrets.resolve(source.credential)),
                 limits=limits,
+                plain_http_lan=source.plain_http_lan,
             )
 
         return make
@@ -198,6 +242,7 @@ def replay_http(
                 tls=None,
                 auth=AuthHeader("Authorization", SecretStr("PVEAPIToken=demo")),
                 transport=replay_transport(recordings.get(source.name, {})),
+                plain_http_lan=source.plain_http_lan,
             )
 
         return make
@@ -216,6 +261,15 @@ def _find_ca(dirs: Sequence[Path], name: str) -> Path:
         if (d / name).is_file():
             return d / name
     return dirs[0] / name
+
+
+def safe_intervals() -> dict[str, int]:
+    from homelab_atlas.scheduler import DEFAULT_INTERVALS_S, intervals_from_env  # noqa: PLC0415
+
+    try:
+        return intervals_from_env()
+    except ValueError:
+        return dict(DEFAULT_INTERVALS_S)
 
 
 def live_secrets(data_dir: Path) -> ChainedSecrets:
@@ -284,6 +338,8 @@ async def test_source(data_dir: Path, audit: AuditSink, kind: str, name: str) ->
             source, ep = ProxmoxCollector.source(inputs.inventory, name), pve_ep.VERSION
         elif kind == "unifi":
             source, ep = UnifiCollector.source(inputs.inventory, name), unifi_ep.INFO
+        elif kind == "jellyfin":
+            source, ep = JellyfinCollector.source(inputs.inventory, name), JF_SYSTEM_INFO
         else:
             return False, "no connection test for this kind yet; use Scan"
     except StopIteration:
@@ -315,7 +371,7 @@ async def test_source(data_dir: Path, audit: AuditSink, kind: str, name: str) ->
     body = res.json()
     data = body.get("data", body) if isinstance(body, dict) else {}
     version = (
-        (data.get("version") or data.get("applicationVersion") or "?")
+        (data.get("version") or data.get("applicationVersion") or data.get("Version") or "?")
         if isinstance(data, dict)
         else "?"
     )
@@ -325,3 +381,42 @@ async def test_source(data_dir: Path, audit: AuditSink, kind: str, name: str) ->
         return False, f"connected (version {str(version)[:24]}), but {NO_VISIBILITY}"
     seen = f"; sees {visible} nodes and guests" if visible else ""
     return True, f"connected; {kind} version {str(version)[:24]}{seen}"
+
+
+async def jellyfin_live(
+    inputs: Inputs, audit: AuditSink, name: str, *, show_names: bool = False
+) -> dict[str, object]:
+    """Media page live view: one GET /Sessions through the read-only client. Never stored.
+
+    Real user names leave this function only when the owner enabled them
+    (ATLAS_MEDIA_SHOW_USERS=1); otherwise sessions carry the same pseudonyms as stored facts.
+    """
+    from homelab_atlas.collectors import jellyfin as jf  # noqa: PLC0415
+    from homelab_atlas.security.errors import HttpStatusError, TransportError  # noqa: PLC0415
+
+    try:
+        source = jf.JellyfinCollector.source(inputs.inventory, name)
+    except StopIteration:
+        return {"ok": False, "error": f"{name}: not configured"}
+    try:
+        async with inputs.http(audit)(source, {jf.SYSTEM_INFO, jf.SESSIONS}) as client:
+            info = (await client.get(jf.SYSTEM_INFO)).json()
+            raw = (
+                await client.get(jf.SESSIONS, None, {"activeWithinSeconds": jf.ACTIVE_WITHIN_S})
+            ).json()
+    except SecurityRefusal as exc:
+        return {"ok": False, "error": f"refused: {exc.reason.value}"}
+    except HttpStatusError as exc:
+        return {"ok": False, "error": jf.http_hint(exc.status)}
+    except TransportError as exc:
+        return {"ok": False, "error": f"unreachable: {exc}"[:200]}
+    except ValueError:
+        return {"ok": False, "error": "Jellyfin did not answer with JSON"}
+    server = str(info.get("Id") or name) if isinstance(info, dict) else name
+    sessions = jf.sessions(server, raw)
+    names: dict[str, str] = {}
+    if show_names and isinstance(raw, list):
+        for r in raw:
+            if isinstance(r, dict) and isinstance(r.get("UserName"), str):
+                names[jf.pseudonym(server, r.get("UserId"))] = r["UserName"][:64]
+    return {"ok": True, "sessions": [x.model_dump() for x in sessions], "names": names}

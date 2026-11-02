@@ -12,6 +12,7 @@ import typer
 from rich.console import Console
 
 from homelab_atlas.export import build as export
+from homelab_atlas.inventory.hosts import Inventory
 from homelab_atlas.runtime import Runtime, default_data_dir, load_redaction_key
 from homelab_atlas.security.errors import SecretError, SecurityRefusal
 from homelab_atlas.security.secrets import SecretResolver
@@ -129,8 +130,18 @@ def mcp_cmd(
         scanner = engine_scanner(
             lambda: rt.scan_engine(lab_inputs("B") if lab else live_inputs(rt.data_dir))
         )
+
+    def inventory() -> Inventory | None:
+        try:
+            return (lab_inputs("B") if lab else live_inputs(rt.data_dir)).inventory
+        except (OSError, ValueError, KeyError):
+            return None  # e.g. the HTTP MCP container has no config dir
+
     server = build_server(
-        rt.sessions, sanitize_key=sanitize_key(rt) if sanitize else None, scanner=scanner
+        rt.sessions,
+        sanitize_key=sanitize_key(rt) if sanitize else None,
+        scanner=scanner,
+        inventory=inventory,
     )
     if not http:
         server.run("stdio")

@@ -35,6 +35,7 @@
  ["kernel.changed", "pve2 (PVE node): kernel 6.14.8-2-pve -> 6.14.11-1-pve"],
  ["kernel.changed", "pve2: kernel 6.14.8-2-pve -> 6.14.11-1-pve"],
  ["mount.added", "mediatheque: mount /mnt/media added"],
+ ["mount.removed", "media01: mount /mnt/media removed"],
  ["nas.disk_bad_sectors", "unas: disk 3 bad sectors 0 -> 12"],
  ["nas.disk_health", "unas: disk 3 health score 5 -> 3"],
  ["nas.disk_state", "unas: disk 3 optimal -> degraded"],

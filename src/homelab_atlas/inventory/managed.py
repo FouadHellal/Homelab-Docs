@@ -21,6 +21,7 @@ from homelab_atlas.inventory.hosts import (
     HostEntry,
     Inventory,
     InventoryError,
+    JellyfinSource,
     ProxmoxSource,
     Sources,
     UnasSource,
@@ -30,8 +31,13 @@ from homelab_atlas.inventory.hosts import (
 
 MANAGED_FILE: Final = "inventory.yaml"
 CA_DIR: Final = "ca"
-SourceKind = Literal["proxmox", "unifi", "unas"]
-SOURCE_MODELS: Final = {"proxmox": ProxmoxSource, "unifi": UnifiSource, "unas": UnasSource}
+SourceKind = Literal["proxmox", "unifi", "unas", "jellyfin"]
+SOURCE_MODELS: Final = {
+    "proxmox": ProxmoxSource,
+    "unifi": UnifiSource,
+    "unas": UnasSource,
+    "jellyfin": JellyfinSource,
+}
 _SLUG_RE: Final = re.compile(r"[^a-z0-9_.-]+")
 
 

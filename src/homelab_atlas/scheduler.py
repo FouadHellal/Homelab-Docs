@@ -16,13 +16,14 @@ the same read-only choke points as `atlas scan`.
 import asyncio
 import os
 import random
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from homelab_atlas.collectors.base import CollectorResult
@@ -37,6 +38,7 @@ DEFAULT_INTERVALS_S: Final[Mapping[str, int]] = {
     "docker": 3600,
     "pi": 3600,
     "nas": 21600,
+    "jellyfin": 300,
 }
 MIN_INTERVAL_S: Final = 60
 MAX_BACKOFF_S: Final = 6 * 3600
@@ -89,11 +91,15 @@ class Scheduler:
         *,
         intervals: Mapping[str, int] | None = None,
         retention: Callable[[], Any] | None = None,
+        daily: Callable[[], Awaitable[Any]] | None = None,
+        daily_hour_utc: int | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         locked_retry_s: float = 30.0,
     ) -> None:
         self._engine = engine
         self._retention = retention
+        self._daily = daily
+        self._daily_hour = daily_hour_utc
         self._clock = clock
         self._lock = asyncio.Lock()
         self._aps: AsyncIOScheduler | None = None
@@ -122,6 +128,16 @@ class Scheduler:
                 misfire_grace_time=st.interval_s,
                 # First runs staggered over the first minute rather than all at boot.
                 next_run_time=self._clock() + timedelta(seconds=random.uniform(5, 60)),  # noqa: S311
+            )
+        if self._daily is not None and self._daily_hour is not None:
+            # Daily summary (ADR-040): one job, same scheduler; it never scans anything.
+            aps.add_job(
+                self._daily,
+                CronTrigger(hour=self._daily_hour, minute=0, timezone=UTC),
+                id="daily-summary",
+                max_instances=1,
+                coalesce=True,
+                misfire_grace_time=3600,
             )
         aps.start()
         self._aps = aps

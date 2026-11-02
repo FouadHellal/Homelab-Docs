@@ -8,6 +8,7 @@ Callers cannot set headers, methods, URLs or redirects.
 import asyncio
 import hashlib
 import hmac
+import ipaddress
 import json
 import re
 import ssl
@@ -142,6 +143,22 @@ def _dump_body(model: BaseModel) -> dict[str, Any]:
     return out
 
 
+def lan_ip_literal(host: str) -> bool:
+    """A private-network IP literal (RFC 1918 IPv4, IPv6 ULA): the only plain-HTTP targets."""
+    try:
+        ip = ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        return False
+    if isinstance(ip, ipaddress.IPv4Address):
+        return any(ip in n for n in _RFC1918)
+    return ip in ipaddress.ip_network("fc00::/7")
+
+
+_RFC1918: Final = tuple(
+    ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+)
+
+
 class ReadOnlyHttpClient:
     def __init__(
         self,
@@ -154,6 +171,7 @@ class ReadOnlyHttpClient:
         auth: AuthHeader | None = None,
         limits: HttpLimits | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
+        plain_http_lan: bool = False,
     ) -> None:
         self._target = target
         self._audit = audit
@@ -168,7 +186,7 @@ class ReadOnlyHttpClient:
         if (
             not BASE_PATH_RE.fullmatch(raw_path)
             or any(s in {".", ".."} for s in raw_path.split("/"))
-            or url.scheme != "https"
+            or url.scheme not in ("https", "http")
             or not url.host
             or url.userinfo
             or url.query
@@ -176,9 +194,19 @@ class ReadOnlyHttpClient:
             or not BASE_PATH_RE.fullmatch(url.path.rstrip("/"))
         ):
             raise SecurityRefusal(RefusalReason.CONFIG, "base_url must be https://host[:port][/p]")
+        if url.scheme == "http":
+            # Plain HTTP (ADR-039): only when the owner opted in for this source, only to a
+            # private LAN IP literal (no DNS name that could resolve elsewhere), never with TLS
+            # settings that would suggest otherwise.
+            if not plain_http_lan or not lan_ip_literal(url.host):
+                raise SecurityRefusal(
+                    RefusalReason.CONFIG, "http:// only to a private LAN IP, and only if allowed"
+                )
+            if tls is not None:
+                raise SecurityRefusal(RefusalReason.TLS_POLICY, "no TLS policy on http://")
         self._scheme, self._host, self._port = url.scheme, url.host, url.port
         self._base_path = url.path.rstrip("/")
-        if transport is None and tls is None:
+        if transport is None and tls is None and url.scheme == "https":
             raise SecurityRefusal(RefusalReason.TLS_POLICY, "a TlsPolicy is required")
         if tls is not None and tls.public_pki and url.host not in PUBLIC_PKI_HOSTS:
             raise SecurityRefusal(
@@ -195,7 +223,7 @@ class ReadOnlyHttpClient:
         self._client = httpx.AsyncClient(
             base_url=f"{url.scheme}://{url.netloc.decode('ascii')}",
             headers=headers,
-            verify=tls.ssl_context() if tls is not None else True,
+            verify=tls.ssl_context() if tls is not None else url.scheme == "https",
             transport=transport,
             follow_redirects=False,
             trust_env=False,  # ignore HTTP(S)_PROXY, SSL_CERT_FILE, .netrc

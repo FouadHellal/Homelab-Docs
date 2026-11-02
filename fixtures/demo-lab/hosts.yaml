@@ -19,6 +19,12 @@ sources:
       credential: unas_api_key
       drive_api: true
       tls: { ca_file: unas.pem }
+  jellyfin:
+    - name: media
+      url: "http://10.0.20.55:8096"
+      credential: jellyfin_api_key
+      allow_http: true
+      host: media01
 hosts:
   - name: pve1
     address: "10.0.10.11"

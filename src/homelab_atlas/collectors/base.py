@@ -15,7 +15,7 @@ from homelab_atlas.security.http import ReadOnlyHttpClient
 from homelab_atlas.security.ssh import SshRunner
 
 RunStatus = Literal["ok", "partial", "failed", "refused"]
-AuthScheme = Literal["pve-token", "x-api-key"]
+AuthScheme = Literal["pve-token", "x-api-key", "jellyfin-token", "bearer"]
 
 
 @dataclass(slots=True)
@@ -59,6 +59,8 @@ class ApiSource:
     credential: str
     tls: TlsSettings
     auth: AuthScheme
+    #: Plain http:// to a private LAN IP, opted in per source by the owner (ADR-039).
+    plain_http_lan: bool = False
 
 
 class HttpFactory(Protocol):

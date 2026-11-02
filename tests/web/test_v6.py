@@ -38,8 +38,13 @@ def rt(tmp_path_factory: pytest.TempPathFactory) -> Runtime:
 @pytest.fixture
 def web(rt: Runtime, tmp_path: Path) -> Iterator[TestClient]:
     inv, _ = load_lab("B", LAB)
-    svc = TargetsService(config_dir=tmp_path / "cfg", data_dir=tmp_path / "data", vault=None,
-                         audit=MemoryAudit(), readonly_inventory=inv)  # fmt: skip
+    svc = TargetsService(
+        config_dir=tmp_path / "cfg",
+        data_dir=tmp_path / "data",
+        vault=None,
+        audit=MemoryAudit(),
+        readonly_inventory=inv,
+    )
     app = create_app(
         WebConfig(
             sessions=rt.sessions,
@@ -65,8 +70,9 @@ def web(rt: Runtime, tmp_path: Path) -> Iterator[TestClient]:
 
 
 def test_login_form_is_recognisable_by_password_managers(rt: Runtime, tmp_path: Path) -> None:
-    app = create_app(WebConfig(sessions=rt.sessions, annotations_dir=tmp_path,
-                               allowed_hosts=["testserver"]))  # fmt: skip
+    app = create_app(
+        WebConfig(sessions=rt.sessions, annotations_dir=tmp_path, allowed_hosts=["testserver"])
+    )
     with TestClient(app, base_url="https://testserver") as c:
         html = c.get("/login").text
     assert 'method="post"' in html and 'action="/login"' in html
@@ -134,7 +140,7 @@ def test_chips_and_units_link_to_app_pages(web: TestClient) -> None:
     assert 'href="/app?name=Docker"' in running
     services = web.get("/services", params={"state": "all"}).text
     assert 'href="/app?name=cron"' in services
-    dash = web.get("/").text
+    dash = web.get("/overview").text
     assert '<a class="machine"' in dash and '<a class="chip"' not in dash  # no nested links
 
 
@@ -142,13 +148,20 @@ def test_chips_and_units_link_to_app_pages(web: TestClient) -> None:
 
 
 def _node_facet(key: str, name: str, ip: str | None) -> Facet:
-    return Facet(entity_key=key, collector="linux-ssh", target="t", scan_id=1,
-                 data={"name": name, "ip": ip, "pve_version": "8.2"})  # fmt: skip
+    return Facet(
+        entity_key=key,
+        collector="linux-ssh",
+        target="t",
+        scan_id=1,
+        data={"name": name, "ip": ip, "pve_version": "8.2"},
+    )
 
 
 def test_pve_host_is_linked_to_its_own_node_without_an_ip() -> None:
-    nodes = [_node_facet("pve:node:pve1/pve1", "pve1", None),
-             _node_facet("pve:node:pve2/pve2", "pve2", None)]  # fmt: skip
+    nodes = [
+        _node_facet("pve:node:pve1/pve1", "pve1", None),
+        _node_facet("pve:node:pve2/pve2", "pve2", None),
+    ]
     host: dict[str, Any] = {"pve": {"node": "pve2", "cluster": None}, "os": {"hostname": "x"}}
     assert _own_node(host, nodes, set()) == "pve:node:pve2/pve2"
     assert _own_node({"os": {"hostname": "PVE1.lan"}}, nodes, set()) == "pve:node:pve1/pve1"

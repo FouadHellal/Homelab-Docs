@@ -27,7 +27,10 @@ from sqlalchemy.orm import Session
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from homelab_atlas import __version__
+from homelab_atlas.engine import incidents, media
 from homelab_atlas.export.build import sanitizer_from_db
+from homelab_atlas.inventory.hosts import Inventory
+from homelab_atlas.runtime import safe_intervals
 from homelab_atlas.store.tables import Annotation, Entity, Facet
 from homelab_atlas.web import queries, views
 
@@ -50,7 +53,7 @@ INSTRUCTIONS: Final = (
     "time. Start with list_machines. For 'what is running on X' use whats_running(X); for "
     "services across machines list_services; for Proxmox proxmox_overview; for recent changes "
     "what_changed (optionally machine=X); for why a machine is missing or stale scan_status; "
-    "for 'what is this app/agent/service' describe_app(app). "
+    "for 'what is this app/agent/service' describe_app(app); for Jellyfin health media_status. "
     "Each answer says when the data was collected (last_scan). If scan_machine is available "
     "and the data is old or the user asks for a live check, call scan_machine(X) first, then "
     "whats_running(X)."
@@ -132,6 +135,7 @@ def build_server(
     *,
     sanitize_key: bytes | None = None,
     scanner: Scanner | None = None,
+    inventory: Callable[[], Inventory | None] | None = None,
 ) -> MCPServer:
     mcp = MCPServer(name="atlas", version=__version__, instructions=INSTRUCTIONS)
     last_scan_request: dict[str, float] = {}
@@ -550,6 +554,39 @@ def build_server(
                 ],
             }
         )
+
+    @mcp.tool(annotations=READ_ONLY, structured_output=True)
+    def media_status() -> dict[str, Any]:
+        """Is Jellyfin OK? For each Jellyfin server: the evidence-based diagnosis (API, machine,
+        VM, service, media mounts on the NAS, NAS), what failed and what is unknown, plus open
+        media incidents. Use it for "why is Jellyfin not working" questions."""
+        log.info("mcp.tool", tool="media_status", sanitized=sanitize_key is not None)
+        inv = inventory() if inventory is not None else None
+        if inv is None or not inv.sources.jellyfin:
+            return out({"configured": False, "servers": []})
+        with sessions() as s:
+            servers = []
+            for src in inv.sources.jellyfin:
+                d = media.diagnose(s, inv, src, safe_intervals())
+                servers.append(
+                    {
+                        "name": src.name,
+                        "status": d.status,
+                        "headline": d.headline,
+                        "explanation": d.explanation,
+                        "runs_on": d.host,
+                        "checks": [
+                            {"check": c.label, "state": c.state, "detail": c.detail}
+                            for c in d.checks
+                        ],
+                    }
+                )
+            open_ = [
+                {"title": i.title, "since": i.opened_at.isoformat()}
+                for i in incidents.open_incidents(s)
+                if i.key.startswith("media.")
+            ]
+        return out({"configured": True, "servers": servers, "open_incidents": open_})
 
     if scanner is not None:
 

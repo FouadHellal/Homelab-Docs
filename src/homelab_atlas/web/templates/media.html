@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Media operations{% endblock %}
+{% block main %}
+<header class="page-head">
+  <div>
+    <h1>Media operations</h1>
+    <p class="muted">Jellyfin, the machine it runs on and the NAS storage it depends on. atlas only reads: it never restarts Jellyfin or remounts storage.</p>
+  </div>
+  {% if sources | length > 1 %}
+  <form method="get" action="/media" class="inline"><label class="sr-only" for="src">Server</label>
+    <select id="src" name="src">{% for n in sources %}<option{% if source and n == source.name %} selected{% endif %}>{{ n }}</option>{% endfor %}</select>
+    <button type="submit" class="small ghost">Show</button></form>
+  {% endif %}
+</header>
+{% if msg %}<p class="card" role="status">{{ msg }}</p>{% endif %}
+
+{% if not source %}
+<section class="card empty-state">
+  <h2>No Jellyfin server configured</h2>
+  <p>Add one on <a href="/targets">Targets</a> → <strong>Jellyfin</strong>: its address and an API key created in Jellyfin under <em>Dashboard → API Keys</em>. The key stays on the atlas server, encrypted; the browser never sees it.</p>
+  <p class="muted small">Jellyfin's default <code>http://&lt;LAN IP&gt;:8096</code> is accepted when you tick “plain HTTP on my LAN”. HTTPS (port 8920 or a reverse proxy) is better: the key then never crosses the network in clear text.</p>
+</section>
+{% else %}
+{% set d = diag %}
+<section class="card media-verdict status-{{ d.status }}" aria-labelledby="verdict-h">
+  <div class="verdict-head">
+    <span class="verdict-badge">{{ d.status }}</span>
+    <div>
+      <h2 id="verdict-h">{{ d.headline }}</h2>
+      <p class="muted">{{ d.explanation }}</p>
+    </div>
+  </div>
+  <ol class="chain" aria-label="Dependency chain">
+    {% for id, label in (("nas", "NAS"), ("mounts", "Media mount"), ("vm", "VM / LXC"), ("host", "Machine (SSH)"), ("service", "Jellyfin service"), ("api", "Jellyfin API")) %}
+    {% set ck = d.checks | selectattr("id", "equalto", id) | first %}
+    <li class="chain-node ck-{{ ck.state if ck else 'unknown' }}" title="{{ ck.detail if ck else 'not checked' }}"><span>{{ label }}</span><small>{{ ck.state if ck else "unknown" }}</small></li>
+    {% endfor %}
+  </ol>
+  <div class="actions">
+    {% if jellyfin_url %}<a class="btn ghost small" href="{{ jellyfin_url }}" target="_blank" rel="noopener noreferrer">Open Jellyfin ↗</a>{% endif %}
+    {% if sched %}<button type="button" class="ghost small" hx-post="/media/refresh" hx-vals='{"src": "{{ source.name }}"}' hx-target="#media-action">Refresh now</button>{% endif %}
+    {% if can_notify %}<button type="button" class="ghost small" hx-post="/media/diagnose" hx-vals='{"src": "{{ source.name }}"}' hx-target="#media-action">Send diagnosis to n8n</button>{% endif %}
+    <span id="media-action" aria-live="polite"></span>
+  </div>
+</section>
+
+<div class="grid two">
+  <section class="card" aria-labelledby="checks-h">
+    <h2 id="checks-h">Diagnostic checklist</h2>
+    <ul class="checks">
+      {% for ck in d.checks %}
+      <li class="ck ck-{{ ck.state }}"><span class="ck-mark" aria-hidden="true"></span>
+        <div><strong>{{ ck.label }}</strong> <span class="ck-state">{{ ck.state }}</span>
+          <div class="muted small">{{ ck.detail }}{% if ck.href %} · <a href="{{ ck.href }}">details</a>{% endif %}</div></div></li>
+      {% endfor %}
+    </ul>
+    <p class="muted small">pass / warn / fail come from atlas's last scans; unknown means atlas has no evidence either way. The verdict only names a cause the checks support.</p>
+  </section>
+
+  <section class="card" aria-labelledby="live-h">
+    <div class="section-head"><h2 id="live-h">Now playing</h2><span class="muted small">refreshes every 15 s while open</span></div>
+    <div id="sessions" hx-get="/media/sessions?src={{ source.name | urlencode }}" hx-trigger="load, every 15s" hx-swap="innerHTML">
+      <p class="muted">Loading sessions…</p>
+    </div>
+  </section>
+</div>
+
+<div class="grid two">
+  <section class="card" aria-labelledby="lib-h">
+    <h2 id="lib-h">Libraries</h2>
+    {% if facts %}
+    {% if facts.counts %}
+    <div class="lib-counts">{% for k, v in facts.counts.items() if v %}<div><span class="cc-n">{{ "{:,}".format(v) }}</span><span class="muted small">{{ k | replace("_", " ") }}</span></div>{% endfor %}</div>
+    {% endif %}
+    <table class="data">
+      <thead><tr><th>Library</th><th>Folder</th><th>On</th><th>Free</th></tr></thead>
+      <tbody>
+      {% for lib in facts.libraries %}{% for loc in lib.locations or [""] %}
+      {% set st = d.storage | selectattr("folder", "equalto", loc) | first %}
+      <tr><td>{{ lib.name }} <span class="muted small">{{ lib.collection_type or "" }}</span></td>
+        <td><code>{{ loc }}</code></td>
+        <td class="wrap">{% if st %}{% if st.network %}<span class="pill ok">{{ st.fstype }}</span>{% else %}<span class="pill failed">{{ st.fstype or "?" }} (local)</span>{% endif %} <span class="muted small">{{ st.source or "" }}</span>{% else %}<span class="muted">unknown</span>{% endif %}</td>
+        <td>{% if st and st.free_pct is not none %}<span class="{{ 'error' if st.low else '' }}">{{ st.free_pct }}%</span>{% else %}<span class="muted">?</span>{% endif %}</td></tr>
+      {% endfor %}{% else %}<tr><td colspan="4" class="muted">Jellyfin reported no libraries.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+    {% if facts.recent %}
+    <h3>Recently added</h3>
+    <ul class="plain small">{% for i in facts.recent %}<li>{{ i.series ~ " · " if i.series }}{{ i.name }} <span class="muted">{{ i.type or "" }}{% if i.added %} · {{ i.added[:10] }}{% endif %}</span></li>{% endfor %}</ul>
+    {% endif %}
+    {% else %}<p class="muted">No Jellyfin data yet: it appears after the first successful scan.</p>{% endif %}
+  </section>
+
+  <section class="card" aria-labelledby="srv-h">
+    <h2 id="srv-h">Server</h2>
+    {% if facts %}
+    <dl class="kv">
+      <dt>Name</dt><dd>{{ facts.server_name or "?" }}</dd>
+      <dt>Version</dt><dd>{{ facts.version or "?" }}{% if facts.has_update %} <span class="pill partial">update available</span>{% endif %}{% if facts.pending_restart %} <span class="pill partial">restart pending</span>{% endif %}</dd>
+      <dt>OS</dt><dd>{{ facts.os or "?" }}</dd>
+      <dt>Runs on</dt><dd>{% if d.host_key %}<a href="/entity?key={{ d.host_key | urlencode }}">{{ d.host }}</a>{% else %}{{ d.host or "unknown" }}{% endif %}</dd>
+    </dl>
+    {% set failed = facts.tasks | selectattr("last_status", "equalto", "Failed") | list %}
+    <h3>Scheduled tasks</h3>
+    {% if failed %}
+    <ul class="plain small">{% for t in failed %}<li><span class="pill failed">failed</span> {{ t.name }} <span class="muted">{{ t.last_error or "" }}</span></li>{% endfor %}</ul>
+    {% else %}<p class="muted small">{{ facts.tasks | length }} tasks; none failed on its last run.</p>{% endif %}
+    {% if facts.section_errors %}<p class="muted small">Not readable with this key: {{ facts.section_errors | join("; ") }}</p>{% endif %}
+    {% endif %}
+    <h3>Media incidents</h3>
+    {% if history %}
+    <ul class="plain small">
+      {% for i in history %}<li><span class="sev {{ i.severity }}">{{ i.severity }}</span> {{ i.title }} <span class="muted">{{ i.opened_at | ago }}{% if i.resolved_at %} · resolved {{ i.resolved_at | ago }}{% else %} · <strong>open</strong>{% endif %}</span></li>{% endfor %}
+    </ul>
+    {% else %}<p class="muted small">None recorded.</p>{% endif %}
+  </section>
+</div>
+{% endif %}
+{% endblock %}

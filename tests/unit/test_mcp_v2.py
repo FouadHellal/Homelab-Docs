@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from homelab_atlas.lab import load_lab
 from homelab_atlas.mcp_server import build_server, engine_scanner, find_machine
 from homelab_atlas.runtime import Runtime
 from tests.helpers import scanned_lab
@@ -173,3 +174,17 @@ def test_stdio_session_end_to_end(tmp_path: Path) -> None:
     assert {"whats_running", "scan_machine", "list_machines"} <= tools
     assert scan["status"] == "done"
     assert "Nginx" in {a["name"] for a in run["apps"]}
+
+
+def test_media_status_tool(rt: Runtime) -> None:
+    lab = Path(__file__).resolve().parents[2] / "fixtures" / "demo-lab"
+    srv = build_server(rt.sessions, inventory=lambda: load_lab("B", lab)[0])
+    got = _call(srv, "media_status")
+    assert got["configured"] is True
+    (jf,) = got["servers"]
+    assert jf["status"] == "degraded" and jf["runs_on"] == "media01"
+    assert any(
+        c["check"].startswith("Library folders") and c["state"] == "fail" for c in jf["checks"]
+    )
+    assert any("media storage" in i["title"] for i in got["open_incidents"])
+    assert _call(build_server(rt.sessions), "media_status") == {"configured": False, "servers": []}

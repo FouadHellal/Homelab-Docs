@@ -72,7 +72,7 @@ Passwords and API keys are stored encrypted and are never shown again.</p>
   <p class="muted small">Proxmox VMs and LXCs are discovered from the Proxmox API, or from <code>/etc/pve</code> when a Proxmox node is added here (type <em>proxmox-node</em>, with sudo). Add a VM here to also collect what runs <em>inside</em> it: services, processes, listening ports, Docker containers, packages, cron jobs, users, disks. <a href="/docs#targets">How it works</a></p>
 </section>
 
-{% for kind, title, hint in [("proxmox", "Proxmox VE", "API token (PVEAuditor)"), ("unifi", "UniFi gateway", "Integration API key"), ("unas", "UniFi UNAS", "Drive API key")] %}
+{% for kind, title, hint in [("proxmox", "Proxmox VE", "API token (PVEAuditor)"), ("unifi", "UniFi gateway", "Integration API key"), ("unas", "UniFi UNAS", "Drive API key"), ("jellyfin", "Jellyfin", "API key")] %}
 <section class="card">
   <h2>{{ title }}{% if v.editable %} <a class="more" href="/targets/source?kind={{ kind }}">+ add</a>{% endif %}</h2>
   <table class="data">
@@ -84,7 +84,7 @@ Passwords and API keys are stored encrypted and are never shown again.</p>
         {% if s.fixed %}<span class="pill info">hosts.yaml</span>{% endif %}</td>
       <td class="url"><code>{{ s.source.url }}</code></td>
       <td>{% if s.secret_set %}<span class="pill ok">set</span>{% else %}<span class="pill failed">missing</span>{% endif %}</td>
-      <td>{% if s.source.tls.public_pki %}<span class="pill info">cloud (api.ui.com)</span>{% elif s.source.tls.sha256_pin %}<span class="pill ok">pinned</span>{% elif s.source.tls.ca_file %}<span class="pill ok">CA</span>{% else %}<span class="pill failed">none</span>{% endif %}</td>
+      <td>{% if s.source.url.startswith("http://") %}<span class="pill partial" title="The API key crosses your LAN unencrypted">plain HTTP (LAN)</span>{% elif s.source.tls.public_pki %}<span class="pill info">cloud (api.ui.com)</span>{% elif s.source.tls.sha256_pin %}<span class="pill ok">pinned</span>{% elif s.source.tls.ca_file %}<span class="pill ok">CA</span>{% else %}<span class="pill failed">none</span>{% endif %}</td>
       <td class="last-scan">{{ last_scan(s.source.name) }}</td>
       <td class="actions">{% if v.editable and kind != "unas" %}
         <form method="post" action="/targets/source/test" hx-post="/targets/source/test" hx-target="#sres-{{ kind }}-{{ loop.index }}" class="inline">

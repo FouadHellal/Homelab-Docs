@@ -91,7 +91,10 @@
 <section id="pages" class="card">
   <h2>The pages</h2>
   <dl class="kv wide">
-    <dt><a href="/">Dashboard</a></dt><dd>Totals, your Proxmox nodes with their guests, what needs attention (failed or never-scanned targets), and machines seen on the network that aren't documented yet.</dd>
+    <dt><a href="/">Command Center</a></dt><dd>Overall health, open incidents, summary cards that open the matching lists, what needs attention, recent changes, every recognised app with an evidence-based state, resources at the last scan, quick access and data sources. "Healthy" means seen running at the last scan; old data is marked stale, never counted as healthy.</dd>
+    <dt><a href="/overview">Overview</a></dt><dd>Totals, your Proxmox nodes with their guests, and one card per machine.</dd>
+    <dt><a href="/media">Media</a></dt><dd>Jellyfin diagnosis (API, machine, VM, service, NAS mounts, NAS), now playing, libraries and where their folders really are, media incidents.</dd>
+    <dt><a href="/integrations">Integrations</a></dt><dd>Data sources and their freshness; n8n notifications.</dd>
     <dt><a href="/topology">Topology</a></dt><dd><strong>Proxmox</strong>: one box per node, containing the node, its bridges and its VMs/LXCs, each wired to the bridge its NIC uses. Pulses show running guests. <strong>Network</strong>: gateway, switches, APs and clients. <strong>VLANs</strong>: members per network. Click for details, right-click for actions, double-click to open.</dd>
     <dt><a href="/services">Services</a></dt><dd>Every systemd unit and container on every machine in one table. Filter by machine, state, type or text, and <strong>Export CSV</strong> exports exactly what you see.</dd>
     <dt><a href="/running">Apps</a></dt><dd>Recognised apps by category, with the machines they run on and a link to their web UI. <strong>Unrecognised listening ports</strong> are listed with a <em>Name it</em> form: after that, atlas recognises the app everywhere. Rules for generic processes (python3, docker-proxy) only apply to the machines they were named on.</dd>

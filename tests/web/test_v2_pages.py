@@ -139,7 +139,7 @@ def test_discovered_not_documented_is_infrastructure_only(rt: Runtime) -> None:
 
 
 def test_dashboard_v2(web: TestClient) -> None:
-    body = web.get("/").text
+    body = web.get("/overview").text
     assert "apps recognised" in body
     assert "Pi-hole, NetBox, Jellyfin" not in body  # computed, not a placeholder
     assert "docker01" in body

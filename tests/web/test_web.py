@@ -289,7 +289,7 @@ def test_vendored_js_pinned() -> None:
 
 def test_pages_render(client: TestClient) -> None:
     login(client)
-    dash = client.get("/")
+    dash = client.get("/overview")
     assert dash.status_code == 200
     assert "unknown devices" in dash.text
     for path, expect in [

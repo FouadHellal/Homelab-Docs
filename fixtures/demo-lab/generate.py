@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import _docker  # sibling modules (script dir is on sys.path)
+import _jellyfin
 import _proxmox
 import _unifi
 
@@ -239,6 +240,9 @@ def state_b(a: list[dict[str, Any]]) -> list[dict[str, Any]]:
     )
 
     by["pi-garage"]["nameservers"] = ["10.0.10.53"]
+    # The NFS share drops off media01: /mnt/media is now just a folder on its own disk.
+    me = by["media01"]
+    me["mounts"] = [m for m in me["mounts"] if m[0] != "/mnt/media"]
     return [h for h in b if h["name"] != "legacy01"]  # legacy01 goes offline
 
 
@@ -454,6 +458,12 @@ def hosts_yaml(hosts: list[dict[str, Any]]) -> str:
         "      credential: unas_api_key",
         "      drive_api: true",
         "      tls: { ca_file: unas.pem }",
+        "  jellyfin:",
+        "    - name: media",
+        '      url: "http://10.0.20.55:8096"',
+        "      credential: jellyfin_api_key",
+        "      allow_http: true",
+        "      host: media01",
         "hosts:",
     ]
     for h in [*hosts, host("ghost01", "10.0.20.99")]:
@@ -504,7 +514,8 @@ def main() -> None:
         api.mkdir()
         for name, rec in (("homelab", _proxmox.render(pve[label])),
                           ("ucg", _unifi.render(ucg[label], mac)),
-                          ("unas", _unifi.unas(label[-1]))):
+                          ("unas", _unifi.unas(label[-1])),
+                          ("media", _jellyfin.render(label[-1]))):
             (api / f"{name}.json").write_bytes((json.dumps(rec, indent=1, sort_keys=True) + "\n").encode())
     (HERE / "hosts.yaml").write_bytes(hosts_yaml(a).encode())
     print(f"state-A: {len(a)} hosts, state-B: {len(b)} hosts (+ ghost01 never answers)")

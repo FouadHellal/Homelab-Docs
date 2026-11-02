@@ -1,0 +1,38 @@
+{% macro hms(s) -%}{% if s is not none %}{{ "%d:%02d:%02d" | format(s // 3600, (s % 3600) // 60, s % 60) }}{% else %}?{% endif %}{%- endmacro %}
+{% if live and live.ok %}{% set rows = live.sessions %}{% set names = live.names %}{% set label = "live" %}
+{% elif stored %}{% set rows = stored.sessions %}{% set names = {} %}{% set label = "at the last scan" %}
+{% else %}{% set rows = [] %}{% set names = {} %}{% set label = "" %}{% endif %}
+{% if live and not live.ok %}<p class="error small" role="alert">Live view unavailable: {{ live.error }}{% if stored %}. Showing the last scan.{% endif %}</p>{% endif %}
+{% if rows %}
+{% set tc = rows | selectattr("play_method", "equalto", "Transcode") | list %}
+<p class="small"><strong>{{ rows | length }}</strong> playing · {{ tc | length }} transcoding · {{ (rows | length) - (tc | length) }} direct <span class="muted">({{ label }})</span></p>
+<ul class="sessions">
+  {% for r in rows %}
+  <li class="session">
+    <div class="session-top">
+      <strong>{{ (r.series ~ " · ") if r.series }}{{ r.item or "?" }}</strong>
+      <span class="pill {{ 'partial' if r.play_method == 'Transcode' else 'ok' }}">{{ {"DirectPlay": "direct play", "DirectStream": "direct stream", "Transcode": "transcoding"}.get(r.play_method, r.play_method or "unknown method") }}</span>
+      {% if r.paused %}<span class="pill info">paused</span>{% endif %}
+    </div>
+    <div class="muted small">{{ names.get(r.viewer, r.viewer) }} · {{ r.client or "?" }}{% if r.device %} on {{ r.device }}{% endif %}</div>
+    {% if r.runtime_s %}{% set pct = (100 * (r.position_s or 0) / r.runtime_s) | round(1) %}
+    <div class="gauge"><span class="gauge-k small">{{ hms(r.position_s) }}</span><span class="gauge-bar"><span class="gauge-fill" data-pct="{{ pct }}"></span></span><span class="gauge-v small">{{ hms(r.runtime_s) }}</span></div>
+    {% endif %}
+    {% if r.play_method == "Transcode" %}
+    <div class="small">
+      {% if r.hw_accel and r.hw_accel != "none" %}Hardware transcode (<code>{{ r.hw_accel }}</code>, reported by Jellyfin){% elif r.hw_accel == "none" %}Software transcode (Jellyfin reports no hardware acceleration){% else %}Transcode; hardware acceleration not reported{% endif %}
+      {% if r.video_codec %} · to <code>{{ r.video_codec }}</code>{% endif %}
+      {% if r.video_direct %} · video copied{% endif %}{% if r.audio_direct %} · audio copied{% endif %}
+      {% if r.transcode_pct is not none %} · {{ r.transcode_pct | round(0) | int }}% transcoded{% endif %}
+      {% if r.transcode_reasons %}<div class="muted">why: {{ r.transcode_reasons | join(", ") }}</div>{% endif %}
+    </div>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% if not names %}<p class="muted small">Viewers are shown as pseudonyms. Set <code>ATLAS_MEDIA_SHOW_USERS=1</code> to show Jellyfin user names on this page (they are never stored).</p>{% endif %}
+{% elif label %}
+<p class="muted">Nothing is playing{% if label != "live" %} (as of the last scan){% endif %}.</p>
+{% else %}
+<p class="muted">No session data yet.</p>
+{% endif %}

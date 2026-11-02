@@ -1,0 +1,167 @@
+{
+ "/Items/Counts": {
+  "body": {
+   "AlbumCount": 0,
+   "BookCount": 9,
+   "EpisodeCount": 1288,
+   "MovieCount": 412,
+   "SeriesCount": 37,
+   "SongCount": 0
+  },
+  "status": 200
+ },
+ "/Items?sortBy=DateCreated&sortOrder=Descending&recursive=true&limit=12&includeItemTypes=Movie%2CEpisode&fields=DateCreated": {
+  "body": {
+   "Items": [
+    {
+     "DateCreated": "2026-10-31T21:04:00Z",
+     "Name": "Cosmos Laundromat",
+     "Type": "Movie"
+    },
+    {
+     "DateCreated": "2026-10-30T18:30:00Z",
+     "Name": "Episode 4",
+     "SeriesName": "Sintel Stories",
+     "Type": "Episode"
+    }
+   ]
+  },
+  "status": 200
+ },
+ "/Library/VirtualFolders": {
+  "body": [
+   {
+    "CollectionType": "movies",
+    "Locations": [
+     "/mnt/media/movies"
+    ],
+    "Name": "Movies",
+    "RefreshStatus": "Idle"
+   },
+   {
+    "CollectionType": "tvshows",
+    "Locations": [
+     "/mnt/media/tv"
+    ],
+    "Name": "Shows",
+    "RefreshStatus": "Idle"
+   }
+  ],
+  "status": 200
+ },
+ "/ScheduledTasks": {
+  "body": [
+   {
+    "Category": "Library",
+    "LastExecutionResult": {
+     "EndTimeUtc": "2026-11-01T03:00:12Z",
+     "ErrorMessage": "Access to the path '/mnt/media/movies' is denied.",
+     "Status": "Failed"
+    },
+    "Name": "Scan Media Library",
+    "State": "Idle"
+   },
+   {
+    "Category": "Maintenance",
+    "LastExecutionResult": {
+     "EndTimeUtc": "2026-11-01T00:00:03Z",
+     "Status": "Completed"
+    },
+    "Name": "Clean Transcode Directory",
+    "State": "Idle"
+   },
+   {
+    "IsHidden": true,
+    "Name": "Hidden helper"
+   }
+  ],
+  "status": 200
+ },
+ "/Sessions?activeWithinSeconds=600": {
+  "body": [
+   {
+    "Client": "Jellyfin Web",
+    "DeviceName": "Living room TV",
+    "Id": "sess-alice",
+    "IsActive": true,
+    "NowPlayingItem": {
+     "Name": "Big Buck Bunny",
+     "RunTimeTicks": 5960000000,
+     "Type": "Movie"
+    },
+    "PlayState": {
+     "IsPaused": false,
+     "PlayMethod": "DirectPlay",
+     "PositionTicks": 1800000000
+    },
+    "UserId": "user-alice",
+    "UserName": "alice-ATLASFAKE"
+   },
+   {
+    "Client": "Jellyfin Web",
+    "DeviceName": "Living room TV",
+    "Id": "sess-bob",
+    "IsActive": true,
+    "NowPlayingItem": {
+     "Name": "Pilot",
+     "RunTimeTicks": 26400000000,
+     "SeriesName": "Sintel Stories",
+     "Type": "Episode"
+    },
+    "PlayState": {
+     "IsPaused": false,
+     "PlayMethod": "Transcode",
+     "PositionTicks": 9000000000
+    },
+    "TranscodingInfo": {
+     "CompletionPercentage": 41.5,
+     "HardwareAccelerationType": "vaapi",
+     "IsAudioDirect": true,
+     "IsVideoDirect": false,
+     "TranscodeReasons": [
+      "VideoCodecNotSupported"
+     ],
+     "VideoCodec": "h264"
+    },
+    "UserId": "user-bob",
+    "UserName": "bob-ATLASFAKE"
+   },
+   {
+    "Client": "Jellyfin Android",
+    "Id": "idle",
+    "IsActive": true,
+    "UserId": "user-carol"
+   },
+   {
+    "Client": "Jellyfin Web",
+    "DeviceName": "Living room TV",
+    "Id": "sess-carol",
+    "IsActive": true,
+    "NowPlayingItem": {
+     "Name": "Tears of Steel",
+     "RunTimeTicks": 7340000000,
+     "Type": "Movie"
+    },
+    "PlayState": {
+     "IsPaused": true,
+     "PlayMethod": "DirectStream",
+     "PositionTicks": 600000000
+    },
+    "UserId": "user-carol",
+    "UserName": "carol-ATLASFAKE"
+   }
+  ],
+  "status": 200
+ },
+ "/System/Info": {
+  "body": {
+   "HasPendingRestart": false,
+   "HasUpdateAvailable": true,
+   "Id": "4f1d7c2a9b8e4d6fa1c3e5b7d9f02468",
+   "OperatingSystemDisplayName": "Linux",
+   "ServerName": "media01",
+   "Version": "10.11.2"
+  },
+  "status": 200
+ }
+}

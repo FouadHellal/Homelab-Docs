@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Command Center{% endblock %}
+{% block main %}
+{% set o = c.overall %}
+<header class="cc-head">
+  <div>
+    <h1>Command Center</h1>
+    <p class="muted">What runs, what is down and what changed, from atlas's latest scans.
+      Times are UTC{% if o.last_ok %}; last good scan <time datetime="{{ o.last_ok.isoformat() }}" title="{{ o.last_ok.strftime('%Y-%m-%d %H:%M UTC') }}">{{ o.last_ok | ago }}</time>{% endif %}.</p>
+  </div>
+  <div class="cc-health level-{{ o.level }}" role="status">
+    <span class="cc-pulse" aria-hidden="true"></span>
+    <div><strong>{{ o.text }}</strong>
+      <span class="muted small">{{ o.fresh }} fresh · {{ o.stale }} stale · {{ o.failed }} failing of {{ o.total }} data feeds</span></div>
+    {% if sched %}<button type="button" class="small" hx-post="/scan" hx-target="#scan-msg" hx-swap="innerHTML">Scan now</button>{% endif %}
+  </div>
+</header>
+<p id="scan-msg" class="muted small" aria-live="polite"></p>
+
+{% if c.incidents %}
+<section class="card cc-incidents" aria-label="Open incidents">
+  <h2>{{ icon("diagnostics") }} Open incidents <span class="muted small">({{ c.incidents | length }})</span></h2>
+  <ul class="plain">
+  {% for i in c.incidents %}
+    <li><span class="sev {{ i.severity }}">{{ i.severity }}</span> <strong>{{ i.title }}</strong>
+      <span class="muted small">since <time datetime="{{ i.opened_at.isoformat() }}">{{ i.opened_at | ago }}</time>{% if i.notified_open_at %} · notified{% endif %}</span>
+      {% if i.key.startswith("media.") %}<a class="small" href="/media">Media diagnosis →</a>{% endif %}</li>
+  {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<section class="cc-cards" aria-label="Summary">
+  {% for card in c.summary %}
+  <a class="cc-card" href="{{ card.href }}">
+    <span class="cc-card-head">{{ icon(card.icon) }}<span>{{ card.label }}</span></span>
+    <span class="cc-n">{{ card.n }}{% if card.total is not none %}<small>/{{ card.total }}</small>{% endif %}</span>
+    <span class="cc-parts">{% for p in card.parts %}{% if not p.count %}<span class="cc-part {{ p.cls }}">{{ p.label }}</span>{% elif p.n %}<span class="cc-part {{ p.cls }}">{{ p.n }} {{ p.label }}</span>{% endif %}{% endfor %}</span>
+  </a>
+  {% endfor %}
+</section>
+
+<div class="grid two">
+  <section class="card" aria-labelledby="attn-h">
+    <div class="section-head"><h2 id="attn-h">Needs attention <span class="muted small">(ongoing, as of the latest data)</span></h2></div>
+    {% if c.issues %}
+    <ul class="attn">
+      {% for i in c.issues[:14] %}
+      <li class="attn-{{ i.sev }}"><a href="{{ i.href }}"><strong>{{ i.title }}</strong></a>
+        <span class="muted small">{{ i.detail }}{% if i.since %} · <time datetime="{{ i.since.isoformat() }}">{{ i.since | ago }}</time>{% endif %}</span></li>
+      {% endfor %}
+    </ul>
+    {% if c.issues | length > 14 %}<p class="muted small">+{{ c.issues | length - 14 }} more on <a href="/targets">Targets</a> and <a href="/services?state=failed">Services</a>.</p>{% endif %}
+    {% else %}
+    <p class="muted">Nothing needs attention. That only covers what atlas can see: targets it scans, their services and storage.</p>
+    {% endif %}
+  </section>
+  <section class="card" aria-labelledby="tl-h">
+    <div class="section-head"><h2 id="tl-h">Recent changes <span class="muted small">(new since earlier scans)</span></h2>
+      <form class="tl-filters" hx-get="/" hx-target="#timeline" hx-swap="outerHTML" hx-trigger="change, input delay:300ms from:input[name=q]">
+        <label class="sr-only" for="tl-h-range">Time range</label>
+        <select id="tl-h-range" name="hours">{% for v, l in ((24, "24 h"), (168, "7 days"), (720, "30 days")) %}<option value="{{ v }}"{% if hours == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+        <label class="sr-only" for="tl-sev">Severity</label>
+        <select id="tl-sev" name="sev"><option value="">all</option>{% for v in ("warning", "notice", "info") %}<option{% if sev == v %} selected{% endif %}>{{ v }}</option>{% endfor %}</select>
+        <input type="search" name="q" value="{{ q }}" placeholder="machine, type…" maxlength="64" aria-label="Filter changes">
+      </form>
+    </div>
+    {% include "_timeline.html" %}
+  </section>
+</div>
+
+<section class="card" id="services" aria-labelledby="svc-h">
+  <div class="section-head">
+    <h2 id="svc-h">Services <span class="muted small">({{ c.services | length }} recognised apps)</span></h2>
+    <input type="search" class="table-search" placeholder="Search apps, machines, IPs…" data-search-target="#svc-table" aria-label="Search services">
+  </div>
+  <div class="facets" data-facets="#svc-table">
+    <div class="seg" role="group" aria-label="State">
+      <button type="button" class="seg-btn on" data-facet="state" data-value="">All</button>
+      {% for st in ("healthy", "degraded", "down", "stale", "unknown") %}<button type="button" class="seg-btn" data-facet="state" data-value="{{ st }}">{{ st | capitalize }} <span class="count">{{ c.services | selectattr("state", "equalto", st) | list | length }}</span></button>{% endfor %}
+    </div>
+    <div class="seg" role="group" aria-label="Category">
+      <button type="button" class="seg-btn on" data-facet="group" data-value="">All</button>
+      {% for gid, g in c.groups.items() %}{% if c.services | selectattr("group", "equalto", gid) | list %}<button type="button" class="seg-btn" data-facet="group" data-value="{{ gid }}">{{ g[0] }}</button>{% endif %}{% endfor %}
+    </div>
+  </div>
+  {% if c.services %}
+  <table class="data sortable" id="svc-table">
+    <thead><tr><th data-sort>App</th><th data-sort>Machine</th><th data-sort>Address</th><th data-sort>Category</th><th data-sort>State</th><th data-sort>Observed</th><th>Open</th></tr></thead>
+    <tbody>
+    {% for r in c.services %}
+    <tr data-state="{{ r.state }}" data-group="{{ r.group }}" data-search="{{ r.name }} {{ r.machine }} {{ r.ip or '' }} {{ r.category_label }} {{ r.ports | join(' ') }}">
+      <td><a href="/app?name={{ r.name | urlencode }}"><strong>{{ r.name }}</strong></a></td>
+      <td><a href="/entity?key={{ r.key | urlencode }}">{{ r.machine }}</a></td>
+      <td>{% if r.ip %}<code>{{ r.ip }}{% if r.ports %}:{{ r.ports[0] }}{% endif %}</code>{% endif %}</td>
+      <td><span class="chip" data-cat="{{ r.category }}">{{ r.category_label }}</span></td>
+      <td data-sort-value="{{ loop.index0 }}"><span class="state st-{{ r.state }}" title="{{ r.why }}">{{ r.state }}</span></td>
+      <td class="small">{% if r.observed %}<time datetime="{{ r.observed.isoformat() }}" title="{{ r.source }}">{{ r.observed | ago }}</time>{% else %}<span class="muted">never</span>{% endif %}</td>
+      <td>{% if r.url %}<a class="small" href="{{ r.url }}" target="_blank" rel="noopener noreferrer">open ↗</a>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small">State is evidence from the last scan of each machine (unit, container, process). atlas does not connect to the apps themselves, so “healthy” means “seen running”, not “answering requests”.</p>
+  {% else %}
+  <p class="muted">No apps recognised yet: add machines on <a href="/targets">Targets</a> so atlas can look inside them.</p>
+  {% endif %}
+</section>
+
+<div class="grid two">
+  <section class="card" id="resources" aria-labelledby="res-h">
+    <h2 id="res-h">Resources <span class="muted small">(at the last scan, not a live graph)</span></h2>
+    {% set r = c.resources %}
+    {% if r.nodes %}
+    <h3>Proxmox nodes · CPU</h3>
+    {% for n in r.nodes %}
+    <div class="gauge"><span class="gauge-k"><a href="/entity?key={{ n.key | urlencode }}">{{ n.name }}</a></span>
+      {% if n.cpu is not none %}<span class="gauge-bar"><span class="gauge-fill" data-pct="{{ n.cpu }}"></span></span><span class="gauge-v">{{ n.cpu }}%</span>
+      {% else %}<span class="muted small">unknown (no API data)</span><span></span>{% endif %}</div>
+    {% endfor %}
+    {% endif %}
+    {% if r.busiest %}
+    <h3>Busiest guests · CPU</h3>
+    {% for g in r.busiest %}
+    <div class="gauge"><span class="gauge-k"><a href="/entity?key={{ g.key | urlencode }}">{{ g.name }}</a></span><span class="gauge-bar"><span class="gauge-fill" data-pct="{{ g.cpu }}"></span></span><span class="gauge-v">{{ g.cpu }}%</span></div>
+    {% endfor %}
+    {% endif %}
+    <h3>Storage</h3>
+    {% if r.storage %}
+    {% for x in r.storage %}
+    <div class="gauge wide"><span class="gauge-k" title="{{ x.kind }}"><a href="{{ x.href }}">{{ x.name }}</a> <span class="muted small">{{ x.where }}</span></span>
+      {% if x.pct is not none %}<span class="gauge-bar"><span class="gauge-fill" data-pct="{{ x.pct }}"></span></span><span class="gauge-v">{{ x.pct }}%</span>
+      {% else %}<span class="muted small">size unknown</span><span></span>{% endif %}</div>
+    {% endfor %}
+    {% else %}<p class="muted">No storage sizes collected yet.</p>{% endif %}
+    <p class="muted small">CPU and memory history needs a monitoring source (for example Zabbix); atlas only shows the values its scans saw.</p>
+  </section>
+
+  <section class="card" aria-labelledby="quick-h">
+    <h2 id="quick-h">Quick access</h2>
+    {% if c.quick %}
+    <div class="quick">
+      {% for q_ in c.quick %}
+      <a class="quick-tile" data-cat="{{ q_.category }}" href="{{ q_.url }}" target="_blank" rel="noopener noreferrer">
+        <span class="quick-mark" aria-hidden="true">{{ q_.name[:1] }}</span>
+        <span><strong>{{ q_.name }}</strong><span class="muted small">{{ q_.where }}</span></span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}<p class="muted">Web interfaces appear here once atlas recognises them on a machine.</p>{% endif %}
+    <p class="muted small">Links come from recognised apps and their ports. Pin your own in <code>quick-links.yaml</code> in the data directory (name and URL; never put passwords in a link).</p>
+    <h3>Maps</h3>
+    <div class="actions">
+      <a class="btn ghost small" href="/topology">{{ icon("topology") }} Proxmox: nodes → VMs → containers</a>
+      <a class="btn ghost small" href="/topology?view=physical">{{ icon("ips") }} Network: switch ports</a>
+      <a class="btn ghost small" href="/topology?view=vlan">{{ icon("vlans") }} VLANs</a>
+      <a class="btn ghost small" href="/media">Media operations</a>
+    </div>
+  </section>
+</div>
+
+<section class="card" aria-labelledby="src-h">
+  <h2 id="src-h">Data sources</h2>
+  <div class="sources">
+    {% for i in c.integrations %}
+    <div class="source state-{{ i.state }}">
+      <strong>{{ i.label }}</strong>
+      {% if not i.configured %}<span class="pill info">not configured</span>
+      {% else %}<span class="pill {{ {'fresh': 'ok', 'stale': 'partial', 'failed': 'failed', 'never': 'info'}[i.state] }}">{{ i.state }}</span>
+        <span class="muted small">{{ i.targets }} target{{ "s" if i.targets != 1 }}{% if i.last_ok %} · last good {{ i.last_ok | ago }}{% endif %}</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <p class="muted small">Stale = no good scan within three scan intervals (at least 45 min). The last known data stays visible, marked with its age. Configure sources on <a href="/targets">Targets</a>.</p>
+</section>
+{% endblock %}
