@@ -44,6 +44,7 @@ MIN_INTERVAL_S: Final = 60
 MAX_BACKOFF_S: Final = 6 * 3600
 LOCKED_RETRY_S: Final = 120
 JITTER: Final = 0.1
+TASKORA_INTERVAL_S: Final = 60
 
 
 def intervals_from_env(env: Mapping[str, str] | None = None) -> dict[str, int]:
@@ -93,6 +94,7 @@ class Scheduler:
         retention: Callable[[], Any] | None = None,
         daily: Callable[[], Awaitable[Any]] | None = None,
         daily_hour_utc: int | None = None,
+        taskora: Callable[[], Awaitable[Any]] | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         locked_retry_s: float = 30.0,
     ) -> None:
@@ -100,6 +102,7 @@ class Scheduler:
         self._retention = retention
         self._daily = daily
         self._daily_hour = daily_hour_utc
+        self._taskora = taskora
         self._clock = clock
         self._lock = asyncio.Lock()
         self._aps: AsyncIOScheduler | None = None
@@ -138,6 +141,17 @@ class Scheduler:
                 max_instances=1,
                 coalesce=True,
                 misfire_grace_time=3600,
+            )
+        if self._taskora is not None:
+            # Taskora (ADR-042): deliver due incident revisions, read the ticket feed. It only
+            # talks to Taskora; jitter keeps it off the minute boundary.
+            aps.add_job(
+                self._taskora,
+                IntervalTrigger(seconds=TASKORA_INTERVAL_S, jitter=10),
+                id="taskora",
+                max_instances=1,
+                coalesce=True,
+                misfire_grace_time=TASKORA_INTERVAL_S,
             )
         aps.start()
         self._aps = aps

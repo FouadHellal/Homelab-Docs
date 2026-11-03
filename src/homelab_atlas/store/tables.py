@@ -198,3 +198,50 @@ class Incident(Base):
     acknowledged_by: Mapped[str | None] = mapped_column(String(64), default=None)
     snoozed_until: Mapped[datetime | None] = mapped_column(default=None)
     last_reminded_at: Mapped[datetime | None] = mapped_column(default=None)
+
+
+class TaskoraLink(Base):
+    """An incident's ticket in Taskora (ADR-042): a latest-state outbox entry.
+
+    `revision` grows when the incident changes meaningfully; `sent_revision` is what Taskora
+    acknowledged. Delivery state and the last known ticket state live here too.
+    """
+
+    __tablename__ = "taskora_links"
+    incident_id: Mapped[int] = mapped_column(ForeignKey("incidents.id"), primary_key=True)
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+    sent_revision: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    digest: Mapped[str | None] = mapped_column(String(64), default=None)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(default=None)
+    #: retry | config | permanent (see engine.taskora.classify), None when fine.
+    error_kind: Mapped[str | None] = mapped_column(String(16), default=None)
+    last_error: Mapped[str | None] = mapped_column(String(256), default=None)
+    delivered_at: Mapped[datetime | None] = mapped_column(default=None)
+    #: Ticket resolved in Taskora while atlas still sees the problem.
+    persisting: Mapped[bool] = mapped_column(default=False)
+    #: "taskora" when the acknowledgement came from a technician in Taskora (never echoed).
+    ack_source: Mapped[str | None] = mapped_column(String(16), default=None)
+    ticket_id: Mapped[int | None] = mapped_column(Integer, default=None)
+    ticket_number: Mapped[str | None] = mapped_column(String(32), default=None)
+    ticket_path: Mapped[str | None] = mapped_column(String(32), default=None)
+    ticket_status: Mapped[str | None] = mapped_column(String(64), default=None)
+    ticket_category: Mapped[str | None] = mapped_column(String(16), default=None)
+    ticket_priority: Mapped[str | None] = mapped_column(String(64), default=None)
+    ticket_assignee: Mapped[str | None] = mapped_column(String(128), default=None)
+    synced_at: Mapped[datetime | None] = mapped_column(default=None)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class TaskoraState(Base):
+    """Single row: feed cursor, last contact, last inventory sync result (ADR-042)."""
+
+    __tablename__ = "taskora_state"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    feed_cursor: Mapped[int] = mapped_column(Integer, default=0)
+    last_ok_at: Mapped[datetime | None] = mapped_column(default=None)
+    last_feed_at: Mapped[datetime | None] = mapped_column(default=None)
+    last_error: Mapped[str | None] = mapped_column(String(256), default=None)
+    inventory_at: Mapped[datetime | None] = mapped_column(default=None)
+    inventory_mode: Mapped[str | None] = mapped_column(String(16), default=None)
+    inventory_result: Mapped[dict[str, Any] | None] = mapped_column(JSON, default=None)

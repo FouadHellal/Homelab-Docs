@@ -36,6 +36,9 @@ from homelab_atlas.engine.notify import (
     webhook_settings,
 )
 from homelab_atlas.engine.scan import ScanEngine
+from homelab_atlas.engine.taskora import TOKEN_SECRET as TASKORA_TOKEN
+from homelab_atlas.engine.taskora import TaskoraClient
+from homelab_atlas.engine.taskora import load_settings as taskora_settings
 from homelab_atlas.inventory.hosts import Inventory
 from homelab_atlas.inventory.managed import CA_DIR, effective_inventory
 from homelab_atlas.lab import lab_root, load_api_recordings, load_lab
@@ -43,7 +46,7 @@ from homelab_atlas.probe.render import render_probe
 from homelab_atlas.redact import Redactor
 from homelab_atlas.security.allowlist import Endpoint
 from homelab_atlas.security.audit import AuditLog, AuditSink
-from homelab_atlas.security.errors import RefusalReason, SecurityRefusal
+from homelab_atlas.security.errors import RefusalReason, SecretError, SecurityRefusal
 from homelab_atlas.security.http import (
     AuthHeader,
     HttpLimits,
@@ -153,11 +156,31 @@ class Runtime:
         token = None
         try:
             token = live_secrets(self.data_dir).resolve(TOKEN_SECRET)
-        except (KeyError, OSError, ValueError):
+        except (KeyError, OSError, ValueError, SecretError):
             log.warning("notify.no_token", secret=TOKEN_SECRET)
         return WebhookNotifier(
             cfg, token, self.audit, redactor=self.redactor, rules=notify_rules(self.data_dir)
         )
+
+    def taskora(self) -> TaskoraClient | None:
+        """The Taskora client when it is configured on the Integrations page (ADR-042)."""
+        if self.mode != "live":
+            return None
+        settings = taskora_settings(self.data_dir)
+        if settings is None:
+            return None
+        token = None
+        try:
+            token = live_secrets(self.data_dir).resolve(TASKORA_TOKEN)
+        except (KeyError, OSError, ValueError, SecretError):
+            log.warning("taskora.no_token", secret=TASKORA_TOKEN)
+        try:
+            return TaskoraClient(
+                settings, token, self.audit, config_dirs=[config_dir()], redactor=self.redactor
+            )
+        except ValueError as exc:
+            log.warning("taskora.config_invalid", reason=str(exc))
+            return None
 
 
 @dataclass(frozen=True, slots=True)
