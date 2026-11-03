@@ -45,6 +45,17 @@ Status: draft for approval (M0a). Method: assets → trust boundaries (ARCHITECT
 | S | MITM on self-signed certs | CA/fingerprint pinning, verify never off | test: mismatched fingerprint ⇒ refusal |
 | I | token in logs or URL | header-only auth; logs carry templates only; structlog redaction processor | log-capture test greps for fixture tokens |
 
+### B5: atlas → Taskora (ADR-042)
+| Threat | Example | Controls | Test |
+|---|---|---|---|
+| T / E | the integration becomes a write path into the homelab | atlas pushes only; Taskora never connects to atlas; atlas exposes no endpoint; nothing in the flow touches a target | design review; no new route outside the session UI |
+| T | atlas asked to call another URL or method | five registered endpoints, GET + typed POST only, incident key `<instance>:<digits>`, numeric feed query, no redirects | `tests/security/test_taskora_refusals.py` |
+| I | secrets in tickets or CMDB | facts redacted at collection and again before sending; typed, capped payloads; clients never sent | redaction test on the outgoing body |
+| S / I | token stolen from atlas | vault (AES-GCM), write-only field, scoped Taskora token (no session, no UI, two scopes), revocable | `test_taskora_web.py` (token never rendered or in YAML) |
+| T | hostile Taskora answers (XSS, huge bodies) | 4 MB cap, pydantic validation of ticket snapshots (path `/tickets/<n>` only), autoescaped templates | `test_untrusted_ticket_snapshots_are_ignored`, oversized-answer test |
+| D | Taskora down floods retries | per-incident backoff with jitter up to 1 h, stop at first failure per tick, 30 min for configuration errors | `test_retries_back_off_and_errors_are_classified` |
+| R | who acknowledged what | Taskora audits every ticket change with the token name; atlas records `Taskora: <name>` and logs every UI action | e2e test |
+
 ### B1: user → atlas (UI, MCP HTTP)
 | Threat | Example | Controls | Test |
 |---|---|---|---|

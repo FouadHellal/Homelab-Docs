@@ -2,6 +2,23 @@
 
 All notable changes. Versions follow [SemVer](https://semver.org/); dates are UTC.
 
+## 0.10.0 (2026-11-03)
+
+### Added
+- **Taskora integration** (Integrations → Taskora service desk; [guide](docs/integrations/taskora.md),
+  ADR-042; needs Taskora 0.3.0): each incident that lasts 5 minutes becomes one Taskora ticket,
+  updated on meaningful changes and resolved when atlas sees the recovery; technicians taking a
+  ticket acknowledge the incident in atlas; a ticket closed while the problem persists is
+  reopened once ("still failing"). Durable per-incident outbox with revisions, backoff and
+  retry/re-send buttons.
+- **CMDB sync to Taskora**: preview (writes nothing) and apply, optionally after each scan:
+  Proxmox nodes, VMs, LXCs, Linux hosts, NAS and UniFi switches/APs/gateways with MACs,
+  placement, network and recognised apps, plus `hosted_on` / `connected_to` relations.
+- Incidents page: Taskora ticket number, status and assignee, linked.
+
+### Upgrade notes
+- Migration 0007 adds `taskora_links` and `taskora_state` (runs on start).
+
 ## 0.9.0 (2026-11-02)
 
 ### Added

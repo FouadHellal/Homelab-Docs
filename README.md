@@ -19,7 +19,8 @@ What it collects:
 
 From that you get a **Command Center** (what runs, what's down or stale, what changed, quick
 access to every web UI), a **Media** page that tells you whether Jellyfin is down or just lost
-its NAS share, optional n8n notifications for incidents, a topology view, searchable tables, a
+its NAS share, optional n8n notifications for incidents, optional [Taskora](docs/integrations/taskora.md)
+tickets and CMDB sync, a topology view, searchable tables, a
 change history ("port 8080 opened on
 docker01", "image updated", "new device on VLAN 20"), and exports to Markdown, MkDocs, JSON, CSV
 and Mermaid. There's also a read-only [MCP server](docs/MCP.md), so an assistant like Claude

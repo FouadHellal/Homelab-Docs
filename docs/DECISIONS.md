@@ -752,3 +752,67 @@ Replacement is `«redacted:<rule>:<sha256[:8]>»`. The hash is HMAC-keyed with a
 **Rejected.**
 - Server-side message templates in atlas: the shape stays a typed JSON contract and presentation stays in n8n, where the owner can change it without a release.
 - Acknowledging from email links: it would need a write endpoint reachable without a session (signed tokens), for little gain.
+
+## ADR-042 Taskora integration: incidents → tickets, lifecycle back, CMDB reconciliation (v10)
+**Context.** The owner runs Taskora (their PSA) next to atlas and asked for one system of
+record: atlas incidents as Taskora tickets, technicians' work visible in atlas, and atlas's
+inventory reconciled with Taskora's CMDB — without either side becoming a write path into the
+homelab, without duplicate CIs next to Action1, and without either app reading the other's
+database. Contract: Taskora `docs/integrations/atlas.md` (v1), Taskora 0.3.0.
+
+**Decisions.**
+- **Direction.** atlas pushes, Taskora never connects to atlas. Taskora → atlas data (ticket
+  status, assignee, technician actions) comes from a **cursor feed atlas reads**
+  (`GET …/ticket-events?after=`). atlas exposes no new endpoint and Taskora stores no atlas
+  credential or URL it would fetch (the atlas address there is display-only).
+- **Transport.** Five registered endpoints in `engine/taskora.py` (`health`, incident `POST` and
+  `GET`, feed `GET` with numeric query only, inventory `POST`) through `ReadOnlyHttpClient`:
+  typed `extra="forbid"` bodies, text redacted again before sending, 30 s total timeout, 4 MB
+  answer cap, no redirects, audited. The client stays GET + registered POST: no PUT/DELETE was
+  added to the security core; Taskora accepts `POST` on its incident upsert for that reason.
+  TLS as ADR-040 (public CA for the one configured host name, or a pinned anchor via
+  `ca_file`); plain HTTP only to a private LAN IP with the owner's opt-in.
+- **Credentials.** A Taskora *integration token* (`tki_…`, scopes `atlas.incidents` /
+  `atlas.cmdb`, hashed on Taskora's side, revocable, optional expiry) in atlas's vault
+  (`taskora_token`). Settings in `<data>/taskora.yaml` (address, instance id, options); never
+  the token.
+- **Latest-state outbox.** `taskora_links` (migration 0007) holds per incident a monotonic
+  `revision`, the digest of the last staged state, `sent_revision` and delivery state.
+  `stage()` bumps the revision only when something meaningful changed (state, severity, title,
+  evidence, entity, persisting, atlas acknowledgement; not the heartbeat); `deliver()` sends the
+  incident's *current* full state. Intermediate states are never needed (Taskora upserts full
+  states, ignores revisions it has), so retries, duplicates, restarts and replays are harmless.
+  New incidents go out once sustained 5 min; an incident that resolved before Taskora heard of
+  it never becomes a ticket.
+- **Failures.** 429/408/5xx/transport: exponential backoff with ±20 % jitter (30 s … 1 h), and
+  the tick stops at the first failure so order is kept. 401/403/404/409: a configuration error,
+  retried every 30 min and shown on the Integrations page. Other 4xx: held until the incident
+  changes or the owner presses *Retry failed deliveries*. *Re-send all* replays every linked
+  incident after a Taskora restore.
+- **Lifecycle.** A technician (not automation) assigning the ticket or moving it out of *New*
+  acknowledges the incident in atlas (`Taskora: <name>`, `ack_source = taskora`), which stops
+  reminders and is not echoed back. A ticket resolved or closed while atlas still sees the
+  problem sets `persisting`: the next delivery tells Taskora once (it reopens per its policy);
+  it clears when the ticket reopens or atlas sees the recovery. **Only atlas declares recovery.**
+- **CMDB.** `observe()` builds entities from the machine cards (PVE nodes, VMs, LXCs, Linux
+  hosts, NAS) and UniFi devices (switch / AP / gateway from their features), with MACs
+  (Proxmox NICs, real interfaces — not docker/veth or locally administered ones), Proxmox
+  placement, network/VLAN/uplink, OS and recognised apps. Relations: `hosted_on` (guest → node)
+  and `connected_to` (device → uplink device, machine → switch with the port). `depends_on` is
+  not sent: atlas does not yet establish dependencies with evidence. Clients (phones, TVs,
+  IoT) are never sent. *Preview* writes nothing in Taskora; *Apply* follows Taskora's CMDB mode;
+  *Apply after each scan* sends one complete snapshot per finished scan (a failure waits for
+  the next scan). Matching, field ownership and conflicts are Taskora's (its ADRs 23–27): strong
+  identifiers link, names only propose, ambiguity is a conflict, nothing is deleted, Action1
+  fields are never written by atlas.
+- **UI.** Integrations → *Taskora service desk*: settings, token (write-only), *Test
+  connection*, *Send a test incident* (creates no ticket), CMDB preview/apply with the plan,
+  delivery table with retry/re-send; Incidents shows the ticket number, status and assignee
+  with a link to Taskora.
+
+**Rejected.**
+- Taskora calling atlas (webhooks into atlas, or polling atlas): it would need an atlas write
+  endpoint and atlas credentials in Taskora; the pull feed gives the same result.
+- A queue of every intermediate state: more storage and ordering problems for no benefit.
+- Shared database or direct DB reads: ruled out by the brief and by both apps' threat models.
+- Auto-merging CIs: ambiguous identity always goes to a person.

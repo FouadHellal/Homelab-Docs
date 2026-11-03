@@ -122,6 +122,12 @@ On **Incidents**, *Acknowledge* stops announcements and reminders for one incide
 hear when it is resolved) and *Snooze* silences it for 4 hours, a day or a week. Fields: `kind`, `title`, `severity`, `key`, `entity`, `opened_at`,
 `resolved_at`, `evidence` (list of strings), `summary` (daily counts).
 
+### Taskora tickets and CMDB (optional)
+
+With [Taskora](https://github.com/FouadHellal/Taskora) 0.3.0 or later, incidents become
+tickets, technicians' acknowledgements come back to atlas, and atlas's machines reconcile with
+Taskora's CMDB. Setup and operations: [integrations/taskora.md](integrations/taskora.md).
+
 ## Pages
 
 | Page | What's there |
