@@ -16,8 +16,10 @@ from rich.console import Console
 from sqlalchemy import func, select
 
 from homelab_atlas.cli_export import sanitize_key
+from homelab_atlas.engine.notify import notify_rules
 from homelab_atlas.engine.report import daily_summary
 from homelab_atlas.engine.scan import ScanEngine
+from homelab_atlas.engine.taskora import tick as taskora_tick
 from homelab_atlas.lab import load_lab
 from homelab_atlas.runtime import (
     LAB_DATA_DIR,
@@ -161,6 +163,21 @@ def make_scheduler(rt: Runtime, *, lab: bool) -> Scheduler:
         ok, msg = await notifier.send(note.model_copy(update={"link": notifier.rules.link("/")}))
         log.info("notify.daily", ok=ok, detail=msg)
 
+    async def taskora() -> None:
+        client = rt.taskora()
+        if client is None or not client.has_token:
+            return
+        inputs = live_inputs(rt.data_dir)
+        atlas_url = notify_rules(rt.data_dir).atlas_url
+        try:
+            with rt.sessions() as s:
+                out = await taskora_tick(s, inputs.inventory, client, atlas_url=atlas_url)
+        except Exception:  # never let the integration break the scheduler
+            log.exception("taskora.tick_failed")
+            return
+        if any(out.values()):
+            log.info("taskora.tick", **out)
+
     hour = os.environ.get("ATLAS_DAILY_SUMMARY_HOUR", "7").strip()
     daily_hour = int(hour) if hour.isdigit() and int(hour) < 24 else None
     return Scheduler(
@@ -168,6 +185,7 @@ def make_scheduler(rt: Runtime, *, lab: bool) -> Scheduler:
         retention=retention,
         daily=None if lab else daily,
         daily_hour_utc=daily_hour,
+        taskora=None if lab else taskora,
     )
 
 
@@ -239,6 +257,7 @@ def serve(
             export_key=sanitize_key(rt),
             media_live=functools.partial(_media_live, rt, bool(lab)),
             notifier=rt.notifier,
+            taskora=rt.taskora,
         )
     )
     scheme = "https" if tls_cert else "http"

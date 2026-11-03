@@ -56,6 +56,90 @@
   <p class="muted small">atlas only posts to that one URL, with a fixed message format, through its audited read-only HTTP client. Webhooks never trigger anything on your machines from atlas's side.</p>
 </section>
 
+<section class="card" aria-labelledby="taskora-h">
+  <h2 id="taskora-h">Taskora service desk</h2>
+  {% set tset = taskora.settings %}
+  {% if tset %}
+  <dl class="kv">
+    <dt>Taskora</dt><dd><code>{{ tset.base }}</code> · instance <code>{{ tset.instance }}</code></dd>
+    <dt>Token</dt><dd>{% if taskora.token %}<span class="pill ok">set</span> <span class="muted small">scoped integration token, never shown</span>{% else %}<span class="pill partial">missing</span>{% endif %}</dd>
+    <dt>Incidents → tickets</dt><dd>{% if tset.incidents %}<span class="pill ok">on</span>{% else %}<span class="pill info">off</span>{% endif %}
+      {% if taskora.pending %}<span class="pill partial">{{ taskora.pending }} waiting</span>{% endif %}
+      {% if taskora.failing %}<span class="pill failed">{{ taskora.failing }} failing</span>{% endif %}</dd>
+    <dt>CMDB after each scan</dt><dd>{% if tset.cmdb_auto %}<span class="pill ok">apply</span>{% else %}<span class="pill info">manual</span>{% endif %}</dd>
+    {% set st = taskora.state %}
+    <dt>Last contact</dt><dd>{% if st and st.last_ok_at %}<time datetime="{{ st.last_ok_at.isoformat() }}">{{ st.last_ok_at | ago }}</time>{% else %}<span class="muted">never</span>{% endif %}
+      {% if st and st.last_error %}<span class="pill failed">{{ st.last_error }}</span>{% endif %}</dd>
+    <dt>Ticket feed</dt><dd>{% if st and st.last_feed_at %}read {{ st.last_feed_at | ago }} (cursor {{ st.feed_cursor }}){% else %}<span class="muted">not read yet</span>{% endif %}</dd>
+  </dl>
+  <div class="actions">
+    <button type="button" class="small" hx-post="/integrations/taskora/test" hx-vals='{"what": "health"}' hx-target="#taskora-result">Test connection</button>
+    <button type="button" class="small ghost" hx-post="/integrations/taskora/test" hx-vals='{"what": "incident"}' hx-target="#taskora-result">Send a test incident</button>
+    <span id="taskora-result" aria-live="polite"></span>
+  </div>
+  {% else %}
+  <p>Not configured. With <a href="https://github.com/FouadHellal/Taskora">Taskora</a> 0.3.0 or later, each incident that lasts 5 minutes becomes one ticket, kept up to date until atlas sees the recovery; technicians' acknowledgements come back here. atlas's machines can also be reconciled with Taskora's CMDB.</p>
+  <p class="small">In Taskora: <em>Integrations → atlas</em>, choose the company, then <em>Tokens → New token</em> with the scopes you want, and paste it below.</p>
+  {% endif %}
+  {% if editable %}
+  <form method="post" action="/integrations/taskora" class="target-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label>Taskora address <input name="url" required maxlength="200" placeholder="https://taskora.lan" value="{{ tset.url if tset else '' }}"></label>
+    <label>Instance name <span class="muted small">(this atlas, in incident keys)</span> <input name="instance" maxlength="64" pattern="[a-z0-9][a-z0-9._-]{0,63}" value="{{ tset.instance if tset else 'atlas' }}"></label>
+    <label>Integration token {% if taskora.token %}<span class="pill ok">stored</span> <span class="muted small">leave empty to keep it</span>{% endif %}
+      <input name="token" type="password" maxlength="512" autocomplete="off" placeholder="tki_…"></label>
+    <label>CA file <span class="muted small">(self-signed Taskora: PEM in the config dir; empty for a normal certificate)</span> <input name="ca_file" maxlength="128" value="{{ tset.ca_file or '' if tset else '' }}"></label>
+    <label class="check"><input type="checkbox" name="incidents" value="1"{% if tset and tset.incidents %} checked{% endif %}><span><strong>Create and update tickets</strong> for incidents that last 5 minutes</span></label>
+    <label class="check"><input type="checkbox" name="cmdb_auto" value="1"{% if tset and tset.cmdb_auto %} checked{% endif %}><span><strong>Apply the CMDB sync after each scan</strong> (do a preview first)</span></label>
+    <label class="check"><input type="checkbox" name="allow_http" value="1"{% if tset and tset.allow_http %} checked{% endif %}><span>Plain HTTP on my LAN (private IP only; the token then crosses your network unencrypted)</span></label>
+    <div class="actions"><button type="submit">Save</button></div>
+  </form>
+  {% if tset %}
+  <div class="actions">
+    <form method="post" action="/integrations/taskora/inventory" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="mode" value="preview"><button type="submit" class="small">Preview CMDB sync</button></form>
+    <form method="post" action="/integrations/taskora/inventory" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="mode" value="apply"><button type="submit" class="small ghost">Apply CMDB sync</button></form>
+    <form method="post" action="/integrations/taskora/retry" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button type="submit" class="small ghost">Retry failed deliveries</button></form>
+    <form method="post" action="/integrations/taskora/retry" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="replay" value="1"><button type="submit" class="small ghost">Re-send all (after a Taskora restore)</button></form>
+    <form method="post" action="/integrations/taskora/delete" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button type="submit" class="small ghost">Remove</button></form>
+  </div>
+  {% endif %}
+  {% elif not tset %}
+  <p class="muted small">Read-only here (demo lab).</p>
+  {% endif %}
+
+  {% if taskora.links %}
+  <h3>Incident deliveries</h3>
+  <table class="data">
+    <thead><tr><th>Incident</th><th>Ticket</th><th>Delivery</th></tr></thead>
+    <tbody>
+    {% for r in taskora.links[:20] %}{% set lk = r.link %}
+    <tr><td class="wrap"><span class="sev {{ r.incident.severity }}">{{ r.incident.severity }}</span> {{ r.incident.title }}</td>
+      <td>{% if lk.ticket_number and tset %}<a href="{{ tset.base }}{{ lk.ticket_path }}" rel="noopener noreferrer" target="_blank">{{ lk.ticket_number }}</a> <span class="muted small">{{ lk.ticket_status }}{% if lk.ticket_assignee %} · {{ lk.ticket_assignee }}{% endif %}</span>{% if lk.persisting %} <span class="pill failed">still failing</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="small wrap">{% if lk.error_kind %}<span class="pill {{ 'failed' if lk.error_kind != 'retry' else 'partial' }}">{{ lk.error_kind }}</span> {{ lk.last_error }}{% if lk.next_attempt_at %} · next try {{ lk.next_attempt_at.strftime("%H:%M UTC") }}{% else %} · held until it changes or you retry{% endif %}
+        {% elif r.pending %}<span class="pill partial">waiting</span> rev {{ lk.revision }}
+        {% else %}<span class="pill ok">delivered</span> rev {{ lk.sent_revision }}{% if lk.delivered_at %} · {{ lk.delivered_at | ago }}{% endif %}{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% set inv = taskora.state.inventory_result if taskora.state else None %}
+  {% if inv %}
+  <h3 id="taskora-inv">Last CMDB sync <span class="muted small">({{ taskora.state.inventory_mode }}, {{ taskora.state.inventory_at | ago }}{% if inv.cmdbMode %}; Taskora CMDB mode: {{ inv.cmdbMode }}{% endif %})</span></h3>
+  <p>{% for k, v in inv.stats.items() if v %}<span class="pill {{ 'failed' if k == 'conflict' else 'partial' if k in ('propose', 'unmatched') else 'ok' }}">{{ k }} {{ v }}</span> {% endfor %}</p>
+  <table class="data">
+    <thead><tr><th>Machine</th><th>Action</th><th>CI</th><th>Why</th></tr></thead>
+    <tbody>
+    {% for p in inv.plan[:60] %}
+    <tr><td>{{ p.name }}</td><td><span class="pill {{ 'failed' if p.action == 'conflict' else 'partial' if p.action in ('propose', 'unmatched') else 'ok' }}">{{ p.action }}</span></td><td>{{ p.ciNumber }}</td><td class="wrap small">{{ p.note }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small">Conflicts and proposals are decided in Taskora (<em>Integrations → atlas → CMDB reconciliation</em>). Nothing is ever deleted.</p>
+  {% endif %}
+  <p class="muted small">atlas only calls Taskora's atlas API (five fixed endpoints, typed and redacted payloads) through its audited HTTP client. Taskora never connects to atlas; closing a ticket never marks anything healthy — only atlas's own scans do.</p>
+</section>
+
 {% if hook %}
 <section class="card" aria-labelledby="rules-h">
   <h2 id="rules-h">What to send</h2>

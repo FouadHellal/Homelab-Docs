@@ -22,7 +22,7 @@ from html import escape
 from importlib.resources import files
 from importlib.resources.abc import Traversable
 from pathlib import Path
-from typing import Annotated, Any, Final
+from typing import Annotated, Any, Final, Literal
 from urllib.parse import quote, urlencode, urlsplit
 
 import structlog
@@ -37,6 +37,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from homelab_atlas import __version__
 from homelab_atlas.engine import apps, incidents, media
+from homelab_atlas.engine import taskora as tk
 from homelab_atlas.engine.notify import (
     SETTINGS_FILE,
     TOKEN_SECRET,
@@ -106,6 +107,8 @@ class WebConfig:
     media_live: Callable[[str], Awaitable[dict[str, Any]]] | None = None
     #: Builds the n8n webhook notifier (ADR-040); None or returning None = not configured.
     notifier: Callable[[], WebhookNotifier | None] | None = None
+    #: Builds the Taskora client (ADR-042); None or returning None = not configured.
+    taskora: Callable[[], tk.TaskoraClient | None] | None = None
 
 
 class LoginThrottle:
@@ -697,6 +700,7 @@ def create_app(cfg: WebConfig) -> FastAPI:
             token=notifier is not None and notifier.has_token,
             sent=incidents.recent_incidents(s, None, 15),
             rules=notify_rules(cfg.data_dir),
+            taskora=_taskora_view(s),
             editable=cfg.targets is not None and cfg.targets.editable and cfg.data_dir is not None,
             msg=request.query_params.get("msg", "")[:200],
         )
@@ -770,19 +774,162 @@ def create_app(cfg: WebConfig) -> FastAPI:
             f"<span class='pill {'ok' if ok else 'failed'}' role='status'>{escape(info)}</span>"
         )
 
+    # ------------------------------------------------------------------ Taskora (ADR-042)
+
+    def _taskora_view(s: Session) -> dict[str, Any]:
+        settings = tk.load_settings(cfg.data_dir)
+        client = cfg.taskora() if cfg.taskora else None
+        return {
+            "settings": settings,
+            "token": client is not None and client.has_token,
+            **tk.status(s),
+        }
+
+    def _editable() -> tuple[Any, Path]:
+        svc = targets_svc()
+        if cfg.data_dir is None or not svc.editable:
+            raise HTTPException(403, "read-only here")
+        return svc, cfg.data_dir
+
+    def _taskora_client() -> tk.TaskoraClient:
+        client = cfg.taskora() if cfg.taskora else None
+        if client is None:
+            raise HTTPException(404, "Taskora is not configured")
+        return client
+
+    def _pill(ok: bool, text: str) -> HTMLResponse:
+        return HTMLResponse(
+            f"<span class='pill {'ok' if ok else 'failed'}' role='status'>{escape(text)}</span>"
+        )
+
+    @app.post("/integrations/taskora")
+    def taskora_save(
+        user: Csrf,
+        url: Annotated[str, Form(max_length=200)],
+        instance: Annotated[str, Form(max_length=64)] = "atlas",
+        token: Annotated[str, Form(max_length=512)] = "",
+        allow_http: Annotated[str, Form(max_length=4)] = "",
+        ca_file: Annotated[str, Form(max_length=128)] = "",
+        incidents_on: Annotated[str, Form(alias="incidents", max_length=4)] = "",
+        cmdb_auto: Annotated[str, Form(max_length=4)] = "",
+    ) -> Response:
+        """Save Taskora's address and options to <data>/taskora.yaml, the token to the vault."""
+        svc, data_dir = _editable()
+        try:
+            settings = tk.TaskoraSettings(
+                url=url.strip(),
+                instance=instance.strip() or "atlas",
+                allow_http=bool(allow_http),
+                ca_file=ca_file.strip() or None,
+                incidents=bool(incidents_on),
+                cmdb_auto=bool(cmdb_auto),
+            )
+            tk.save_settings(data_dir, settings)
+            if (cleaned := clean_token(SecretStr(token))) is not None:
+                if not re.fullmatch(r"tki_[A-Za-z0-9_-]{32,128}", cleaned.get_secret_value()):
+                    raise ValueError("a Taskora integration token starts with tki_")
+                svc.set_secret(tk.TOKEN_SECRET, cleaned, "ui.taskora.token")
+        except (ValueError, TargetError) as exc:
+            msg = "; ".join(str(e.get("msg")) for e in getattr(exc, "errors", lambda: [])()[:2])
+            return RedirectResponse(
+                f"/integrations?{urlencode({'msg': (msg or str(exc))[:180]})}#taskora-h", 303
+            )
+        log.info("taskora.saved", by=user.username, incidents=settings.incidents)
+        return RedirectResponse("/integrations?msg=Taskora+settings+saved.#taskora-h", 303)
+
+    @app.post("/integrations/taskora/test", response_class=HTMLResponse)
+    async def taskora_test(
+        user: Csrf, what: Annotated[str, Form(max_length=16)] = "health"
+    ) -> Response:
+        client = _taskora_client()
+        try:
+            if what == "incident":
+                now = datetime.now(UTC).isoformat()
+                res = await client.upsert(
+                    tk.IncidentEvent(
+                        instance=client.settings.instance,
+                        incidentId=1,
+                        revision=1,
+                        fingerprint="atlas.test",
+                        kind="atlas.test",
+                        title="atlas test incident (creates no ticket)",
+                        severity="info",
+                        state="open",
+                        firstObservedAt=now,
+                        lastObservedAt=now,
+                        test=True,
+                    )
+                )
+                text = str(res.get("note") or "accepted")[:200]
+            else:
+                h = await client.health()
+                if not h.get("enabled"):
+                    text = "Connected, but the atlas integration is disabled in Taskora"
+                elif not h.get("companyConfigured"):
+                    text = "Connected; choose the company in Taskora → Integrations → atlas"
+                else:
+                    scopes = ", ".join(map(str, h.get("scopes") or []))
+                    text = f"Connected (CMDB: {h.get('cmdbMode')}, scopes: {scopes})"
+        except tk.TaskoraError as exc:
+            log.info("taskora.test", ok=False, by=user.username)
+            return _pill(False, str(exc))
+        log.info("taskora.test", ok=True, what=what, by=user.username)
+        return _pill(True, text)
+
+    @app.post("/integrations/taskora/inventory")
+    async def taskora_inventory(
+        s: DB, user: Csrf, mode: Annotated[str, Form(max_length=8)] = "preview"
+    ) -> Response:
+        client = _taskora_client()
+        chosen: Literal["preview", "apply"] = "apply" if mode == "apply" else "preview"
+        try:
+            result = await tk.inventory_sync(s, client, chosen)
+            s.commit()
+        except tk.TaskoraError as exc:
+            return RedirectResponse(
+                f"/integrations?{urlencode({'msg': str(exc)[:180]})}#taskora-h", 303
+            )
+        log.info("taskora.inventory", mode=chosen, by=user.username, **result["stats"])
+        word = "Preview ready (nothing written)" if chosen == "preview" else "CMDB sync applied"
+        return RedirectResponse(f"/integrations?{urlencode({'msg': word})}#taskora-inv", 303)
+
+    @app.post("/integrations/taskora/retry")
+    def taskora_retry(
+        s: DB, user: Csrf, replay: Annotated[str, Form(max_length=4)] = ""
+    ) -> Response:
+        n = tk.replay_all(s) if replay else tk.retry_held(s)
+        s.commit()
+        log.info("taskora.retry", replay=bool(replay), count=n, by=user.username)
+        what = "re-sent" if replay else "retried"
+        msg = f"{n} incident(s) will be {what} within a minute."
+        return RedirectResponse(f"/integrations?{urlencode({'msg': msg})}#taskora-h", 303)
+
+    @app.post("/integrations/taskora/delete")
+    def taskora_delete(user: Csrf) -> Response:
+        svc, data_dir = _editable()
+        (data_dir / tk.SETTINGS_FILE).unlink(missing_ok=True)
+        svc.set_secret(tk.TOKEN_SECRET, None, "ui.taskora.delete")
+        log.info("taskora.removed", by=user.username)
+        return RedirectResponse("/integrations?msg=Taskora+integration+removed.", 303)
+
     # ------------------------------------------------------------------ incidents (ADR-041)
 
     @app.get("/incidents", response_class=HTMLResponse)
     def incidents_page(request: Request, s: DB, user: User) -> Response:
         now = datetime.now(UTC)
+        open_ = incidents.open_incidents(s)
+        recent = [i for i in incidents.recent_incidents(s, None, 40) if i.resolved_at]
+        settings = tk.load_settings(cfg.data_dir)
         return page(
             request,
             "incidents.html",
             user,
-            open_=incidents.open_incidents(s),
-            recent=[i for i in incidents.recent_incidents(s, None, 40) if i.resolved_at],
+            open_=open_,
+            recent=recent,
             now=now,
             rules=notify_rules(cfg.data_dir),
+            tickets=tk.links_by_incident(s, [i.id for i in (*open_, *recent)]),
+            taskora_base=settings.base if settings else None,
         )
 
     @app.post("/incidents/{incident_id}/ack")

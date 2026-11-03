@@ -18,6 +18,9 @@
         <strong>{{ i.title }}</strong>
         {% if i.acknowledged_at %}<span class="pill info">acknowledged by {{ i.acknowledged_by }} {{ i.acknowledged_at | ago }}</span>
         {% elif i.snoozed_until and i.snoozed_until > now %}<span class="pill info">snoozed until {{ i.snoozed_until.strftime("%Y-%m-%d %H:%M UTC") }}</span>{% endif %}
+        {% set lk = tickets.get(i.id) %}
+        {% if lk and lk.ticket_number and taskora_base %}<a class="pill info" href="{{ taskora_base }}{{ lk.ticket_path }}" rel="noopener noreferrer" target="_blank">Taskora {{ lk.ticket_number }} · {{ lk.ticket_status }}{% if lk.ticket_assignee %} · {{ lk.ticket_assignee }}{% endif %}</a>{% if lk.persisting %} <span class="pill failed">ticket closed, still failing</span>{% endif %}
+        {% elif lk and lk.error_kind %}<span class="pill partial">Taskora: {{ lk.error_kind }}</span>{% endif %}
       </div>
       <div class="muted small">since <time datetime="{{ i.opened_at.isoformat() }}">{{ i.opened_at | ago }}</time> · last seen {{ i.last_seen_at | ago }}
         · {% if i.notified_open_at %}announced{% if i.last_reminded_at %}, reminded {{ i.last_reminded_at | ago }}{% endif %}{% else %}not announced yet{% endif %}
@@ -50,7 +53,8 @@
     <thead><tr><th>Incident</th><th>Opened</th><th>Resolved</th><th>Lasted</th></tr></thead>
     <tbody>
     {% for i in recent %}
-    <tr><td class="wrap"><span class="sev {{ i.severity }}">{{ i.severity }}</span> {{ i.title }}</td>
+    {% set lk = tickets.get(i.id) %}
+    <tr><td class="wrap"><span class="sev {{ i.severity }}">{{ i.severity }}</span> {{ i.title }}{% if lk and lk.ticket_number and taskora_base %} <a class="small" href="{{ taskora_base }}{{ lk.ticket_path }}" rel="noopener noreferrer" target="_blank">{{ lk.ticket_number }}</a>{% endif %}</td>
       <td>{{ i.opened_at | ago }}</td><td>{{ i.resolved_at | ago }}</td>
       <td>{% set mins = ((i.resolved_at - i.opened_at).total_seconds() // 60) | int %}{{ (mins // 60) ~ " h " if mins >= 60 }}{{ mins % 60 }} min</td></tr>
     {% endfor %}
