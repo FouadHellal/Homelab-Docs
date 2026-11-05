@@ -500,6 +500,169 @@ def proxmox_problem(s: Session) -> str | None:
     return f"{first.target}: {errs[0]}" if errs else f"{first.target}: failed"
 
 
+RADIO_BANDS: Final = {"ng": "2.4 GHz", "na": "5 GHz", "6e": "6 GHz", "ax": "5 GHz"}
+
+
+def unifi_ip_table(s: Session, q: str | None = None) -> dict[str, Any]:
+    """IP addresses as UniFi sees them (ADR-046): every client and UniFi device, with what
+    the UniFi UI shows (connection, signal, traffic…) and the atlas machine it is."""
+    c = context(s)
+    devices: dict[str, dict[str, Any]] = {}
+    for f in c.facets:
+        if f.collector == "unifi" and f.data.get("mac") and "clients" not in f.data:
+            devices[str(f.data["mac"])] = {**f.data, "key": f.entity_key}
+    rows: list[dict[str, Any]] = []
+    for d in devices.values():
+        rows.append(
+            {
+                "kind": "device",
+                "name": d.get("name") or d.get("mac"),
+                "ip": d.get("ip"),
+                "mac": d.get("mac"),
+                "vendor": "Ubiquiti",
+                "detail": " · ".join(
+                    x
+                    for x in (d.get("model"), d.get("firmware") and f"fw {d.get('firmware')}")
+                    if x
+                ),
+                "state": str(d.get("state") or "").lower() or None,
+                "key": d["key"],
+            }
+        )
+    for f in c.facets:
+        if f.collector != "unifi" or "clients" not in f.data:
+            continue
+        for cl in f.data.get("clients") or []:
+            mac = str(cl.get("mac") or "")
+            owner = c.index.mac_owner.get(mac)
+            ent = c.entities.get(owner) if owner else None
+            wired = cl.get("type") == "WIRED"
+            up = devices.get(str(cl.get("uplink_mac") or ""), {})
+            ap = devices.get(str(cl.get("ap_mac") or ""), {})
+            if wired:
+                bits = [up.get("name"), cl.get("uplink_port") and f"port {cl['uplink_port']}",
+                        cl.get("wired_rate_mbps") and f"{cl['wired_rate_mbps']} Mbps"]  # fmt: skip
+            else:
+                band = RADIO_BANDS.get(str(cl.get("radio") or ""))
+                chan = (
+                    f"ch {cl['channel']}" + (f" ({band})" if band else "")
+                    if cl.get("channel")
+                    else None
+                )
+                sig = f"{cl['signal_dbm']} dBm" if cl.get("signal_dbm") is not None else None
+                bits = [cl.get("ssid"), ap.get("name") or up.get("name"), chan, sig]
+            rows.append(
+                {
+                    "kind": "client",
+                    "name": cl.get("name") or cl.get("hostname") or mac,
+                    "hostname": cl.get("hostname")
+                    if cl.get("hostname") != cl.get("name")
+                    else None,
+                    "ip": cl.get("ip"),
+                    "fixed_ip": cl.get("fixed_ip"),
+                    "mac": mac,
+                    "vendor": cl.get("vendor"),
+                    "network": cl.get("network"),
+                    "vlan": cl.get("vlan"),
+                    "type": (cl.get("type") or "").lower() or None,
+                    "connection": " · ".join(str(b) for b in bits if b),
+                    "signal": cl.get("signal_dbm"),
+                    "satisfaction": cl.get("satisfaction"),
+                    "uptime_s": cl.get("uptime_s"),
+                    "rx": cl.get("rx_bytes"),
+                    "tx": cl.get("tx_bytes"),
+                    "first_seen": cl.get("first_seen"),
+                    "last_seen": cl.get("last_seen"),
+                    "guest": cl.get("guest"),
+                    "machine": c.names.get(owner)
+                    if owner and ent and ent.kind != "unknown-device"
+                    else None,
+                    "key": owner or f"net:mac:{mac}",
+                    "unknown": owner is None
+                    or (
+                        ent is not None and ent.kind == "unknown-device" and ent.status == "unknown"
+                    ),
+                }
+            )
+    rows.sort(key=lambda r: (r["kind"] != "device", _ip_key(r["ip"] or "255.255.255.255")))
+    total = len(rows)
+    if q:
+        ql = q.lower()[:64]
+        rows = [r for r in rows if any(ql in str(v).lower() for v in r.values() if v is not None)]
+    networks = sorted(
+        {(r.get("network"), r.get("vlan")) for r in rows if r.get("network")}, key=str
+    )
+    return {
+        "rows": rows,
+        "total": total,
+        "networks": networks,
+        "have_unifi": bool(devices) or total > 0,
+    }
+
+
+def _port(p: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "idx": p.get("idx"),
+        "up": str(p.get("state") or "").upper() == "UP",
+        "speed": p.get("speed_mbps"),
+        "max": p.get("max_speed_mbps"),
+        "poe": p.get("poe"),
+        "clients": [],
+    }
+
+
+def network_board(s: Session) -> dict[str, Any]:
+    """Topology → Network (ADR-045): every UniFi device with what hangs off it: switch ports
+    (state, speed, PoE, the client on each), AP wireless clients, the uplink chain."""
+    t = unifi_ip_table(s)
+    c = context(s)
+    devs: dict[str, dict[str, Any]] = {}
+    for f in c.facets:
+        if f.collector == "unifi" and f.data.get("mac") and "clients" not in f.data:
+            d = f.data
+            feats = {str(x).lower() for x in d.get("features") or []}
+            role = "gateway" if "gateway" in feats else "ap" if "accesspoint" in feats else "switch"
+            devs[str(d["mac"])] = {
+                "key": f.entity_key, "name": d.get("name") or d["mac"], "model": d.get("model"),
+                "ip": d.get("ip"), "mac": d["mac"], "firmware": d.get("firmware"),
+                "state": str(d.get("state") or "").lower() or "unknown", "role": role,
+                "uplink_mac": d.get("uplink_mac"),
+                "ports": [_port(p) for p in d.get("ports") or [] if isinstance(p, dict)
+                          and isinstance(p.get("idx"), int)],
+                "wireless": [], "wired_unknown_port": [], "downlinks": [],
+            }  # fmt: skip
+    clients = [r for r in t["rows"] if r["kind"] == "client"]
+    raw = {
+        str(cl.get("mac")): cl
+        for f in c.facets
+        if f.collector == "unifi" and "clients" in f.data
+        for cl in f.data.get("clients") or []
+    }
+    for r in clients:
+        cl = raw.get(str(r["mac"]), {})
+        if r["type"] == "wired":
+            dev = devs.get(str(cl.get("uplink_mac") or ""))
+            if dev is None:
+                continue
+            port = next((p for p in dev["ports"] if p["idx"] == cl.get("uplink_port")), None)
+            (port["clients"] if port else dev["wired_unknown_port"]).append(r)
+        else:
+            dev = devs.get(str(cl.get("ap_mac") or cl.get("uplink_mac") or ""))
+            if dev is not None:
+                dev["wireless"].append(r)
+    for d in devs.values():
+        up = devs.get(str(d["uplink_mac"] or ""))
+        if up is not None:
+            up["downlinks"].append(d["name"])
+        d["wireless"].sort(key=lambda r: -(r["signal"] if r["signal"] is not None else -999))
+    order = {"gateway": 0, "switch": 1, "ap": 2}
+    return {
+        "devices": sorted(devs.values(), key=lambda d: (order[d["role"]], d["name"].lower())),
+        "clients": len(clients),
+        "unknown": sum(1 for r in clients if r["unknown"]),
+    }
+
+
 PVE_MAC_PREFIX: Final = "bc:24:11"  # Proxmox's OUI for generated guest NICs
 
 

@@ -1082,10 +1082,18 @@ def create_app(cfg: WebConfig) -> FastAPI:
         user: User,
         q: Annotated[str | None, Query(max_length=64)] = None,
         everything: bool = False,
+        source: str = "unifi",
     ) -> Response:
+        # UniFi's own client list by default (ADR-046); "seen" = every address atlas saw.
+        uni = views.unifi_ip_table(s, q) if source == "unifi" else None
+        if uni is not None and not uni["have_unifi"]:
+            uni, source = None, "seen"
+        if uni is not None:
+            name = "_unifi_ip_rows.html" if partial(request) else "ips.html"
+            return page(request, name, user, u=uni, q=q or "", source="unifi", everything=False)
         groups = views.ip_groups(s, q, everything=everything)
         name = "_ip_groups_rows.html" if partial(request) else "ips.html"
-        return page(request, name, user, g=groups, q=q or "", everything=everything)
+        return page(request, name, user, g=groups, q=q or "", everything=everything, source="seen")
 
     @app.get("/running", response_class=HTMLResponse)
     def running_page(
@@ -1481,11 +1489,12 @@ def create_app(cfg: WebConfig) -> FastAPI:
     @app.get("/topology", response_class=HTMLResponse)
     def topology_page(request: Request, s: DB, user: User, view: str = "board") -> Response:
         # board: Proxmox nodes with their guests (HTML, ADR-045); the graphs stay available.
-        view = view if view in ("board", "physical", "logical", "vlan") else "board"
+        view = view if view in ("board", "net", "physical", "logical", "vlan") else "board"
         cards = views.machines(s)
         pve = views.proxmox_summary(cards) if view in ("board", "logical") else None
         board = views.proxmox_board(s) if view == "board" else None
-        return page(request, "topology.html", user, view=view, pve=pve, board=board)
+        net = views.network_board(s) if view == "net" else None
+        return page(request, "topology.html", user, view=view, pve=pve, board=board, net=net)
 
     @app.get("/api/topology")
     def topology_json(s: DB, _user: User, view: str = "logical") -> JSONResponse:

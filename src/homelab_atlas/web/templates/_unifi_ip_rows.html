@@ -1,0 +1,16 @@
+{% for r in u.rows %}
+<tr class="{{ 'ip-dev' if r.kind == 'device' }}{{ ' ip-unknown' if r.unknown and r.kind == 'client' }}">
+  <td><a href="/entity?key={{ r.key | urlencode }}"><strong>{{ r.name }}</strong></a>
+    {% if r.hostname %}<div class="muted small">{{ r.hostname }}</div>{% endif %}
+    {% if r.machine %}<div class="small">atlas: {{ r.machine }}</div>{% elif r.kind == "client" and r.unknown %}<div class="small"><span class="pill partial">unknown</span></div>{% endif %}</td>
+  <td><code>{{ r.ip or "–" }}</code>{% if r.fixed_ip %} <span class="pill ok" title="Fixed IP in UniFi">fixed</span>{% endif %}</td>
+  <td><code class="small">{{ r.mac }}</code>{% if r.vendor %}<div class="muted small">{{ r.vendor }}</div>{% endif %}</td>
+  <td>{% if r.kind == "device" %}<span class="muted small">UniFi device</span>{% else %}{{ r.network or "" }}{% if r.vlan is not none %} <span class="muted small">VLAN {{ r.vlan }}</span>{% endif %}{% if r.guest %} <span class="pill partial">guest</span>{% endif %}{% endif %}</td>
+  <td class="wrap small">{% if r.kind == "device" %}{{ r.detail }}{% if r.state %} <span class="pill {{ 'ok' if r.state == 'online' else 'failed' }}">{{ r.state }}</span>{% endif %}{% else %}
+    {% if r.type %}<span class="pill {{ 'info' if r.type == 'wireless' else 'ok' }}">{{ r.type }}</span> {% endif %}{{ r.connection }}
+    {% if r.satisfaction is not none %} · <span title="UniFi experience score">{{ r.satisfaction }} %</span>{% endif %}{% endif %}</td>
+  <td class="small">{% if r.uptime_s %}{{ r.uptime_s | duration }}{% endif %}</td>
+  <td class="small mono">{% if r.rx is not none %}↓ {{ r.rx | bytes }}<br>↑ {{ r.tx | bytes }}{% endif %}</td>
+  <td class="small">{% if r.last_seen %}<time datetime="{{ r.last_seen }}">{{ r.last_seen[:16] | replace("T", " ") }}</time>{% endif %}{% if r.first_seen %}<div class="muted">since {{ r.first_seen[:10] }}</div>{% endif %}</td>
+</tr>
+{% else %}<tr><td colspan="8" class="muted">Nothing matches.</td></tr>{% endfor %}

@@ -1,0 +1,35 @@
+{# Topology → Network board (ADR-045): UniFi devices, their ports and their clients. #}
+<p class="muted small">{{ net.devices | length }} UniFi devices · {{ net.clients }} clients{% if net.unknown %} · <a href="/unknown">{{ net.unknown }} unknown</a>{% endif %} · details per client on <a href="/ips">IP addresses</a>.</p>
+<div class="nb-grid">
+{% for d in net.devices %}
+<section class="nb-dev role-{{ d.role }}" aria-labelledby="nbd-{{ loop.index }}">
+  <header class="nb-head">
+    <span class="dot st-{{ 'running' if d.state == 'online' else 'failed' }}" aria-hidden="true"></span>
+    <div><h2 id="nbd-{{ loop.index }}"><a href="/entity?key={{ d.key | urlencode }}">{{ d.name }}</a></h2>
+      <span class="muted small">{{ d.role }} · {{ d.model or "" }}{% if d.ip %} · {{ d.ip }}{% endif %}{% if d.firmware %} · fw {{ d.firmware }}{% endif %}</span></div>
+    {% if d.downlinks %}<span class="muted small nb-down">feeds {{ d.downlinks | join(", ") }}</span>{% endif %}
+  </header>
+  {% if d.ports %}
+  <ol class="nb-ports" aria-label="Ports">
+    {% for p in d.ports %}
+    <li class="nb-port{{ ' up' if p.up }}{{ ' used' if p.clients }}" title="Port {{ p.idx }}{% if p.speed %} · {{ p.speed }} Mbps{% endif %}{% if p.poe %} · PoE{% endif %}">
+      <span class="nb-port-n">{{ p.idx }}</span>
+      <span class="nb-port-who">{% for r in p.clients[:2] %}<a href="/entity?key={{ r.key | urlencode }}">{{ r.machine or r.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if p.clients | length > 2 %} +{{ p.clients | length - 2 }}{% endif %}{% if not p.clients and p.up %}<span class="muted">link up</span>{% endif %}</span>
+      {% if p.speed %}<span class="nb-port-speed">{{ (p.speed // 1000) ~ "G" if p.speed >= 1000 else p.speed ~ "M" }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% endif %}
+  {% if d.wired_unknown_port %}<p class="small"><span class="muted">Wired, port unknown:</span> {% for r in d.wired_unknown_port %}<a href="/entity?key={{ r.key | urlencode }}">{{ r.machine or r.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+  {% if d.wireless %}
+  <ul class="nb-wifi" aria-label="Wireless clients">
+    {% for r in d.wireless %}
+    <li><a href="/entity?key={{ r.key | urlencode }}">{{ r.machine or r.name }}</a>{% if r.unknown %} <span class="pill partial">unknown</span>{% endif %}
+      <span class="muted small">{{ r.ip or "" }}{% if r.vendor %} · {{ r.vendor }}{% endif %}</span>
+      {% if r.signal is not none %}<span class="nb-sig{{ ' weak' if r.signal < -70 }}">{{ r.signal }} dBm</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% elif d.role == "ap" %}<p class="muted small">No wireless clients.</p>{% endif %}
+</section>
+{% else %}<p class="muted">No UniFi data yet. Add your console on <a href="/targets">Targets</a>.</p>{% endfor %}
+</div>

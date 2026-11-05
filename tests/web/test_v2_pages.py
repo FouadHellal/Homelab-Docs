@@ -167,12 +167,12 @@ def test_entity_page_has_running_panel(web: TestClient) -> None:
 
 
 def test_ips_page_grouped(web: TestClient) -> None:
-    body = web.get("/ips").text
+    body = web.get("/ips?source=seen").text
     assert "link-local / container-network addresses hidden" in body
     assert "show them" in body
-    every = web.get("/ips?everything=true").text
+    every = web.get("/ips?source=seen&everything=true").text
     assert "Hide link-local" in every
-    partial = web.get("/ips?q=10.0.30", headers={"HX-Request": "true"})
+    partial = web.get("/ips?source=seen&q=10.0.30", headers={"HX-Request": "true"})
     assert "10.0.30.41" in partial.text
 
 

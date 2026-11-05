@@ -6,6 +6,7 @@ firewall; clients for every lab machine plus unknown devices.
 """
 
 import copy
+import hashlib
 import uuid
 from typing import Any
 
@@ -142,10 +143,22 @@ def render(s: dict[str, Any], mac: Any) -> dict[str, Any]:
     # Classic client list: switch port of every wired client (ADR-037), fixed per client.
     classic = []
     for c in s["clients"]:
-        row = {"mac": c["mac"] or mac(c["name"]), "is_wired": c["type"] == "WIRED"}
+        h = int(hashlib.sha1(c["name"].encode()).hexdigest()[:6], 16)
+        row = {"mac": c["mac"] or mac(c["name"]), "is_wired": c["type"] == "WIRED", "hostname": c["name"],
+               "oui": "Proxmox Server Solutions GmbH" if c["type"] == "WIRED" else "Espressif Inc.",
+               "network": "Servers" if c["type"] == "WIRED" else "IoT", "vlan": 20 if c["type"] == "WIRED" else 30,
+               "ip": c["ip"], "uptime": 86400 + h % 600000, "satisfaction": 90 + h % 10,
+               "first_seen": 1735689600 + h % 1000000, "last_seen": 1793750000,
+               "tx_bytes": h * 1024, "rx_bytes": h * 4096, "tx_rate": 1000000, "rx_rate": 1000000,
+               "is_guest": False, "use_fixedip": c["type"] == "WIRED", "fixed_ip": c["ip"],
+               "note": "door code 1234 ATLASFAKE"}  # fmt: skip
         if c["type"] == "WIRED":
             sw = next(d["n"] for d in s["devices"] if d["name"] == c["via"])
-            row |= {"sw_mac": gw_mac(sw), "sw_port": SWITCH_PORTS[c["name"]]}
+            row |= {"sw_mac": gw_mac(sw), "sw_port": SWITCH_PORTS[c["name"]], "wired_rate_mbps": 1000}
+        else:
+            ap = next(d["n"] for d in s["devices"] if d["name"] == c["via"])
+            row |= {"essid": "homelab-iot", "ap_mac": gw_mac(ap), "radio": "ng", "channel": 6,
+                    "signal": -48 - h % 30, "tx_rate": 72200, "rx_rate": 65000}  # fmt: skip
         classic.append(row)
     rec["/proxy/network/api/s/default/stat/sta"] = {"status": 200, "body": {"meta": {"rc": "ok"},
                                                                         "data": classic}}  # fmt: skip

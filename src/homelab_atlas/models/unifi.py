@@ -73,6 +73,27 @@ class UnifiClient(Fact):
     #: Switch port of a wired client, from the classic client list (ADR-037); None if unknown.
     uplink_port: int | None = None
     connected_at: str | None = None
+    #: From the classic client list (ADR-046): what the UniFi UI shows per client.
+    hostname: str | None = None
+    vendor: str | None = None
+    network: str | None = None
+    vlan: int | None = None
+    ssid: str | None = None
+    ap_mac: str | None = None
+    radio: str | None = None
+    channel: int | None = None
+    signal_dbm: int | None = None
+    satisfaction: int | None = None
+    tx_rate_kbps: int | None = None
+    rx_rate_kbps: int | None = None
+    wired_rate_mbps: int | None = None
+    tx_bytes: int | None = None
+    rx_bytes: int | None = None
+    uptime_s: int | None = None
+    first_seen: str | None = None
+    last_seen: str | None = None
+    fixed_ip: str | None = None
+    guest: bool | None = None
 
 
 class UnifiSiteFacts(Fact):

@@ -647,3 +647,22 @@ th[data-sort]:focus-visible { outline: 2px solid var(--accent); outline-offset: 
 .pb-guest-foot { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
 .pb-guest[hidden] { display: none; }
 @media (max-width: 640px) { .pb-meter { grid-template-columns: 52px 1fr; } .pb-meter-v { grid-column: 2; } }
+
+/* ---------------------------------------------------------------- Network board (ADR-045) */
+.nb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 16px; }
+.nb-dev { border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: var(--card); }
+.nb-dev.role-gateway { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+.nb-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.nb-head h2 { margin: 0; font-size: 16px; } .nb-head h2 a { color: inherit; }
+.nb-down { margin-left: auto; text-align: right; }
+.nb-ports { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
+.nb-port { display: grid; grid-template-columns: 26px 1fr auto; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--code); font-size: 12px; opacity: .55; }
+.nb-port.up { opacity: 1; border-color: color-mix(in srgb, var(--ok) 40%, var(--line)); }
+.nb-port.used { background: color-mix(in srgb, var(--ok) 8%, var(--code)); }
+.nb-port-n { font-family: var(--mono); font-weight: 600; text-align: center; }
+.nb-port-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nb-port-speed { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.nb-wifi { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.nb-wifi li { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; padding: 4px 0; border-bottom: 1px dashed var(--line); }
+.nb-sig { margin-left: auto; font-family: var(--mono); font-size: 11.5px; color: var(--ok); } .nb-sig.weak { color: var(--warn); }

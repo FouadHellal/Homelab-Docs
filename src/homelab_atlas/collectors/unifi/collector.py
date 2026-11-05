@@ -79,17 +79,17 @@ class _Run:
         self.c, self.r, self.source, self.classic = client, result, source, classic
         self.sem = asyncio.Semaphore(DETAIL_CONCURRENCY)
 
-    async def switch_ports(self, ref: str) -> tuple[dict[str, int], str]:
-        """Wired client -> switch port from the classic API. Never fails the run: the classic
-        API is unofficial, and a key may be refused there (ADR-037)."""
+    async def switch_ports(self, ref: str) -> tuple[dict[str, int], dict[str, dict[str, Any]], str]:
+        """Wired client -> switch port, and per-client details, from the classic API. Never
+        fails the run: the classic API is unofficial, and a key may be refused (ADR-037/046)."""
         if self.classic is None:
-            return {}, "unavailable"
+            return {}, {}, "unavailable"
         try:
             async with self.sem:
                 body = (await self.classic.get(ep.CLASSIC_STA, {"site_name": ref})).json()
         except (HttpStatusError, TransportError, SecurityRefusal, ValueError):
-            return {}, "unavailable"
-        return parse.classic_ports(body), "classic"
+            return {}, {}, "unavailable"
+        return parse.classic_ports(body), parse.classic_details(body), "classic"
 
     async def pages(
         self, endpoint: Endpoint, vars_: Mapping[str, str] | None = None
@@ -176,7 +176,7 @@ class _Run:
             return [x for i in items or [] if (x := fn(i)) is not None]
 
         ref = parse._s(site.get("internalReference"), 64) or sid
-        ports, port_source = await self.switch_ports(ref)
+        ports, client_info, port_source = await self.switch_ports(ref)
         facts = UnifiSiteFacts(
             name=parse._s(site.get("name"), 128) or ref,
             reference=ref,
@@ -191,7 +191,7 @@ class _Run:
             policies=keep(policies, parse.policy),
             acl_rules=keep(acl, parse.acl_rule),
             wans=keep(wans, parse.wan),
-            clients=keep(clients, lambda c: parse.client(c, mac_by_id, ports)),
+            clients=keep(clients, lambda c: parse.client(c, mac_by_id, ports, client_info)),
             switch_ports=port_source,
         )
         skey = f"unifi:site:{self.source}/{ref}"

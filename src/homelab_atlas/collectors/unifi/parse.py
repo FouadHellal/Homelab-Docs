@@ -1,5 +1,6 @@
 """Parse Integration API objects into facts. Fields per OpenAPI v10.6.106; tolerant of absence."""
 
+from datetime import UTC, datetime
 from typing import Any
 
 from homelab_atlas.collectors.linux_ssh.parse import norm_ip, norm_mac
@@ -136,13 +137,17 @@ def wan(w: dict[str, Any]) -> Wan | None:
 
 
 def client(
-    c: dict[str, Any], mac_by_id: dict[str, str], ports: dict[str, int] | None = None
+    c: dict[str, Any],
+    mac_by_id: dict[str, str],
+    ports: dict[str, int] | None = None,
+    details: dict[str, dict[str, Any]] | None = None,
 ) -> UnifiClient | None:
     mac = norm_mac(c.get("macAddress"))
     if mac is None:
         return None
     ip = _s(c.get("ipAddress"), 64)
     return UnifiClient(
+        **(details or {}).get(mac, {}),
         mac=mac,
         name=_s(c.get("name"), 128),
         ip=norm_ip(ip) if ip else None,
@@ -151,6 +156,55 @@ def client(
         uplink_port=(ports or {}).get(mac),
         connected_at=_s(c.get("connectedAt"), 64),
     )
+
+
+def _int(v: Any, lo: int, hi: int) -> int | None:
+    if isinstance(v, bool) or not isinstance(v, int | float):
+        return None
+    n = int(v)
+    return n if lo <= n <= hi else None
+
+
+def _epoch(v: Any) -> str | None:
+    n = _int(v, 946684800, 4102444800)  # 2000..2100
+    return datetime.fromtimestamp(n, UTC).isoformat() if n is not None else None
+
+
+def classic_details(body: Any) -> dict[str, dict[str, Any]]:
+    """MAC -> what the UniFi UI shows about a client, from a classic `stat/sta` answer
+    (ADR-046). Typed, range-checked and capped; free-text notes are never kept."""
+    data = body.get("data") if isinstance(body, dict) else None
+    out: dict[str, dict[str, Any]] = {}
+    big = 1 << 62
+    for c in data if isinstance(data, list) else []:
+        if not isinstance(c, dict) or (mac := norm_mac(c.get("mac"))) is None:
+            continue
+        wired = c.get("is_wired") is True
+        fixed = _s(c.get("fixed_ip"), 64) if c.get("use_fixedip") is True else None
+        row: dict[str, Any] = {
+            "hostname": _s(c.get("hostname"), 128),
+            "vendor": _s(c.get("oui"), 64),
+            "network": _s(c.get("network"), 64),
+            "vlan": _int(c.get("vlan"), 0, 4094),
+            "ssid": None if wired else _s(c.get("essid"), 64),
+            "ap_mac": None if wired else norm_mac(c.get("ap_mac")),
+            "radio": None if wired else _s(c.get("radio"), 8),
+            "channel": None if wired else _int(c.get("channel"), 1, 233),
+            "signal_dbm": None if wired else _int(c.get("signal"), -120, 0),
+            "satisfaction": _int(c.get("satisfaction"), 0, 100),
+            "tx_rate_kbps": _int(c.get("tx_rate"), 0, 100_000_000),
+            "rx_rate_kbps": _int(c.get("rx_rate"), 0, 100_000_000),
+            "wired_rate_mbps": _int(c.get("wired_rate_mbps"), 0, 400_000) if wired else None,
+            "tx_bytes": _int(c.get("tx_bytes"), 0, big),
+            "rx_bytes": _int(c.get("rx_bytes"), 0, big),
+            "uptime_s": _int(c.get("uptime"), 0, 1 << 40),
+            "first_seen": _epoch(c.get("first_seen")),
+            "last_seen": _epoch(c.get("last_seen")),
+            "fixed_ip": norm_ip(fixed) if fixed else None,
+            "guest": c.get("is_guest") if isinstance(c.get("is_guest"), bool) else None,
+        }
+        out[mac] = {k: v for k, v in row.items() if v is not None}  # port: classic_ports
+    return out
 
 
 def classic_ports(body: Any) -> dict[str, int]:

@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Topology{% endblock %}
-{% block head %}{% if view != "board" %}<script src="/static/vendor/cytoscape.min.js" nonce="{{ nonce }}" defer></script>
+{% block head %}{% if view not in ("board", "net") %}<script src="/static/vendor/cytoscape.min.js" nonce="{{ nonce }}" defer></script>
 <script src="/static/topology.js?v={{ asset_v }}" nonce="{{ nonce }}" defer></script>{% endif %}{% endblock %}
 {% block main %}
 <div class="topo-head">
   <nav class="tabs">
-    {% for v, label in [("board", "Proxmox"), ("physical", "Network"), ("vlan", "VLANs"), ("logical", "Proxmox graph")] %}
+    {% for v, label in [("board", "Proxmox"), ("net", "Network"), ("vlan", "VLANs"), ("logical", "Proxmox graph"), ("physical", "Network graph")] %}
     <a href="/topology?view={{ v }}"{% if v == view %} aria-current="page"{% endif %}>{{ label }}</a>
     {% endfor %}
   </nav>
-  {% if view != "board" %}<div class="topo-tools" role="toolbar" aria-label="Topology tools">
+  {% if view not in ("board", "net") %}<div class="topo-tools" role="toolbar" aria-label="Topology tools">
     <span class="search-wrap"><input type="search" id="topo-search" placeholder="Find a machine, IP, app…  ( / )" maxlength="64" autocomplete="off"><span id="topo-count" class="muted small" aria-live="polite"></span></span>
     {% if view == "logical" %}
     <label class="toggle" title="Docker containers inside each machine (C)"><input type="checkbox" id="topo-containers"> Containers</label>
@@ -43,6 +43,8 @@
 {% endif %}
 {% if view == "board" %}
 {% include "_pve_board.html" %}
+{% elif view == "net" %}
+{% include "_net_board.html" %}
 {% else %}
 <div class="topo-wrap">
   <div id="cy" class="cy" data-src="/api/topology?view={{ view }}" data-view="{{ view }}" role="img" aria-label="{{ view }} topology graph"></div>

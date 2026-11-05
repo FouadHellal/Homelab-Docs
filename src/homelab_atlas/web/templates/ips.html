@@ -4,14 +4,25 @@
 <header class="page-head">
   <div>
     <h1>IP addresses</h1>
-    <p class="muted">One row per device: every address, MAC and network it was seen with.
-      {% if g.hidden and not everything %}{{ g.hidden }} link-local / container-network addresses hidden: <a href="/ips?everything=true{{ '&amp;q=' ~ q | urlencode if q }}">show them</a>.{% elif everything %}<a href="/ips{{ '?q=' ~ q | urlencode if q }}">Hide link-local and container networks</a>.{% endif %}</p>
+    <nav class="tabs small"><a href="/ips"{% if source == "unifi" %} aria-current="page"{% endif %}>From UniFi</a><a href="/ips?source=seen"{% if source == "seen" %} aria-current="page"{% endif %}>Everything atlas saw</a></nav>
+    {% if source == "unifi" %}
+    <p class="muted">Every client and UniFi device as your UniFi console reports it{% if u.total %} ({{ u.total }}){% endif %}: address, vendor, network, how it is connected, traffic. Unknown devices are the ones no atlas machine explains.</p>
+    {% else %}
+    <p class="muted">One row per device: every address, MAC and network it was seen with (SSH, Proxmox, UniFi, ARP tables).
+      {% if g.hidden and not everything %}{{ g.hidden }} link-local / container-network addresses hidden: <a href="/ips?everything=true{{ '&amp;q=' ~ q | urlencode if q }}">show them</a>.{% elif everything %}<a href="/ips?source=seen{{ '&amp;q=' ~ q | urlencode if q }}">Hide link-local and container networks</a>.{% endif %}</p>
+    {% endif %}
   </div>
   <form class="inline" method="get" action="/ips" hx-get="/ips" hx-target="#rows" hx-trigger="input changed delay:300ms from:#q" hx-push-url="true">
-    <input id="q" name="q" value="{{ q }}" placeholder="Filter by IP, MAC, name, VLAN" maxlength="64" type="search" class="wide-search">
+    <input id="q" name="q" value="{{ q }}" placeholder="Filter by IP, MAC, name, vendor, SSID, VLAN" maxlength="64" type="search" class="wide-search">
+    <input type="hidden" name="source" value="{{ source }}">
     {% if everything %}<input type="hidden" name="everything" value="true">{% endif %}
   </form>
 </header>
+{% if source == "unifi" %}
+<table class="data ip-unifi"><thead><tr><th>Device</th><th>IP</th><th>MAC / vendor</th><th>Network</th><th>Connection</th><th>Uptime</th><th>Traffic</th><th>Last seen</th></tr></thead>
+<tbody id="rows">{% include "_unifi_ip_rows.html" %}</tbody></table>
+{% else %}
 <table class="data ip-groups"><thead><tr><th>Device</th><th>Addresses</th><th>MAC</th><th>Network</th><th>Seen by</th></tr></thead>
 <tbody id="rows">{% include "_ip_groups_rows.html" %}</tbody></table>
+{% endif %}
 {% endblock %}
