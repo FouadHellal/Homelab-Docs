@@ -71,7 +71,11 @@
     <dt>Last contact</dt><dd>{% if st and st.last_ok_at %}<time datetime="{{ st.last_ok_at.isoformat() }}">{{ st.last_ok_at | ago }}</time>{% else %}<span class="muted">never</span>{% endif %}
       {% if st and st.last_error %}<span class="pill failed">{{ st.last_error }}</span>{% endif %}</dd>
     <dt>Ticket feed</dt><dd>{% if st and st.last_feed_at %}read {{ st.last_feed_at | ago }} (cursor {{ st.feed_cursor }}){% else %}<span class="muted">not read yet</span>{% endif %}</dd>
+    <dt>Last check</dt><dd>{% if st and st.last_tick_at %}<time datetime="{{ st.last_tick_at.isoformat() }}">{{ st.last_tick_at | ago }}</time> <span class="muted small">(every minute)</span>{% else %}<span class="pill partial">never</span> <span class="muted small">needs <code>atlas serve --schedule</code> and a saved token</span>{% endif %}</dd>
   </dl>
+  {% if tset.incidents and not taskora.links %}
+  <p class="small" role="status">{% if taskora.open_unsent %}{{ taskora.open_unsent | length }} open incident(s) not sent yet: an incident becomes a ticket once it has lasted {{ taskora.send_after_min }} minutes.{% else %}No open incidents, so nothing to send. A ticket appears when atlas finds a problem that lasts {{ taskora.send_after_min }} minutes: an API source failing, a machine that stops answering, a stopped VM set to start at boot, an unhealthy container, a full disk, a NAS pool or Jellyfin problem. <em>Send a test incident</em> checks the path without creating a ticket.{% endif %}</p>
+  {% endif %}
   <div class="actions">
     <button type="button" class="small" hx-post="/integrations/taskora/test" hx-vals='{"what": "health"}' hx-target="#taskora-result">Test connection</button>
     <button type="button" class="small ghost" hx-post="/integrations/taskora/test" hx-vals='{"what": "incident"}' hx-target="#taskora-result">Send a test incident</button>

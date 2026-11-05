@@ -333,7 +333,7 @@ def test_incidents_table_is_migrated(tmp_path: Path) -> None:
     with rt.sessions() as s:
         assert s.execute(select(Incident)).all() == []
         version = s.connection().exec_driver_sql("select version_num from alembic_version").scalar()
-    assert version == "0007"
+    assert version == "0008"
 
 
 def test_pool_without_redundancy_is_not_an_incident(tmp_path: Path) -> None:

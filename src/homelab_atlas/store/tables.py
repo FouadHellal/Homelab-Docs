@@ -241,6 +241,8 @@ class TaskoraState(Base):
     feed_cursor: Mapped[int] = mapped_column(Integer, default=0)
     last_ok_at: Mapped[datetime | None] = mapped_column(default=None)
     last_feed_at: Mapped[datetime | None] = mapped_column(default=None)
+    #: Last time the scheduler checked for something to send (even when there was nothing).
+    last_tick_at: Mapped[datetime | None] = mapped_column(default=None)
     last_error: Mapped[str | None] = mapped_column(String(256), default=None)
     inventory_at: Mapped[datetime | None] = mapped_column(default=None)
     inventory_mode: Mapped[str | None] = mapped_column(String(16), default=None)

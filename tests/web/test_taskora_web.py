@@ -12,6 +12,7 @@ from pydantic import SecretStr
 from homelab_atlas.engine import taskora as tk
 from homelab_atlas.lab import load_lab
 from homelab_atlas.runtime import Runtime
+from homelab_atlas.security.errors import SecretError
 from homelab_atlas.security.vault import Vault
 from homelab_atlas.store.tables import TaskoraLink, TaskoraState
 from homelab_atlas.web import auth
@@ -45,7 +46,7 @@ def _app(rt: Runtime, tmp_path: Path, fake: FakeTaskora | None = None) -> TestCl
             return None
         try:
             token = vault.resolve(tk.TOKEN_SECRET)
-        except KeyError:
+        except (KeyError, SecretError):
             token = None
         return tk.TaskoraClient(settings, token, MemoryAudit(), transport=httpx.MockTransport(fake))
 
@@ -176,3 +177,20 @@ def test_demo_lab_is_read_only(rt: Runtime, tmp_path: Path) -> None:
         )
         assert r.status_code == 403
         assert c.post("/integrations/taskora/test", headers=h).status_code == 404
+
+
+def test_idle_integration_explains_itself(rt: Runtime, tmp_path: Path) -> None:
+    """Configured, enabled, nothing linked yet: the page says when atlas last checked and why
+    no ticket exists, instead of looking broken."""
+    tk.save_settings(
+        tmp_path, tk.TaskoraSettings(url="https://taskora.example.test", incidents=True)
+    )
+    with rt.sessions() as s:
+        s.query(TaskoraLink).delete()
+        s.query(TaskoraState).delete()
+        s.commit()
+    with _app(rt, tmp_path, FakeTaskora()) as c:
+        _login(c)
+        page = c.get("/integrations").text
+        assert "Last check" in page and "never" in page
+        assert "not sent yet" in page and "5 minutes" in page

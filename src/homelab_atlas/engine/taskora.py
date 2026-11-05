@@ -974,6 +974,8 @@ async def tick(
     """Stage, deliver, read the feed. Commits as it goes; never raises TaskoraError."""
     now = now or utcnow()
     out = {"staged": 0, "delivered": 0, "failed": 0, "feed": 0}
+    _state(s).last_tick_at = now
+    s.commit()
     if client.settings.incidents:
         out["staged"] = stage(s, inv, client.settings, atlas_url=atlas_url, now=now)
         s.commit()
@@ -1030,8 +1032,15 @@ def status(s: Session) -> dict[str, Any]:
                 "pending": link.sent_revision < link.revision,
             }
         )
+    waiting = [
+        i
+        for i in s.scalars(select(Incident).where(Incident.resolved_at.is_(None)))
+        if i.id not in {r["link"].incident_id for r in rows}
+    ]
     return {
         "state": st,
+        "open_unsent": waiting,
+        "send_after_min": int(SEND_AFTER.total_seconds() // 60),
         "links": rows,
         "pending": sum(1 for r in rows if r["pending"]),
         "failing": sum(1 for r in rows if r["link"].error_kind),
