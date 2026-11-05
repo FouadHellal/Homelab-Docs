@@ -850,3 +850,22 @@ missing on four hosts. Three fixes follow.
   incident, or not sustained 5 minutes yet), so an idle integration no longer looks broken.
   Taskora records a contact on atlas's health check and records refusals (integration
   disabled, no company) as the visible last error, even before its settings were ever saved.
+
+## ADR-044 Cloned VMs sharing a machine-id (v11.1)
+**Context.** On the owner's lab 12 SSH targets produced 7 Linux hosts: Jellyfin, Rustdesk,
+Taskora, Utilis-VM and Zabbix-VM were scanned successfully but appeared nowhere (no host page,
+no CMDB entry, no incidents). They are clones of one Proxmox template that kept its
+`/etc/machine-id`, so they all reported `host:<machine-id>`, and the engine's "first report
+wins" rule (meant for two Proxmox nodes reporting the same peer) silently dropped the others.
+
+**Decision.** Before persisting, `engine.scan.separate_shared_ids` gives each machine-id one
+owner: the target that already owns it in the database (if still configured), otherwise the
+first reporter by name. Every other target reporting that machine-id is identified by name
+(`host:name:<target>`, the existing form for hosts without a machine-id), together with the
+keys derived from it (containers, compose projects, parents). The run keeps its status and
+carries a note naming the other machine and the fix (`rm /etc/machine-id &&
+systemd-machine-id-setup`). A scan of one clone alone never takes the key over. Once the owner
+fixes the machine-id, the host gets its own `host:<new id>` key on the next scan.
+
+**Rejected.** Keying every host by name (loses identity across renames for everyone);
+suffixing the target onto every key (needless churn for the common unique case).

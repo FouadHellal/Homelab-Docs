@@ -2,6 +2,15 @@
 
 All notable changes. Versions follow [SemVer](https://semver.org/); dates are UTC.
 
+## 0.11.1 (2026-11-05)
+
+### Fixed
+- **Cloned VMs disappeared**: machines sharing a template's `/etc/machine-id` were all but one
+  dropped from every scan. Each is now kept (identified by name) and its scan status says which
+  machine it shares the id with and how to regenerate it.
+- Integrations → Taskora: an *Apply CMDB sync* while Taskora's CMDB mode is off is shown as
+  what it was (a preview, nothing written), with how to switch it on.
+
 ## 0.11.0 (2026-11-05)
 
 ### Added
