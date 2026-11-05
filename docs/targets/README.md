@@ -20,7 +20,7 @@ Debian/Ubuntu only (systemd ≥ 246, iproute2, util-linux, dpkg).
 ## SHA-256
 
 ```
-73c85851e8b8835babe5365b47d91eed7d76d42b996c0b6a655ae0eb0e02f607  atlas-probe
+f39c4ace8df9c3e7e7c72a70da1bd96badcd80d36776de3811c37d7e204b3c2d  atlas-probe
 087c913c7221b4d422240c462f93015b63c0330a7d428145eed6220b58f94e17  atlas-probe-gate
 7a65535ffae70a5122dcd3ae4c8b9ac4a4ae652d77530e6ceada6531eb4babea  authorized_keys.example
 20d0814153db2db6615040b6125d8077e831e0dede629351342ab7ef073f539a  sudoers.atlas-ro
