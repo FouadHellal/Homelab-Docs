@@ -57,6 +57,61 @@ class ScanSummary:
 
 
 DIGEST_MAX: Final = 15
+#: SSH collectors whose host facet carries the machine-id identity (SPEC §5).
+HOST_COLLECTORS: Final = frozenset({"linux-ssh", "docker", "pi"})
+
+
+def _machine_key(key: str) -> bool:
+    return key.startswith("host:") and not key.startswith("host:name:")
+
+
+def separate_shared_ids(
+    s: Session, results: Sequence[CollectorResult], targets: Sequence[str]
+) -> None:
+    """Cloned VMs often keep the template's /etc/machine-id, so several targets report the
+    same `host:<machine-id>` and all but one would be dropped. One target owns the key: the
+    one that already does (if it is still configured), else the first by name. The others are
+    identified by name (`host:name:<target>`, as for hosts without a machine-id), with their
+    containers and compose projects, and their run says why (ADR-044)."""
+    reporters: dict[str, set[str]] = {}
+    for r in results:
+        if r.collector in HOST_COLLECTORS:
+            for f in r.facets:
+                if f.kind == "linux-host" and _machine_key(f.entity_key):
+                    reporters.setdefault(f.entity_key, set()).add(r.target)
+    configured = set(targets)
+    owners: dict[str, str] = {}
+    for key, who in reporters.items():
+        stored = s.scalars(
+            select(Facet.target).where(
+                Facet.entity_key == key, Facet.collector.in_(HOST_COLLECTORS)
+            )
+        ).all()
+        known = [t for t in stored if t and t in configured]
+        if known and (len(who) > 1 or known[0] not in who):
+            owners[key] = known[0]
+        elif len(who) > 1:
+            owners[key] = min(who)
+    for r in results:
+        if r.collector not in HOST_COLLECTORS:
+            continue
+        for key, owner in owners.items():
+            if owner == r.target or not any(f.entity_key == key for f in r.facets):
+                continue
+            alias = f"host:name:{r.target}"
+            for f in r.facets:
+                f.entity_key = f.entity_key.replace(key, alias, 1)
+                if f.parent_key:
+                    f.parent_key = f.parent_key.replace(key, alias, 1)
+            note = (
+                f"machine-id shared with {owner} (a cloned VM?): identified by name instead. "
+                "To fix it on this machine: "
+                "sudo rm /etc/machine-id && sudo systemd-machine-id-setup"
+            )
+            if note not in r.errors:
+                r.errors.append(note)
+
+
 #: First discovery is not news: these only describe what atlas found, not what changed.
 DIGEST_SKIP: Final = frozenset({"entity.added"})
 
@@ -157,6 +212,7 @@ class ScanEngine:
         # same fact (two SSH nodes of a 3+ node cluster both see a third node as a peer).
         written: set[tuple[str, str]] = set()
         with self._sessions() as s:
+            separate_shared_ids(s, results, [h.name for h in self._ctx.inventory.hosts])
             for result in sorted(results, key=lambda r: (r.collector, r.target)):
                 summary.runs.append(result)
                 summary.events.extend(self._persist(s, scan_id, result, written))
