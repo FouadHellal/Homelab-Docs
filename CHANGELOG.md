@@ -2,6 +2,25 @@
 
 All notable changes. Versions follow [SemVer](https://semver.org/); dates are UTC.
 
+## 0.11.0 (2026-11-05)
+
+### Added
+- **New incident types** (and so Taskora tickets and n8n messages): an API source (Proxmox,
+  UniFi, NAS) failing twice in a row, a VM/LXC set to start at boot that is stopped, an
+  unhealthy / crash-looping / failed container, a filesystem at 90 % or more.
+- Integrations → Taskora shows **Last check** and explains why nothing was sent yet.
+
+### Fixed
+- **Docker 29 hosts showed no containers** ("containers: missing or failed"): the probe's
+  inspect template tolerates omitted fields, and falls back to `docker ps` with the reason
+  when inspect still fails. Probe 1.5.0.
+- The daily summary no longer lists snap, overlay or tmpfs mounts as "nearly full".
+
+### Upgrade notes
+- Migration 0008 (one column). Hosts using the **installed probe** (SSH key + probe): reinstall
+  `docs/targets/atlas-probe` (`atlas doctor` flags the old one). Password / SSH-key logins need
+  nothing.
+
 ## 0.10.0 (2026-11-03)
 
 ### Added

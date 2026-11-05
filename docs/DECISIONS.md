@@ -816,3 +816,37 @@ database. Contract: Taskora `docs/integrations/atlas.md` (v1), Taskora 0.3.0.
 - A queue of every intermediate state: more storage and ordering problems for no benefit.
 - Shared database or direct DB reads: ruled out by the brief and by both apps' threat models.
 - Auto-merging CIs: ambiguous identity always goes to a person.
+
+## ADR-043 More incident types, Docker 29 probe fix, integration heartbeat (v11)
+**Context.** After 0.10.0 the owner reported "tickets aren't coming". On their atlas (read
+through the MCP server) there was no open incident at all: the only one ever recorded had
+resolved before the integration existed. Meanwhile real problems were visible but were not
+incidents: the Proxmox API source failing with HTTP 403 for hours, and Docker containers
+missing on four hosts. Three fixes follow.
+
+**Decisions.**
+- **More incident conditions** (`engine/incidents.py`), still evaluated after every scan from
+  data atlas already holds, same deduplication/cooldown/5-minute rule:
+  `source.failed:<collector>:<source>` (Proxmox, UniFi or NAS API failed twice in a row; title
+  carries the first error), `guest.stopped:<guest>` (onboot VM/LXC not running, templates
+  excluded), `container.down:<host>/<container>` (unhealthy; restarting or 5+ restarts while
+  not running; exited non-zero under an always/unless-stopped policy) and
+  `disk.full:<host>:<mount>` (≥ 90 %: notice, ≥ 95 %: warning; snaps, overlays, tmpfs, /run,
+  /dev, /sys and Docker's own layers ignored). Facts from a collector whose latest run failed
+  are stale and open nothing: the failing source is the incident. Failed systemd units are not
+  incidents (too many harmless ones on stock Ubuntu, e.g. `fwupd-refresh`).
+- **Docker 29 probe fix (probe 1.5.0).** Docker 29 / API 1.52+ omits empty objects from
+  container inspect; one missing parent made the whole `docker inspect --format` fail
+  ("containers: missing or failed") while images, networks and volumes still worked. The
+  template now enters every nested object with `{{with}}`. If inspect still fails, the probe
+  emits the first 300 bytes of Docker's error (reduced to plain characters) as
+  `containers_error` and falls back to `docker ps --format '{{json .}}'` (`containers_ps`):
+  name, image, state, health, labels, published ports and network names, never environment.
+  The error is reported in the scan status, so the cause is visible instead of guessed.
+  Password and SSH-key logins stream the probe, so they pick this up on the next scan; hosts
+  with the installed probe need the new `docs/targets/atlas-probe`.
+- **Heartbeat.** `taskora_state.last_tick_at` (migration 0008) records every scheduler check;
+  the Integrations page shows *Last check* and, when nothing has been sent, why (no open
+  incident, or not sustained 5 minutes yet), so an idle integration no longer looks broken.
+  Taskora records a contact on atlas's health check and records refusals (integration
+  disabled, no company) as the visible last error, even before its settings were ever saved.

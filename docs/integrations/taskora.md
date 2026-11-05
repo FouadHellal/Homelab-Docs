@@ -38,6 +38,15 @@ Design: [ADR-042](../DECISIONS.md). API contract (owned by Taskora):
 For a self-signed Taskora put its CA (PEM) in the config dir and enter its file name in *CA
 file*. Plain `http://` is allowed only to a private LAN IP with the box ticked.
 
+## When does a ticket appear?
+
+Only for an **incident** that has lasted 5 minutes. atlas opens incidents for: an API source
+(Proxmox, UniFi, NAS) failing twice in a row; a machine whose SSH scan fails twice; a VM/LXC set
+to start at boot that is stopped; an unhealthy, crash-looping or failed container; a filesystem
+at 90 % or more; a degraded NAS pool; Jellyfin down or its media storage missing. No incident,
+no ticket: the Integrations page then says *No open incidents, so nothing to send* and shows
+when atlas last checked.
+
 ## Operations
 
 - **Deliveries** (Integrations page): *delivered* with the revision, *waiting*, or the error.
