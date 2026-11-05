@@ -457,42 +457,60 @@ def build_server(
 
     @mcp.tool(annotations=READ_ONLY, structured_output=True)
     def proxmox_overview() -> dict[str, Any]:
-        """Proxmox nodes with their VMs and LXCs (state, vmid, cores, memory, IP, OS, bridge),
-        plus totals: guests, running, vCPU and RAM allocated."""
+        """Proxmox nodes with their VMs and LXCs (state, vmid, CPU %, RAM and disk used, IP,
+        OS), node figures (CPU, RAM, storage), totals, and `problem` when the Proxmox API fails
+        (guests are then unknown; `inferred` ones are placed by the switch port they share)."""
         log.info("mcp.tool", tool="proxmox_overview", sanitized=sanitize_key is not None)
         with sessions() as s:
             cards = views.machines(s)
-        nodes: dict[str, dict[str, Any]] = {}
-        for m in cards:
-            if m["kind"] == "pve-node":
-                info = m.get("pve") or {}
-                nodes[m["short"]] = {
-                    "node": m["short"],
-                    "ip": (m["ips"] or [None])[0],
-                    "version": info.get("version"),
-                    "cpu_cores": info.get("cpu_cores"),
-                    "memory_gb": info.get("memory_gb"),
-                    "guests": [],
-                }
-        for m in cards:
-            if m["kind"] in ("pve-vm", "pve-lxc"):
-                row = {
-                    "name": m["short"],
-                    "type": KIND_WORDS[m["kind"]],
-                    "vmid": m["vmid"],
-                    "status": m["status"],
-                    "cores": m["cores"],
-                    "memory_mb": m["memory_mb"],
-                    "ip": (m["ips"] or [None])[0],
-                    "os": m["os"],
-                    "bridges": sorted({n["bridge"] for n in m["nics"] if n["bridge"]}),
-                    "documented_over_ssh": m["documented"],
-                }
-                nodes.setdefault(m["node"] or "?", {"node": m["node"] or "?", "guests": []})
-                nodes[m["node"] or "?"]["guests"].append(row)
-        for n in nodes.values():
-            n["guests"].sort(key=lambda g: g["vmid"] or 0)
-        return out({"totals": views.proxmox_summary(cards), "nodes": list(nodes.values())})
+            board = views.proxmox_board(s)
+
+        by_key = {m["key"]: m for m in cards}
+
+        def guest(g: dict[str, Any]) -> dict[str, Any]:
+            u = g["usage"]
+            nics = by_key.get(g["key"], {}).get("nics") or []
+            return {
+                "name": g["name"],
+                "type": g["type"],
+                "vmid": g["vmid"],
+                "status": g["status"],
+                "ip": g["ip"],
+                "os": g["os"],
+                "vcpu": u.get("vcpu"),
+                "cpu_pct": u.get("cpu_pct"),
+                "mem_used_mb": (u.get("mem_used") or 0) >> 20 or None,
+                "mem_max_mb": (u.get("mem_max") or 0) >> 20 or None,
+                "disk_used_gb": round((u.get("disk_used") or 0) / 2**30, 1) or None,
+                "disk_max_gb": round((u.get("disk_max") or 0) / 2**30, 1) or None,
+                "apps": g["apps"],
+                "bridges": sorted({n["bridge"] for n in nics if n.get("bridge")}),
+                "inferred": g.get("inferred", False),
+                "documented_over_ssh": g["documented"],
+            }
+
+        nodes = [
+            {
+                "node": b["node"]["short"],
+                "ip": (b["node"]["ips"] or [None])[0],
+                "seen": b["source"],
+                "version": (b["node"].get("pve") or {}).get("version"),
+                "cpu": b["cpu"],
+                "memory": b["mem"],
+                "rootfs": b["rootfs"],
+                "storages": b["storages"],
+                "guests": [guest(g) for g in b["guests"]],
+            }
+            for b in board["nodes"]
+        ]
+        return out(
+            {
+                "totals": views.proxmox_summary(cards),
+                "problem": board["problem"],
+                "nodes": nodes,
+                "node_unknown": [guest(g) for g in board["unplaced"]],
+            }
+        )
 
     @mcp.tool(annotations=READ_ONLY, structured_output=True)
     def scan_status() -> dict[str, Any]:
