@@ -35,6 +35,13 @@ part() {
     printf -- '\n--%s rc %d\n' "$B" "$rc"
 }
 
+emit() {
+    # emit <name> <rc> <text>: a part whose output was captured beforehand.
+    printf -- '--%s part %s\n' "$B" "$1"
+    printf '%s' "$3"
+    printf -- '\n--%s rc %d\n' "$B" "$2"
+}
+
 safe_name() {
     # Only plain file names become part names; anything odd is skipped, not echoed.
     case "$1" in
@@ -125,7 +132,9 @@ case "$section" in
         # Allowlisted fields only: env VALUES never leave this host (names only). Lists and
         # maps end with a null/"_" sentinel so templates never emit dangling commas.
         # shellcheck disable=SC2016  # {{...}} are Go templates for docker, not shell.
-        ctr_tpl='{"id":{{json .Id}},"name":{{json .Name}},"image":{{json .Config.Image}},"image_id":{{json .Image}},"status":{{json .State.Status}},"exit_code":{{json .State.ExitCode}},"started_at":{{json .State.StartedAt}},"health":{{if .State.Health}}{{json .State.Health.Status}}{{else}}null{{end}},"restart_count":{{json .RestartCount}},"restart_policy":{{json .HostConfig.RestartPolicy.Name}},"labels":{{json .Config.Labels}},"env_names":[{{range .Config.Env}}{{json (index (split . "=") 0)}},{{end}}null],"cmd":{{json .Config.Cmd}},"entrypoint":{{json .Config.Entrypoint}},"healthcheck":{{if .Config.Healthcheck}}{{json .Config.Healthcheck.Test}}{{else}}null{{end}},"user":{{json .Config.User}},"privileged":{{json .HostConfig.Privileged}},"network_mode":{{json .HostConfig.NetworkMode}},"cap_add":{{json .HostConfig.CapAdd}},"readonly_rootfs":{{json .HostConfig.ReadonlyRootfs}},"ports":{{json .NetworkSettings.Ports}},"networks":{ {{range $k, $v := .NetworkSettings.Networks}}{{json $k}}:{"ip":{{json $v.IPAddress}},"ip6":{{json $v.GlobalIPv6Address}},"mac":{{json $v.MacAddress}}},{{end}}"_":null},"mounts":[{{range .Mounts}}{"type":{{json .Type}},"source":{{json .Source}},"destination":{{json .Destination}},"name":{{json .Name}},"rw":{{json .RW}}},{{end}}null]}'
+        # Every nested object is entered with {{with}}: newer Docker releases omit empty ones
+        # (Docker 29 / API 1.52+), and a missing parent would otherwise fail the whole inspect.
+        ctr_tpl='{"id":{{json .Id}},"name":{{json .Name}},"image_id":{{json .Image}},"restart_count":{{json .RestartCount}},{{with .Config}}"image":{{json .Image}},"labels":{{json .Labels}},"env_names":[{{range .Env}}{{json (index (split . "=") 0)}},{{end}}null],"cmd":{{json .Cmd}},"entrypoint":{{json .Entrypoint}},"healthcheck":{{with .Healthcheck}}{{json .Test}}{{else}}null{{end}},"user":{{json .User}},{{end}}{{with .State}}"status":{{json .Status}},"exit_code":{{json .ExitCode}},"started_at":{{json .StartedAt}},"health":{{with .Health}}{{json .Status}}{{else}}null{{end}},{{end}}{{with .HostConfig}}"restart_policy":{{with .RestartPolicy}}{{json .Name}}{{else}}null{{end}},"privileged":{{json .Privileged}},"network_mode":{{json .NetworkMode}},"cap_add":{{json .CapAdd}},"readonly_rootfs":{{json .ReadonlyRootfs}},{{end}}{{with .NetworkSettings}}"ports":{{json .Ports}},"networks":{ {{range $k, $v := .Networks}}{{json $k}}:{"ip":{{json $v.IPAddress}},"ip6":{{json $v.GlobalIPv6Address}},"mac":{{json $v.MacAddress}}},{{end}}"_":null},{{end}}"mounts":[{{range .Mounts}}{"type":{{json .Type}},"source":{{json .Source}},"destination":{{json .Destination}},"name":{{json .Name}},"rw":{{json .RW}}},{{end}}null]}'
         img_tpl='{"id":{{json .Id}},"tags":{{json .RepoTags}},"digests":{{json .RepoDigests}},"created":{{json .Created}},"size":{{json .Size}},"arch":{{json .Architecture}}}'
         net_tpl='{"id":{{json .Id}},"name":{{json .Name}},"driver":{{json .Driver}},"scope":{{json .Scope}},"internal":{{json .Internal}},"ipv6":{{json .EnableIPv6}},"subnets":[{{range .IPAM.Config}}{"subnet":{{json .Subnet}},"gateway":{{json .Gateway}}},{{end}}null]}'
         part engine docker version --format '{{.Server.Version}} {{.Server.APIVersion}}'
@@ -136,7 +145,16 @@ case "$section" in
             [ "${#id}" -eq 64 ] && ctr_ids+=("$id")
         done < <(timeout "$TMO" docker ps -a -q --no-trunc 2>/dev/null)
         if [ "${#ctr_ids[@]}" -gt 0 ]; then
-            part containers docker inspect --type container --format "$ctr_tpl" -- "${ctr_ids[@]}"
+            if ctr_out="$(timeout "$TMO" docker inspect --type container --format "$ctr_tpl" -- "${ctr_ids[@]}" 2>/dev/null)"; then
+                emit containers 0 "$ctr_out"
+            else
+                # Say why (first 300 bytes of docker's error, reduced to plain characters), then
+                # fall back to `docker ps`: fewer details, but the containers are still known.
+                why="$(timeout "$TMO" docker inspect --type container --format "$ctr_tpl" -- "${ctr_ids[@]}" 2>&1 >/dev/null | head -c 300 | tr -cd 'A-Za-z0-9 ._:<>"=/,()-')"
+                emit containers_error 0 "${why:-unknown error}"
+                part containers_ps docker ps -a --no-trunc --format '{{json .}}'
+                emit containers 1 ""
+            fi
         else
             part containers true
         fi

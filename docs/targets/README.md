@@ -1,6 +1,6 @@
 # Target setup artifacts (generated, review before installing)
 
-Probe version **1.4.0**. Regenerate with `uv run atlas targets render`.
+Probe version **1.5.0**. Regenerate with `uv run atlas targets render`.
 Do not edit these files: the collector pins the probe's SHA-256 and `atlas doctor`
 reports any mismatch. Step-by-step instructions:
 [docs/SETUP-TARGETS.md](../SETUP-TARGETS.md).
@@ -20,8 +20,8 @@ Debian/Ubuntu only (systemd ≥ 246, iproute2, util-linux, dpkg).
 ## SHA-256
 
 ```
-95e3577dcb2283574a354e92217d97699560b0bb334c58336701413500f6df15  atlas-probe
-fcc555e679baba6d3078061c703258919752aee048319ed6c116f72f6108343d  atlas-probe-gate
+73c85851e8b8835babe5365b47d91eed7d76d42b996c0b6a655ae0eb0e02f607  atlas-probe
+087c913c7221b4d422240c462f93015b63c0330a7d428145eed6220b58f94e17  atlas-probe-gate
 7a65535ffae70a5122dcd3ae4c8b9ac4a4ae652d77530e6ceada6531eb4babea  authorized_keys.example
-328d349b9d65ef79d37d9bfbbc57490d1f436f41c121888aed5cb7e785dfa157  sudoers.atlas-ro
+20d0814153db2db6615040b6125d8077e831e0dede629351342ab7ef073f539a  sudoers.atlas-ro
 ```

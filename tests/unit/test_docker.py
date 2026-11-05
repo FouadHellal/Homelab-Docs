@@ -138,3 +138,40 @@ def test_parser_total(junk: str) -> None:
     parse_docker(
         frame(engine="1 1", containers=junk, images=junk, networks=junk, volumes=junk, compose=junk)
     )
+
+
+def test_inspect_failure_falls_back_to_docker_ps() -> None:
+    """Docker 29 hosts: when inspect fails, containers still appear (from `docker ps`)."""
+    ps = {
+        "ID": "b" * 64,
+        "Names": "netbox-docker-netbox-1",
+        "Image": "netboxcommunity/netbox:v4.4",
+        "State": "running",
+        "Status": "Up 3 days (healthy)",
+        "Labels": "com.docker.compose.project=netbox-docker,com.docker.compose.service=netbox",
+        "Ports": "0.0.0.0:8000->8080/tcp, [::]:8000->8080/tcp, 9000/tcp",
+        "Networks": "netbox-docker_default",
+    }
+    parsed = parse_docker(
+        frame(
+            engine="29.9.0 1.56",
+            containers=("", 1),
+            containers_error='template: :1:5: executing "" at <.X>: map has no entry for key "X"',
+            containers_ps=json.dumps(ps),
+            images="",
+            networks="",
+            volumes="",
+            compose="[]",
+        )
+    )
+    f = DockerHostFacts.model_validate(parsed.values)
+    [c] = f.containers
+    assert (c.name, c.status, c.health, c.compose_project) == (
+        "netbox-docker-netbox-1", "running", "healthy", "netbox-docker",
+    )  # fmt: skip
+    assert sorted((p.host_ip, p.host_port, p.container_port) for p in c.ports) == [
+        ("0.0.0.0", 8000, 8080),
+        ("::", 8000, 8080),
+    ]
+    assert [n.network for n in c.networks] == ["netbox-docker_default"]
+    assert any("docker inspect failed" in e and "map has no entry" in e for e in parsed.errors)

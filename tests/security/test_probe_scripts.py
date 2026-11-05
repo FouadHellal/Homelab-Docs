@@ -236,3 +236,38 @@ def test_frame_truncated_and_duplicates() -> None:
     assert not f.complete
     assert any("duplicate" in e for e in f.errors)
     assert any("truncated" in e for e in f.errors)
+
+
+DOCKER = shutil.which("docker")
+
+
+@needs_bash
+@pytest.mark.skipif(DOCKER is None or os.name == "nt", reason="needs a Docker engine (CI)")
+def test_probe_docker_section_reads_a_real_container(probe: Path) -> None:
+    """The container template runs against a real engine; env values never leave it."""
+    from homelab_atlas.collectors.docker.parse import parse_docker  # noqa: PLC0415
+
+    assert DOCKER is not None
+    name = f"atlas-probe-ci-{os.getpid()}"
+    started = subprocess.run(  # noqa: S603
+        [DOCKER, "run", "-d", "--rm", "--name", name, "-p", "127.0.0.1:18080:80",
+         "--label", "com.docker.compose.project=atlas-ci",
+         "--label", "com.docker.compose.service=web",
+         "-e", "TOKEN_ATLASFAKE=value-ATLASFAKE", "busybox:1.36", "sleep", "120"],
+        capture_output=True, text=True, timeout=180, check=False,
+    )  # fmt: skip
+    if started.returncode != 0:
+        pytest.skip(f"docker cannot run a container here: {started.stderr[:200]}")
+    try:
+        res = run(probe, "docker")
+        assert res.returncode == 0, res.stderr
+        frame = parse_frame(res.stdout, ProbeSection.DOCKER)
+        assert "containers_error" not in frame.parts, frame.parts["containers_error"].content
+        parsed = parse_docker(frame)
+        c = next(x for x in parsed.values["containers"] if x.name == name)
+        assert c.status == "running" and c.compose_project == "atlas-ci"
+        assert [(p.host_port, p.container_port) for p in c.ports] == [(18080, 80)]
+        assert "TOKEN_ATLASFAKE" in c.env_names
+        assert b"value-ATLASFAKE" not in res.stdout
+    finally:
+        subprocess.run([DOCKER, "rm", "-f", name], capture_output=True, timeout=60, check=False)  # noqa: S603

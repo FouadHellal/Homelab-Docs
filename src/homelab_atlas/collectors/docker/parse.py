@@ -18,6 +18,11 @@ from homelab_atlas.models.docker import (
 )
 
 PORT_KEY_RE: Final = re.compile(r"(\d{1,5})/(tcp|udp|sctp)")
+#: `docker ps` port text: `0.0.0.0:8000->8080/tcp`, `[::]:8000->8080/tcp`, `8080/tcp` (unpublished).
+PS_PORT_RE: Final = re.compile(
+    r"(?:(\[[0-9a-fA-F:]*\]|[0-9.]*):)?(\d{1,5})->(\d{1,5})/(tcp|udp|sctp)"
+)
+PS_HEALTH_RE: Final = re.compile(r"\((healthy|unhealthy|health: starting)\)")
 DOCKER_SOCKETS: Final = frozenset({"/var/run/docker.sock", "/run/docker.sock"})
 COMPOSE_PROJECT = "com.docker.compose.project"
 COMPOSE_SERVICE = "com.docker.compose.service"
@@ -150,6 +155,34 @@ def _container(c: dict[str, Any]) -> Container | None:
     )
 
 
+def _from_ps(p: dict[str, Any]) -> dict[str, Any]:
+    """A `docker ps --format '{{json .}}'` row in the shape `_container` reads. Fallback only:
+    no env names, mounts, cmd or restart details."""
+    labels: dict[str, str] = {}
+    for item in str(p.get("Labels") or "").split(","):
+        k, sep, v = item.partition("=")
+        if sep and k:
+            labels[k[:256]] = v[:1024]
+    ports: dict[str, list[dict[str, str]]] = {}
+    for m in PS_PORT_RE.finditer(str(p.get("Ports") or "")):
+        host_ip = (m.group(1) or "0.0.0.0").strip("[]") or "::"  # noqa: S104
+        ports.setdefault(f"{m.group(3)}/{m.group(4)}", []).append(
+            {"HostIp": host_ip, "HostPort": m.group(2)}
+        )
+    health = PS_HEALTH_RE.search(str(p.get("Status") or ""))
+    names = str(p.get("Names") or "").split(",")[0]
+    return {
+        "id": p.get("ID"),
+        "name": names,
+        "image": p.get("Image"),
+        "status": p.get("State"),
+        "health": (health.group(1).replace("health: ", "") if health else None),
+        "labels": labels,
+        "ports": ports,
+        "networks": {n: {} for n in str(p.get("Networks") or "").split(",") if n},
+    }
+
+
 def parse_docker(frame: Frame) -> Parsed:
     out = Parsed()
     engine = (frame.text("engine") or "").split()
@@ -161,7 +194,14 @@ def parse_docker(frame: Frame) -> Parsed:
     out.values["api_version"] = engine[1][:16] if len(engine) > 1 else None
 
     containers: dict[str, Container] = {}
-    for raw in _lines(frame, "containers", out):
+    rows = _lines(frame, "containers", out) if "containers_error" not in frame.parts else []
+    if "containers_error" in frame.parts:
+        why = (frame.text("containers_error") or "").strip()[:200] or "unknown error"
+        rows = [_from_ps(p) for p in _lines(frame, "containers_ps", out)]
+        out.errors.append(
+            f"containers: docker inspect failed ({why}); fewer details from docker ps"
+        )
+    for raw in rows:
         c = _container(raw)
         if c is not None and c.key not in containers:
             containers[c.key] = c
