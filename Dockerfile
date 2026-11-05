@@ -2,7 +2,7 @@
 # atlas: multi-stage, digest-pinned, non-root, read-only-rootfs friendly (ADR-017).
 # Digests resolved 2026-10-18 from registry-1.docker.io and ghcr.io; Dependabot (docker) bumps them.
 
-FROM ghcr.io/astral-sh/uv:0.13.1@sha256:4a1f3666816dafadd20ceb71eac9a7d56d7ef30279f7d64048519ab901ada336 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.6@sha256:af22a52f5eafef3d78e551599d405c02df61919d18028f0cea8eda93bc9986d0 AS uv
 
 # ---------------------------------------------------------------- build
 FROM python:3.12-slim-trixie@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1 AS build
