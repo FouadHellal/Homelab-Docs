@@ -25,7 +25,12 @@ FROM python:3.12-slim-trixie@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512
 LABEL org.opencontainers.image.title="atlas" \
       org.opencontainers.image.description="Read-only, agentless homelab inventory" \
       org.opencontainers.image.source="https://github.com/FouadHellal/Homelab-Docs"
-RUN groupadd --system --gid 10001 atlas \
+# Debian security fixes released after the pinned base digest (the Trivy gate fails on fixable
+# HIGH/CRITICAL, e.g. apt CVE-2026-109518 in 3.0.3), then the unprivileged user.
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get -y upgrade --no-install-recommends \
+ && apt-get clean \
+ && groupadd --system --gid 10001 atlas \
  && useradd --system --uid 10001 --gid atlas --no-create-home --home-dir /nonexistent \
       --shell /usr/sbin/nologin atlas \
  && mkdir -p /data /config \
