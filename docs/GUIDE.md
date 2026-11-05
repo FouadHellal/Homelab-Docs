@@ -128,6 +128,23 @@ With [Taskora](https://github.com/FouadHellal/Taskora) 0.3.0 or later, incidents
 tickets, technicians' acknowledgements come back to atlas, and atlas's machines reconcile with
 Taskora's CMDB. Setup and operations: [integrations/taskora.md](integrations/taskora.md).
 
+### Kubernetes / k3s (optional)
+
+Apply `docs/targets/kubernetes-readonly.yaml` on the cluster, then add it on **Targets →
+Kubernetes / k3s** with the token it creates (steps in
+[SETUP-TARGETS §6b](SETUP-TARGETS.md)). The **Kubernetes** page then lists nodes, every
+namespace's workloads with their pods (ready, restarts, why one is failing) and services; a
+crash-looping pod or a NotReady node opens an incident, and so a Taskora ticket.
+
+### Alert rules
+
+**Alert rules** (Activity) decides what becomes an incident, and so a Taskora ticket and an n8n
+message. Every rule shows what it would find right now. Change a rule's severity, thresholds and
+machines (globs such as `PVE*`, with exceptions), turn its ticket or message off, or add your
+own from any type: machines, Proxmox, containers and Kubernetes, network (UniFi device offline,
+unknown device, weak Wi-Fi), security (extra root account, unexpected open port, privileged
+container) and storage. Rules that tend to be noisy start switched off.
+
 ## Pages
 
 | Page | What's there |

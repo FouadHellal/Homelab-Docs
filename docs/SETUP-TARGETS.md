@@ -160,6 +160,21 @@ There is no official UNAS API. Choose one:
 
 No SSH to the UNAS: Ubiquiti discourages it, and atlas doesn't need it.
 
+## 6b. Kubernetes / k3s (optional, ADR-048)
+
+On a machine with `kubectl` access to the cluster:
+
+```bash
+kubectl apply -f docs/targets/kubernetes-readonly.yaml
+kubectl -n atlas get secret atlas-token -o jsonpath='{.data.token}' | base64 -d; echo
+```
+
+In atlas, **Targets → Kubernetes / k3s → add**: the API server address (`192.168.1.50` becomes
+`https://192.168.1.50:6443`), **Fetch certificate**, compare the fingerprint, tick the box, paste
+the token, Save, **Test connection**. The account may only get/list nodes, namespaces, pods,
+services, deployments, daemonsets and statefulsets; atlas itself calls only those lists and
+`/version`. Revoke it with `kubectl delete -f docs/targets/kubernetes-readonly.yaml`.
+
 ## 7. hosts.yaml
 
 `config/hosts.yaml`. Strict: unknown keys, duplicates and anything that looks like a secret

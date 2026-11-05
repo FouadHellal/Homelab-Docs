@@ -869,3 +869,94 @@ fixes the machine-id, the host gets its own `host:<new id>` key on the next scan
 
 **Rejected.** Keying every host by name (loses identity across renames for everyone);
 suffixing the target onto every key (needless churn for the common unique case).
+
+## ADR-045 Topology boards: Proxmox nodes with their guests, the UniFi network (v12)
+**Context.** The owner wanted each Proxmox node shown as a box with the VMs running on it and
+every figure atlas can get (CPU, RAM, storage), not a graph where guests and nodes mix; and the
+Command Center said "0 nodes, 0 VMs" on a lab with two nodes and a dozen VMs. Cause on that lab:
+the Proxmox API token lacks PVEAuditor (HTTP 403) and the SSH path cannot read `/etc/pve`
+(root-only on Proxmox, which ships without sudo), so atlas had no guest data and showed zero.
+
+**Decisions.**
+- **Proxmox board** (Topology's default tab, server-rendered HTML, no graph library): one box per
+  node (CPU threads and load, load average, RAM used/total and allocated to running guests, root
+  fs, every storage pool) and a tile per guest (state, VMID, IP, OS, CPU %, RAM used/max, disk
+  used/max, uptime, traffic, containers, apps, backup, documented). Figures come from
+  `/cluster/resources` (`mem`, `maxmem`, `disk`, `maxdisk`, `netin`, `netout`, `maxcpu`) and
+  `/nodes/{node}/status` (`memory.used`, `rootfs`, `swap`, `loadavg`), endpoints atlas already
+  reads (ADR-004); all volatile (never diffed). Filter by text and stopped state.
+- **Honest unknowns.** When every Proxmox API source fails, the Command Center counts the nodes
+  atlas sees over SSH and shows guests as "?" with the failure reason (not 0); the board says why
+  and gives the `pveum acl modify` command. Linux hosts whose NIC carries Proxmox's guest OUI
+  (`bc:24:11`) are placed on the node sharing their UniFi switch port, marked *inferred*
+  (dashed); without a single match they go to "Proxmox guests, node unknown". A machine is
+  never shown twice.
+- **Network board**: every UniFi device by role (gateway, switches, APs), the uplink chain,
+  switch port grids (state, speed, PoE, the client on each port) and AP wireless clients sorted
+  by signal. The previous graphs stay as tabs ("Proxmox graph", "Network graph", "VLANs").
+
+## ADR-046 IP addresses from UniFi, with client details (v12)
+**Context.** The owner found the IP list noisy (Docker bridge and ARP addresses) and wanted the
+UniFi client list with as much detail as UniFi gives.
+
+**Decisions.**
+- `/ips` defaults to *From UniFi*: every client and UniFi device. "Everything atlas saw" (SSH,
+  Proxmox, ARP) stays one tab away.
+- The classic client list atlas already reads for switch ports (`stat/sta`, ADR-037) also
+  supplies, per client: hostname, vendor (`oui`), network, VLAN, SSID, AP, radio, channel,
+  signal (dBm), experience score, rates, wired speed, traffic, uptime, first/last seen, fixed IP,
+  guest flag. Each field is typed and range-checked (VLAN 0–4094, signal −120–0, epoch
+  2000–2100…); wireless fields are dropped for wired clients; free-text `note` is never kept.
+  Same endpoint, same key, GET only; client data stays volatile.
+
+## ADR-047 Alert rules (v12)
+**Context.** "Configure a lot of types of alerts which I can manage, add and edit, network,
+security…; make sure everything gets opened as a ticket in Taskora."
+
+**Decisions.**
+- `engine/alerts.py`: *rule types* (detectors over facts atlas already holds, typed
+  parameters) and *rules* (instances: enabled, severity, parameters, machine filter as globs plus
+  exceptions, `ticket` and `notify` switches). 23 types in seven groups: machines (unreachable,
+  disk full, failed unit), Proxmox (guest stopped, node offline, storage full, guest memory,
+  no backup), containers (down, unpinned image, Kubernetes pod failing / node not ready),
+  network (UniFi device offline, unknown device optionally per VLAN, weak Wi-Fi), security
+  (extra uid-0 account, unexpected port on all interfaces with an allow-list, privileged or
+  Docker-socket container), storage/media (NAS pool, Jellyfin down / storage / space) and atlas
+  itself (a source failing).
+- Built-in rules keep the historical incident kinds as ids, so keys (`<rule id>:<subject>`) and
+  therefore open incidents and Taskora tickets are unchanged. Noisy or posture-type rules are
+  off by default (one click to enable). Own rules and changes live in `<data>/alerts.yaml`
+  (only differences from the built-ins are stored); unknown types or bad entries are skipped.
+- The Alerts page shows, for every rule, what it finds right now (a live dry run), lets the
+  owner edit thresholds/filters/switches, add a rule from any type, delete own rules and reset
+  built-ins. CSRF-protected; read-only on the demo lab.
+- Taskora (`stage`) skips incidents of rules with `ticket` off (already linked ones keep
+  updating); n8n skips rules with `notify` off. A detector that raises never hides the others.
+  Facts from a failing collector are stale and open nothing (ADR-043).
+
+## ADR-048 Kubernetes / k3s, read-only (v12)
+**Context.** "atlas should see k3s pods; I have none, make it possible for people who do."
+
+**Decisions.**
+- Source kind `k8s` (Targets → Kubernetes / k3s): API address (`https://host:6443`), a pinned
+  server certificate (k3s has its own CA; same fetch-and-confirm flow as Proxmox), a
+  ServiceAccount token (JWT-shaped, in the vault).
+- Collector `kubernetes`: eight fixed GET endpoints through `ReadOnlyHttpClient` — `/version`
+  (the only fatal call) and the cluster-wide lists of nodes, namespaces, pods, services,
+  deployments, daemonsets and statefulsets with a numeric `limit` (2000; a server-side
+  `continue` is reported as truncated). Secrets, ConfigMaps, logs, exec, attach, port-forward
+  and proxy are not registered and are refused by the client. A 403 on one list is a section
+  error. Fields per the Kubernetes API reference (Pod, Node and Deployment v1 pages, read
+  2026-11-05), all read as optional; pod env, commands and volumes are never read.
+- Facts: nodes (ready, roles, kubelet, OS, kernel, runtime, IP, CPU, memory, cordoned, pressure
+  conditions), workloads with images and ready/desired, services (type, cluster IP, ports with
+  node ports, load-balancer IPs) and pods (volatile: phase, readiness, restarts, the reason a
+  container is broken, node, IP, owner resolved through ReplicaSets, images). Events: workload
+  added/removed, image changed, node added/removed, Kubernetes upgraded. Alert rules
+  `k8s.pod` and `k8s.node` (ADR-047) turn failing pods and NotReady nodes into tickets.
+- `docs/targets/kubernetes-readonly.yaml` is generated from the collector's allowlist by
+  `atlas targets render`: a namespace, a ServiceAccount without automounted token, a ClusterRole
+  with get/list on exactly those seven resources plus `/version`, its binding, and a token
+  Secret. A test fails if it ever grants more.
+- Known limitation: generated pod-name suffixes sometimes look random enough for the redactor's
+  entropy rule, which then masks the name. The redactor errs on the side of hiding.

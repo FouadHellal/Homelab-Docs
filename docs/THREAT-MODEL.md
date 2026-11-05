@@ -56,6 +56,14 @@ Status: draft for approval (M0a). Method: assets → trust boundaries (ARCHITECT
 | D | Taskora down floods retries | per-incident backoff with jitter up to 1 h, stop at first failure per tick, 30 min for configuration errors | `test_retries_back_off_and_errors_are_classified` |
 | R | who acknowledged what | Taskora audits every ticket change with the token name; atlas records `Taskora: <name>` and logs every UI action | e2e test |
 
+### B6: atlas → Kubernetes API (ADR-048)
+| Threat | Example | Controls | Test |
+|---|---|---|---|
+| I | token or pod env leaks cluster secrets | Secrets/ConfigMaps/logs/exec not registered; pod env, commands, volumes never parsed; token in the vault | `test_kubernetes.py` (refusals, fixture env value never stored) |
+| E | token grants more than reading | generated RBAC: get/list on seven resources + `/version`, no automount, test pins it | `test_generated_rbac_is_read_only_and_matches_the_allowlist` |
+| S | MITM on the API | pinned certificate (fetch + confirm), no plain HTTP | targets tests |
+| D | huge clusters | `limit=2000`, truncation reported, 16 MB answer cap | parser tests |
+
 ### B1: user → atlas (UI, MCP HTTP)
 | Threat | Example | Controls | Test |
 |---|---|---|---|

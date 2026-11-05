@@ -2,6 +2,26 @@
 
 All notable changes. Versions follow [SemVer](https://semver.org/); dates are UTC.
 
+## 0.12.0 (2026-11-05)
+
+### Added
+- **Proxmox board** (Topology): one box per node with CPU, load, RAM, root fs and storage pools,
+  and a tile per guest with CPU %, RAM, disk, uptime, traffic, apps and backup state.
+- **Network board** (Topology): UniFi devices, switch ports with what is plugged in, Wi-Fi
+  clients by signal.
+- **IP addresses from UniFi**: every client with vendor, network/VLAN, fixed IP, connection
+  (switch port and speed, or SSID, AP, channel, signal, experience), traffic, uptime, first and
+  last seen. The previous list stays as a tab.
+- **Alert rules** (new page): 23 types (machines, Proxmox, containers, Kubernetes, network,
+  security, storage) to enable, tune, restrict to machines and add; each with its own Taskora
+  ticket and n8n switches and a live preview.
+- **Kubernetes / k3s** (read-only): nodes, workloads, pods, services; incidents for failing pods
+  and NotReady nodes; `docs/targets/kubernetes-readonly.yaml`.
+
+### Fixed
+- Command Center showed 0 Proxmox nodes and VMs when the Proxmox API fails: nodes seen over SSH
+  are counted and guests are shown as unknown with the reason.
+
 ## 0.11.1 (2026-11-05)
 
 ### Fixed
