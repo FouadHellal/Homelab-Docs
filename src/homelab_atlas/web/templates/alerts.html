@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Alert rules{% endblock %}
+{% macro fields(r, t) -%}
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <label>Name <input name="name" maxlength="80" value="{{ r.name if r else t.label }}"></label>
+  <label>Severity <select name="severity">{% for s in ("info", "notice", "warning") %}<option value="{{ s }}"{% if (r.severity if r else t.severity) == s %} selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+  {% set params = r.clean_params() if r else {} %}
+  {% for p in t.params %}
+  <label>{{ p.label }}{% if p.kind == "int" %} <input name="param_{{ p.name }}" inputmode="numeric" pattern="-?[0-9]{1,7}" value="{{ params.get(p.name, p.default) }}">
+    {% else %} <input name="param_{{ p.name }}" maxlength="400" placeholder="comma-separated" value="{{ (params.get(p.name, p.default)) | join(', ') }}">{% endif %}</label>
+  {% endfor %}
+  <label>Machines <span class="muted small">(names or globs, comma-separated; * = all)</span> <input name="match" maxlength="200" value="{{ r.match if r else '*' }}"></label>
+  <label>Except <input name="exclude" maxlength="200" value="{{ r.exclude if r else '' }}" placeholder="e.g. test-*, lab-vm"></label>
+  <div class="actions">
+    <label class="check"><input type="checkbox" name="enabled" value="1"{% if not r or r.enabled %} checked{% endif %}><span>Enabled</span></label>
+    <label class="check"><input type="checkbox" name="ticket" value="1"{% if not r or r.ticket %} checked{% endif %}><span>Create a Taskora ticket</span></label>
+    <label class="check"><input type="checkbox" name="notify" value="1"{% if not r or r.notify %} checked{% endif %}><span>Send an n8n message</span></label>
+  </div>
+{%- endmacro %}
+{% block main %}
+<header class="page-head"><div>
+  {% if msg %}<p class="card" role="status">{{ msg }}</p>{% endif %}
+  <h1>Alert rules</h1>
+  <p class="muted">What becomes an incident. An incident that lasts 5 minutes opens a Taskora ticket and sends an n8n message (each rule can turn either off), is updated while it lasts and resolved when it clears. Rules only read what atlas already collects; nothing runs on your machines.</p>
+</div></header>
+
+{% for label, rules in groups %}
+<section class="card" aria-labelledby="g-{{ loop.index }}">
+  <h2 id="g-{{ loop.index }}">{{ label }}</h2>
+  <ul class="rules">
+  {% for r in rules %}{% set t = by_type[r.type] %}{% set found = previews.get(r.id, []) %}
+  <li class="rule{{ ' off' if not r.enabled }}" id="r-{{ r.id }}">
+    <div class="rule-head">
+      <span class="sev {{ r.severity }}">{{ r.severity }}</span>
+      <strong>{{ r.name }}</strong>
+      {% if not r.builtin %}<span class="pill info">own rule</span>{% endif %}
+      {% if not r.enabled %}<span class="pill unknown">off</span>{% endif %}
+      {% if r.enabled and not r.ticket %}<span class="pill partial">no ticket</span>{% endif %}
+      {% if r.enabled and not r.notify %}<span class="pill partial">no message</span>{% endif %}
+      <span class="rule-now {{ 'hot' if found and r.enabled }}">{% if found %}{{ found | length }} now{% else %}quiet{% endif %}</span>
+    </div>
+    <p class="muted small">{{ t.description }}{% for k, v in r.clean_params().items() %} · {{ (t.params | selectattr("name", "equalto", k) | first).label }}: <code>{{ v | join(", ") if v is iterable and v is not string else v }}</code>{% endfor %}{% if r.match not in ("", "*") %} · on <code>{{ r.match }}</code>{% endif %}{% if r.exclude %} · except <code>{{ r.exclude }}</code>{% endif %}</p>
+    {% if found %}<ul class="plain small rule-found">{% for f in found[:4] %}<li>{{ f.title }}</li>{% endfor %}{% if found | length > 4 %}<li class="muted">+{{ found | length - 4 }} more</li>{% endif %}</ul>{% endif %}
+    {% if editable %}
+    <details class="rule-edit"><summary class="small">Edit</summary>
+      <form method="post" action="/alerts/save" class="target-form">
+        <input type="hidden" name="id" value="{{ r.id }}">
+        {{ fields(r, t) }}
+        <div class="actions"><button type="submit">Save</button></div>
+      </form>
+      <form method="post" action="/alerts/{{ r.id }}/delete" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button type="submit" class="ghost small">{{ "Reset to default" if r.builtin else "Delete this rule" }}</button></form>
+    </details>
+    {% endif %}
+  </li>
+  {% endfor %}
+  </ul>
+</section>
+{% endfor %}
+
+{% if editable %}
+<section class="card" aria-labelledby="add-h">
+  <h2 id="add-h">Add a rule</h2>
+  <p class="muted small">Start from a type, then set its thresholds and the machines it watches: for example "Disk nearly full" at 80 % on <code>PVE*</code> only, or "Unexpected open port" for your DMZ hosts.</p>
+  {% for t in types %}
+  <details class="rule-edit"><summary>{{ categories[t.category] }} · <strong>{{ t.label }}</strong> <span class="muted small">— {{ t.description }}</span></summary>
+    <form method="post" action="/alerts/save" class="target-form">
+      <input type="hidden" name="type" value="{{ t.id }}">
+      {{ fields(none, t) }}
+      <div class="actions"><button type="submit">Add rule</button></div>
+    </form>
+  </details>
+  {% endfor %}
+</section>
+{% else %}
+<p class="muted small">Read-only here (demo lab). On a real install, rules are changed on this page and stored in <code>alerts.yaml</code> in the data directory.</p>
+{% endif %}
+{% endblock %}

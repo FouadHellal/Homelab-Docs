@@ -28,6 +28,7 @@ from homelab_atlas.collectors.pi import PiCollector
 from homelab_atlas.collectors.proxmox.collector import ProxmoxCollector
 from homelab_atlas.collectors.unifi.collector import UnifiCollector
 from homelab_atlas.collectors.unifi.sitemanager import CLOUD_MIN_INTERVAL_S
+from homelab_atlas.engine import alerts
 from homelab_atlas.engine.notify import (
     TOKEN_SECRET,
     WebhookNotifier,
@@ -116,6 +117,7 @@ class Runtime:
     def open(cls, data_dir: Path, *, mode: str) -> "Runtime":
         engine = make_engine(data_dir / "atlas.db")
         migrate(engine)
+        alerts.configure(data_dir / alerts.RULES_FILE)
         return cls(
             data_dir=data_dir,
             sessions=session_factory(engine),

@@ -37,7 +37,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from homelab_atlas.engine import media
+from homelab_atlas.engine import alerts, media
 from homelab_atlas.engine.notify import clean_token
 from homelab_atlas.inventory.hosts import Inventory
 from homelab_atlas.redact import Redactor
@@ -705,6 +705,8 @@ def stage(
     Taskora already knows them (no ticket for something that ended before it was sent)."""
     now = now or utcnow()
     links = {lk.incident_id: lk for lk in s.scalars(select(TaskoraLink))}
+    # Rules with "create a ticket" off (ADR-047); incidents already linked keep updating.
+    no_ticket = {r.id for r in alerts.load_rules() if not r.ticket}
     candidates = [
         i
         for i in s.scalars(
@@ -712,7 +714,12 @@ def stage(
                 (Incident.resolved_at.is_(None)) | (Incident.resolved_at >= now - KEEP_RESOLVED)
             )
         )
-        if (i.id in links) or (i.resolved_at is None and now - i.opened_at >= SEND_AFTER)
+        if (i.id in links)
+        or (
+            i.resolved_at is None
+            and now - i.opened_at >= SEND_AFTER
+            and i.key.split(":", 1)[0] not in no_ticket
+        )
     ]
     if not candidates:
         return 0

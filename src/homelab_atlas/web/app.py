@@ -36,7 +36,7 @@ from sqlalchemy.orm import Session
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from homelab_atlas import __version__
-from homelab_atlas.engine import apps, incidents, media
+from homelab_atlas.engine import alerts, apps, incidents, media
 from homelab_atlas.engine import taskora as tk
 from homelab_atlas.engine.notify import (
     SETTINGS_FILE,
@@ -255,6 +255,8 @@ def create_app(cfg: WebConfig) -> FastAPI:
     templates.env.filters["duration"] = _duration
     templates.env.finalize = _finalize  # None -> "", True/False -> yes/no, everywhere
     apps.configure_custom(cfg.data_dir / apps.CUSTOM_FILE if cfg.data_dir else None)
+    if cfg.data_dir is not None:
+        alerts.configure(cfg.data_dir / alerts.RULES_FILE)
     throttle = LoginThrottle(*LOGIN_RATE)
 
     @asynccontextmanager
@@ -938,6 +940,110 @@ def create_app(cfg: WebConfig) -> FastAPI:
         svc.set_secret(tk.TOKEN_SECRET, None, "ui.taskora.delete")
         log.info("taskora.removed", by=user.username)
         return RedirectResponse("/integrations?msg=Taskora+integration+removed.", 303)
+
+    # ------------------------------------------------------------------ alert rules (ADR-047)
+
+    def _rules_path() -> Path | None:
+        return cfg.data_dir / alerts.RULES_FILE if cfg.data_dir is not None else None
+
+    @app.get("/alerts", response_class=HTMLResponse)
+    def alerts_page(request: Request, s: DB, user: User) -> Response:
+        rules = alerts.load_rules(_rules_path())
+        inv = cfg.targets.inventory()[0] if cfg.targets is not None else None
+        previews: dict[str, list[alerts.Finding]] = {}
+        if inv is not None:
+            now = datetime.now(UTC)
+            for p in alerts.evaluate(s, inv, _intervals(), now, rules, include_disabled=True):
+                previews[p.rule.id] = p.findings
+        groups = [
+            (label, [r for r in rules if alerts.BY_TYPE[r.type].category == cat])
+            for cat, label in alerts.CATEGORIES.items()
+        ]
+        editable = cfg.targets is not None and cfg.targets.editable and cfg.data_dir is not None
+        return page(
+            request,
+            "alerts.html",
+            user,
+            groups=[(label, rs) for label, rs in groups if rs],
+            types=alerts.TYPES,
+            by_type=alerts.BY_TYPE,
+            categories=alerts.CATEGORIES,
+            previews=previews,
+            editable=editable,
+            msg=request.query_params.get("msg", "")[:200],
+        )
+
+    @app.post("/alerts/save")
+    async def alerts_save(request: Request, user: Csrf) -> Response:
+        path = _rules_path()
+        if path is None or cfg.targets is None or not cfg.targets.editable:
+            raise HTTPException(403, "read-only here")
+        form = await request.form()
+
+        def val(name: str, limit: int = 200) -> str:
+            v = form.get(name)
+            return str(v)[:limit].strip() if isinstance(v, str) else ""
+
+        rules = alerts.load_rules(path)
+        by_id = {r.id: r for r in rules}
+        rid, kind = val("id", 48), val("type", 48)
+        current = by_id.get(rid)
+        if current is not None:
+            kind = current.type
+        rtype = alerts.BY_TYPE.get(kind)
+        if rtype is None:
+            raise HTTPException(400, "unknown rule type")
+        params: dict[str, int | list[str]] = {}
+        for p in rtype.params:
+            raw = val(f"param_{p.name}", 400)
+            if p.kind == "int":
+                if raw and not raw.lstrip("-").isdigit():
+                    return RedirectResponse(
+                        f"/alerts?{urlencode({'msg': f'{p.label}: a number'})}", 303
+                    )
+                params[p.name] = int(raw) if raw else int(p.default)  # type: ignore[arg-type]
+            else:
+                params[p.name] = [x.strip() for x in raw.split(",") if x.strip()][:50]
+        name = val("name", 80) or rtype.label
+        try:
+            rule = alerts.Rule(
+                id=rid if current is not None else alerts.new_rule_id(name, set(by_id)),
+                name=name,
+                type=kind,
+                enabled=bool(val("enabled")),
+                severity=val("severity", 8) or rtype.severity,  # type: ignore[arg-type]
+                params=params,
+                match=val("match") or "*",
+                exclude=val("exclude"),
+                ticket=bool(val("ticket")),
+                notify=bool(val("notify")),
+                builtin=current.builtin if current is not None else False,
+            )
+        except ValueError as exc:
+            msg = "; ".join(str(e.get("msg")) for e in getattr(exc, "errors", lambda: [])()[:2])
+            return RedirectResponse(f"/alerts?{urlencode({'msg': msg or 'invalid rule'})}", 303)
+        by_id[rule.id] = rule
+        alerts.save_rules(path, list(by_id.values()))
+        log.info("alerts.saved", rule=rule.id, enabled=rule.enabled, by=user.username)
+        return RedirectResponse(
+            f"/alerts?{urlencode({'msg': f'Saved {rule.name}.'})}#r-{rule.id}", 303
+        )
+
+    @app.post("/alerts/{rule_id}/delete")
+    def alerts_delete(user: Csrf, rule_id: str) -> Response:
+        path = _rules_path()
+        if path is None or cfg.targets is None or not cfg.targets.editable:
+            raise HTTPException(403, "read-only here")
+        rules = alerts.load_rules(path)
+        keep = [r for r in rules if r.id != rule_id or r.builtin]
+        if len(keep) == len(rules) and not any(r.id == rule_id and r.builtin for r in rules):
+            raise HTTPException(404, "no such rule")
+        # A built-in rule is reset to its defaults; an own rule is removed.
+        defaults = {r.id: r for r in alerts.builtin_rules()}
+        keep = [defaults.get(r.id, r) if r.id == rule_id else r for r in keep]
+        alerts.save_rules(path, keep)
+        log.info("alerts.deleted", rule=rule_id, by=user.username)
+        return RedirectResponse("/alerts?msg=Done.", 303)
 
     # ------------------------------------------------------------------ incidents (ADR-041)
 
