@@ -129,7 +129,9 @@
 
   {% set inv = taskora.state.inventory_result if taskora.state else None %}
   {% if inv %}
-  <h3 id="taskora-inv">Last CMDB sync <span class="muted small">({{ taskora.state.inventory_mode }}, {{ taskora.state.inventory_at | ago }}{% if inv.cmdbMode %}; Taskora CMDB mode: {{ inv.cmdbMode }}{% endif %})</span></h3>
+  <h3 id="taskora-inv">Last CMDB sync <span class="muted small">({{ taskora.state.inventory_mode }}, {{ taskora.state.inventory_at | ago }}{% if inv.cmdbMode %}; Taskora CMDB mode: {{ inv.cmdbMode.replace("_", " ") }}{% endif %})</span></h3>
+  {% if inv.cmdbMode == "off" %}<p class="small" role="status"><span class="pill partial">nothing written</span> Taskora's CMDB mode is <strong>off</strong>, so this was only a preview: no CI was linked or created. In Taskora, <em>Integrations → atlas → Settings → CMDB</em>: choose <em>Link to existing CIs</em> (or <em>Link, and create unmanaged infrastructure</em>), then apply again.</p>
+  {% elif taskora.state.inventory_mode == "preview" %}<p class="muted small">Preview: nothing was written in Taskora.</p>{% endif %}
   <p>{% for k, v in inv.stats.items() if v %}<span class="pill {{ 'failed' if k == 'conflict' else 'partial' if k in ('propose', 'unmatched') else 'ok' }}">{{ k }} {{ v }}</span> {% endfor %}</p>
   <table class="data">
     <thead><tr><th>Machine</th><th>Action</th><th>CI</th><th>Why</th></tr></thead>

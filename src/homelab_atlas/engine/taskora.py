@@ -950,7 +950,10 @@ async def inventory_sync(
     ]
     stats = {str(k)[:32]: int(v) for k, v in (res.get("stats") or {}).items() if isinstance(v, int)}
     st = _state(s)
-    st.inventory_at, st.inventory_mode = now, mode
+    # What Taskora actually did: an "apply" is only a preview while its CMDB mode is off.
+    done = res.get("mode")
+    st.inventory_at = now
+    st.inventory_mode = done if done in ("preview", "apply") else mode
     st.inventory_result = {
         "stats": stats,
         "plan": plan,

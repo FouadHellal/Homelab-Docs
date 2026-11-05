@@ -371,6 +371,22 @@ def test_inventory_preview_shape_and_relations(rt: Runtime) -> None:
     assert result["stats"]["create"] == len(body["entities"])
 
 
+def test_an_apply_while_taskora_cmdb_is_off_is_recorded_as_a_preview(rt: Runtime) -> None:
+    class Off(FakeTaskora):
+        def __call__(self, request: httpx.Request) -> httpx.Response:
+            res = super().__call__(request)
+            if request.url.path.endswith("/inventory"):
+                body = res.json() | {"mode": "preview", "cmdbMode": "off"}
+                return httpx.Response(200, json=body)
+            return res
+
+    with rt.sessions() as s:
+        result = asyncio.run(tk.inventory_sync(s, client(Off()), "apply"))
+        s.commit()
+        st = s.get_one(TaskoraState, 1)
+        assert st.inventory_mode == "preview" and result["cmdbMode"] == "off"
+
+
 def test_auto_inventory_applies_once_per_scan(rt: Runtime) -> None:
     fake = FakeTaskora()
     auto = SETTINGS.model_copy(update={"cmdb_auto": True, "incidents": False})
