@@ -31,6 +31,7 @@
  ["interface.added", "docker02: interface br-1a2b3c4d5e6f added"],
  ["ip.added", "mediatheque (LXC 201): 2001:db8:20::50/64 added"],
  ["ip.added", "mediatheque: 2001:db8:20::50/64 added to eth0"],
+ ["k8s.image_changed", "k3s (Kubernetes): apps/whoami now runs traefik/whoami:v1.11"],
  ["kernel.changed", "docker01: kernel 6.1.0-25-amd64 -> 6.1.0-26-amd64"],
  ["kernel.changed", "pve2 (PVE node): kernel 6.14.8-2-pve -> 6.14.11-1-pve"],
  ["kernel.changed", "pve2: kernel 6.14.8-2-pve -> 6.14.11-1-pve"],

@@ -17,6 +17,7 @@ from typing import Any
 
 import _docker  # sibling modules (script dir is on sys.path)
 import _jellyfin
+import _kubernetes
 import _proxmox
 import _unifi
 
@@ -464,6 +465,11 @@ def hosts_yaml(hosts: list[dict[str, Any]]) -> str:
         "      credential: jellyfin_api_key",
         "      allow_http: true",
         "      host: media01",
+        "  k8s:",
+        "    - name: k3s",
+        '      url: "https://k3s.lab.example:6443"',
+        "      credential: k3s_atlas_token",
+        "      tls: { ca_file: k3s-ca.pem }",
         "hosts:",
     ]
     for h in [*hosts, host("ghost01", "10.0.20.99")]:
@@ -515,7 +521,8 @@ def main() -> None:
         for name, rec in (("homelab", _proxmox.render(pve[label])),
                           ("ucg", _unifi.render(ucg[label], mac)),
                           ("unas", _unifi.unas(label[-1])),
-                          ("media", _jellyfin.render(label[-1]))):
+                          ("media", _jellyfin.render(label[-1])),
+                          ("k3s", _kubernetes.render(label[-1]))):
             (api / f"{name}.json").write_bytes((json.dumps(rec, indent=1, sort_keys=True) + "\n").encode())
     (HERE / "hosts.yaml").write_bytes(hosts_yaml(a).encode())
     print(f"state-A: {len(a)} hosts, state-B: {len(b)} hosts (+ ghost01 never answers)")

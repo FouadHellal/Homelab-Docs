@@ -25,6 +25,11 @@ sources:
       credential: jellyfin_api_key
       allow_http: true
       host: media01
+  k8s:
+    - name: k3s
+      url: "https://k3s.lab.example:6443"
+      credential: k3s_atlas_token
+      tls: { ca_file: k3s-ca.pem }
 hosts:
   - name: pve1
     address: "10.0.10.11"

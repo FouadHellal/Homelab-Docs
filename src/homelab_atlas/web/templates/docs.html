@@ -94,6 +94,9 @@
     <dt><a href="/">Command Center</a></dt><dd>Overall health, open incidents, summary cards that open the matching lists, what needs attention, recent changes, every recognised app with an evidence-based state, resources at the last scan, quick access and data sources. "Healthy" means seen running at the last scan; old data is marked stale, never counted as healthy.</dd>
     <dt><a href="/overview">Overview</a></dt><dd>Totals, your Proxmox nodes with their guests, and one card per machine.</dd>
     <dt><a href="/media">Media</a></dt><dd>Jellyfin diagnosis (API, machine, VM, service, NAS mounts, NAS), now playing, libraries and where their folders really are, media incidents.</dd>
+    <dt><a href="/topology">Topology</a></dt><dd>Proxmox board: each node with its CPU, RAM and storage, and its guests with their usage; Network board: UniFi devices, switch ports and Wi-Fi clients; the graphs as extra tabs.</dd>
+    <dt><a href="/kubernetes">Kubernetes</a></dt><dd>Clusters read with a read-only token: nodes, workloads, pods (with why a pod fails) and services.</dd>
+    <dt><a href="/alerts">Alert rules</a></dt><dd>What becomes an incident and a Taskora ticket: enable, tune, restrict to machines, add your own; each rule shows what it finds now.</dd>
     <dt><a href="/incidents">Incidents</a></dt><dd>Ongoing problems, one per cause: acknowledge (no more reminders) or snooze them; recently resolved ones with their duration.</dd>
     <dt><a href="/integrations">Integrations</a></dt><dd>Data sources and their freshness; n8n notifications.</dd>
     <dt><a href="/topology">Topology</a></dt><dd><strong>Proxmox</strong>: one box per node, containing the node, its bridges and its VMs/LXCs, each wired to the bridge its NIC uses. Pulses show running guests. <strong>Network</strong>: gateway, switches, APs and clients. <strong>VLANs</strong>: members per network. Click for details, right-click for actions, double-click to open.</dd>

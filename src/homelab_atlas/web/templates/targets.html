@@ -72,7 +72,7 @@ Passwords and API keys are stored encrypted and are never shown again.</p>
   <p class="muted small">Proxmox VMs and LXCs are discovered from the Proxmox API, or from <code>/etc/pve</code> when a Proxmox node is added here (type <em>proxmox-node</em>, with sudo). Add a VM here to also collect what runs <em>inside</em> it: services, processes, listening ports, Docker containers, packages, cron jobs, users, disks. <a href="/docs#targets">How it works</a></p>
 </section>
 
-{% for kind, title, hint in [("proxmox", "Proxmox VE", "API token (PVEAuditor)"), ("unifi", "UniFi gateway", "Integration API key"), ("unas", "UniFi UNAS", "Drive API key"), ("jellyfin", "Jellyfin", "API key")] %}
+{% for kind, title, hint in [("proxmox", "Proxmox VE", "API token (PVEAuditor)"), ("unifi", "UniFi gateway", "Integration API key"), ("unas", "UniFi UNAS", "Drive API key"), ("jellyfin", "Jellyfin", "API key"), ("k8s", "Kubernetes / k3s", "read-only ServiceAccount token")] %}
 <section class="card">
   <h2>{{ title }}{% if v.editable %} <a class="more" href="/targets/source?kind={{ kind }}">+ add</a>{% endif %}</h2>
   <table class="data">

@@ -677,3 +677,13 @@ th[data-sort]:focus-visible { outline: 2px solid var(--accent); outline-offset: 
 .rule p { margin: 4px 0; }
 .rule-found { margin: 4px 0 0 0; }
 .rule-edit summary { cursor: pointer; margin-top: 4px; }
+
+/* ---------------------------------------------------------------- Kubernetes (ADR-048) */
+.kn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin: 10px 0 14px; }
+.kn { border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: grid; gap: 4px; }
+.kn.bad { border-color: var(--bad); }
+.kns { margin: 8px 0; } .kns summary { cursor: pointer; padding: 4px 0; }
+.kp { display: inline-flex; gap: 4px; align-items: baseline; font-size: 11.5px; padding: 1px 7px; margin: 1px 3px 1px 0;
+  border-radius: 6px; border: 1px solid var(--line); font-family: var(--mono); }
+.kp.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+.kp.bad { color: var(--bad); border-color: var(--bad); } .kp.wait { color: var(--warn); }

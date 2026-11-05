@@ -35,10 +35,11 @@ async def scan(rt: Runtime, state: str) -> ScanSummary:
 async def test_a_then_b_matches_golden(rt: Runtime) -> None:
     first = await scan(rt, "A")
     assert {e.type for e in first.events} == {"entity.added", "device.unknown_seen"}
-    # 12 SSH hosts + cluster + 2 nodes + 14 guests + UniFi site + 6 devices + NAS + Jellyfin,
+    # 12 SSH hosts + cluster + 2 nodes + 14 guests + UniFi site + 6 devices + NAS + Jellyfin
+    # + k3s cluster,
     # 1 unknown
-    assert len(first.events) == 39
-    assert first.counts == {"ok": 19, "partial": 1, "failed": 1}
+    assert len(first.events) == 40
+    assert first.counts == {"ok": 20, "partial": 1, "failed": 1}
 
     second = await scan(rt, "B")
     got = sorted((e.type, e.summary) for e in second.events)
@@ -58,11 +59,12 @@ async def test_rescan_same_state_is_quiet_and_deduplicated(rt: Runtime) -> None:
     with rt.sessions() as s:
         blobs = s.scalar(select(func.count()).select_from(Blob))
         snaps = s.scalar(select(func.count()).select_from(Snapshot))
-    # 12 linux + 3 docker + pi + cluster + 2 nodes + 14 guests + site + 6 + nas + jellyfin = 42,
+    # 12 linux + 3 docker + pi + cluster + 2 nodes + 14 guests + site + 6 + nas + jellyfin
+    # + k3s = 43,
     # plus the same 2 nodes + 14 guests read over SSH from /etc/pve, by their own node (pve-ssh)
-    # and by the other node (pve-ssh-peer): 42 + 16 + 16 (ADR-031).
-    assert blobs == 74
-    assert snaps == 148
+    # and by the other node (pve-ssh-peer): 43 + 16 + 16 (ADR-031), per scan.
+    assert blobs == 75
+    assert snaps == 150
 
 
 async def test_no_secret_reaches_storage_or_audit(rt: Runtime) -> None:

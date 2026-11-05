@@ -196,6 +196,27 @@ def summary(
             }
         )
 
+    clusters = [v for v in views if v.collector == "kubernetes" and "/" not in v.entity_key]
+    if clusters:
+        pods = [p for v in clusters for p in v.data.get("pods") or [] if isinstance(p, dict)]
+        ok = sum(1 for p in pods if p.get("phase") == "Running" and p.get("ready"))
+        bad = sum(1 for p in pods if p.get("reason") or p.get("phase") == "Failed")
+        out.append(
+            {
+                "id": "k8s",
+                "label": "Kubernetes pods",
+                "n": ok,
+                "total": len(pods),
+                "parts": [
+                    _part("failing", bad, "bad"),
+                    _part("starting or done", len(pods) - ok - bad, "muted"),
+                    _part(f"{len(clusters)} cluster(s)", 0, "muted", count=False),
+                ],
+                "href": "/kubernetes",
+                "icon": "inventory",
+            }
+        )
+
     running = unhealthy = stopped = stale_ctr = 0
     for v in views:
         if v.collector != "docker":
@@ -755,6 +776,7 @@ def integrations(
         "unifi": "UniFi",
         "nas": "UniFi UNAS",
         "jellyfin": "Jellyfin",
+        "kubernetes": "Kubernetes / k3s",
         "linux-ssh": "Machines (SSH)",
         "docker": "Docker",
     }

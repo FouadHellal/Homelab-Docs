@@ -39,6 +39,7 @@ DEFAULT_INTERVALS_S: Final[Mapping[str, int]] = {
     "pi": 3600,
     "nas": 21600,
     "jellyfin": 300,
+    "kubernetes": 300,
 }
 MIN_INTERVAL_S: Final = 60
 MAX_BACKOFF_S: Final = 6 * 3600

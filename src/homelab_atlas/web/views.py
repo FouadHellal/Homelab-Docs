@@ -663,6 +663,57 @@ def network_board(s: Session) -> dict[str, Any]:
     }
 
 
+def kubernetes_view(s: Session) -> list[dict[str, Any]]:
+    """Kubernetes page (ADR-048): per cluster, nodes and namespaces → workloads → pods."""
+    out = []
+    for f in s.scalars(select(Facet).where(Facet.collector == "kubernetes").order_by(Facet.target)):
+        if "/" in f.entity_key:
+            continue  # node entities registered alongside the cluster facet
+        d = f.data
+        pods = [p for p in d.get("pods") or [] if isinstance(p, dict)]
+        bad = [p for p in pods if p.get("reason") or p.get("phase") == "Failed"]
+        by_owner: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        loose: dict[str, list[dict[str, Any]]] = {}
+        for p in pods:
+            owner = p.get("owner") or ""
+            if "/" in owner:
+                by_owner.setdefault((str(p.get("namespace")), owner), []).append(p)
+            else:
+                loose.setdefault(str(p.get("namespace")), []).append(p)
+        namespaces: dict[str, dict[str, Any]] = {}
+        for w in d.get("workloads") or []:
+            ns = namespaces.setdefault(
+                w["namespace"], {"name": w["namespace"], "workloads": [], "pods": []}
+            )
+            ns["workloads"].append(
+                {**w, "pods": by_owner.get((w["namespace"], f"{w['kind']}/{w['name']}"), [])}
+            )
+        for ns_name, ps in loose.items():
+            namespaces.setdefault(ns_name, {"name": ns_name, "workloads": [], "pods": []})[
+                "pods"
+            ] = ps
+        per_node: dict[str, int] = {}
+        for p in pods:
+            per_node[str(p.get("node"))] = per_node.get(str(p.get("node")), 0) + 1
+        out.append(
+            {
+                "key": f.entity_key,
+                "name": f.target,
+                "version": d.get("version"),
+                "nodes": [{**n, "pods": per_node.get(n["name"], 0)} for n in d.get("nodes") or []],
+                "namespaces": sorted(
+                    namespaces.values(), key=lambda n: (n["name"] in ("kube-system",), n["name"])
+                ),
+                "services": d.get("services") or [],
+                "pods": len(pods),
+                "running": sum(1 for p in pods if p.get("phase") == "Running" and p.get("ready")),
+                "failing": bad,
+                "errors": d.get("section_errors") or [],
+            }
+        )
+    return out
+
+
 PVE_MAC_PREFIX: Final = "bc:24:11"  # Proxmox's OUI for generated guest NICs
 
 

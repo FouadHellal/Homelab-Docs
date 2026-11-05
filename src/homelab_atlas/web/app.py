@@ -528,6 +528,7 @@ def create_app(cfg: WebConfig) -> FastAPI:
             "unifi": [x.name for x in inv.sources.unifi],
             "nas": [x.name for x in inv.sources.unas],
             "jellyfin": [x.name for x in inv.sources.jellyfin],
+            "kubernetes": [x.name for x in inv.sources.k8s],
             "linux-ssh": [h.name for h in hosts if "linux-ssh" in h.collectors],
             "docker": [h.name for h in hosts if "docker" in h.collectors],
         }
@@ -1181,6 +1182,10 @@ def create_app(cfg: WebConfig) -> FastAPI:
             sched=cfg.scheduler,
         )
 
+    @app.get("/kubernetes", response_class=HTMLResponse)
+    def kubernetes_page(request: Request, s: DB, user: User) -> Response:
+        return page(request, "kubernetes.html", user, clusters=views.kubernetes_view(s))
+
     @app.get("/ips", response_class=HTMLResponse)
     def ips(
         request: Request,
@@ -1697,12 +1702,12 @@ def create_app(cfg: WebConfig) -> FastAPI:
             return None, set()
         inv, _ = cfg.targets.inventory()
         names = {h.name for h in inv.hosts}
-        for kind in ("proxmox", "unifi", "unas", "jellyfin"):
+        for kind in ("proxmox", "unifi", "unas", "jellyfin", "k8s"):
             names |= {src.name for src in getattr(inv.sources, kind)}
         return names, {h.address for h in inv.hosts}
 
     def _kind(kind: str) -> SourceKind:
-        if kind not in ("proxmox", "unifi", "unas", "jellyfin"):
+        if kind not in ("proxmox", "unifi", "unas", "jellyfin", "k8s"):
             raise HTTPException(404, "unknown source kind")
         return kind  # type: ignore[return-value]
 

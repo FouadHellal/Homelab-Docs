@@ -564,3 +564,30 @@ def test_saving_a_target_queues_its_first_scan(env: dict[str, Any], tmp_path: Pa
         assert res.status_code == 200
         assert "queued" in res.text
         assert seen[-1] == ["newvm"]
+
+
+def test_add_kubernetes_cluster_with_token_and_pinned_cert(
+    client: tuple[TestClient, str], env: dict[str, Any]
+) -> None:
+    """ADR-048: a k3s API is added like Proxmox: address, pinned certificate, a token."""
+    c, csrf = client
+    pem, sha = _cert()
+    base = {
+        "csrf_token": csrf,
+        "kind": "k8s",
+        "name": "k3s",
+        "url": "192.168.1.50",
+        "cert_pem": pem,
+        "cert_sha256": sha,
+        "cert_confirmed": "1",
+    }
+    token = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJBVExBU0ZBS0UifQ.ATLASFAKE-signature-part"
+    bad = c.post("/targets/source", data={**base, "credential": "plain-ATLASFAKE"})
+    assert bad.status_code == 422 and "ServiceAccount token" in bad.text
+    ok = c.post("/targets/source", data={**base, "credential": token}, follow_redirects=False)
+    assert ok.status_code == 303, ok.text
+    src = ManagedInventory(env["data"]).load().sources.k8s[0]
+    assert src.url == "https://192.168.1.50:6443" and src.credential == "ui-k8s-k3s"
+    assert token not in (env["data"] / "inventory.yaml").read_text(encoding="utf-8")
+    assert token not in c.get("/targets").text
+    assert "Kubernetes / k3s" in c.get("/targets/source?kind=k8s").text

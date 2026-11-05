@@ -157,6 +157,16 @@ class UnasSource(_Strict):
         return self
 
 
+class K8sSource(_Strict):
+    """Kubernetes / k3s API (ADR-048): GET-only, a read-only ServiceAccount token."""
+
+    name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+    url: str = Field(pattern=r"^https://")
+    credential: str
+    tls: TlsSettings = TlsSettings()
+    _cred = field_validator("credential")(_secret_name)
+
+
 class JellyfinSource(_Strict):
     """Jellyfin media server (ADR-039): GET-only API calls with a dedicated API key."""
 
@@ -195,6 +205,7 @@ class Sources(_Strict):
     unifi: tuple[UnifiSource, ...] = ()
     unas: tuple[UnasSource, ...] = ()
     jellyfin: tuple[JellyfinSource, ...] = ()
+    k8s: tuple[K8sSource, ...] = ()
 
 
 class Match(_Strict):

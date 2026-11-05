@@ -94,6 +94,12 @@ class SourceForm:
     jf_host: str = ""
 
 
+#: A ServiceAccount token is a JWT: three base64url parts.
+K8S_TOKEN_RE: Final = re.compile(
+    r"[A-Za-z0-9_-]{8,2048}\.[A-Za-z0-9_-]{8,8192}\.[A-Za-z0-9_-]{8,2048}"
+)
+
+
 def normalize_url(kind: str, value: str, *, allow_http: bool = False) -> str:
     """Accept a bare IP/host name and fill in the API path, or a full https:// URL.
 
@@ -111,6 +117,8 @@ def normalize_url(kind: str, value: str, *, allow_http: bool = False) -> str:
             return f"https://{host}{'' if re.search(r':\d+$', host) else ':8006'}/api2/json"
         if kind == "unifi":
             return f"https://{host}/proxy/network/integration"
+        if kind == "k8s":
+            return f"https://{host}{'' if re.search(r':\d+$', host) else ':6443'}"
         if kind == "jellyfin":
             port = "" if re.search(r":\d+$", host) else (":8096" if plain else ":8920")
             return f"{'http' if plain else 'https'}://{host}{port}"
@@ -365,6 +373,8 @@ class TargetsService:
             value = credential.get_secret_value().strip()
             if form.kind == "proxmox" and not PVE_TOKEN_RE.fullmatch(value):
                 raise TargetError("Proxmox token must look like user@realm!tokenid=<uuid>")
+            if form.kind == "k8s" and not K8S_TOKEN_RE.fullmatch(value):
+                raise TargetError("paste the ServiceAccount token (a long JWT: eyJ…)")
             if form.kind == "jellyfin" and not JELLYFIN_KEY_RE.fullmatch(value):
                 raise TargetError("a Jellyfin API key is 32 hex characters (Dashboard → API Keys)")
             credential = SecretStr(value)

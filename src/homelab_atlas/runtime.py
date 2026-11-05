@@ -22,6 +22,7 @@ from homelab_atlas.collectors.base import (
 from homelab_atlas.collectors.docker.collector import DockerCollector
 from homelab_atlas.collectors.jellyfin import SYSTEM_INFO as JF_SYSTEM_INFO
 from homelab_atlas.collectors.jellyfin import JellyfinCollector
+from homelab_atlas.collectors.kubernetes import KubernetesCollector
 from homelab_atlas.collectors.linux_ssh.collector import LinuxSshCollector
 from homelab_atlas.collectors.nas import NasCollector
 from homelab_atlas.collectors.pi import PiCollector
@@ -71,6 +72,7 @@ COLLECTORS: tuple[Collector, ...] = (
     UnifiCollector(),
     NasCollector(),
     JellyfinCollector(),
+    KubernetesCollector(),
 )
 
 
@@ -368,6 +370,10 @@ async def test_source(data_dir: Path, audit: AuditSink, kind: str, name: str) ->
             source, ep = UnifiCollector.source(inputs.inventory, name), unifi_ep.INFO
         elif kind == "jellyfin":
             source, ep = JellyfinCollector.source(inputs.inventory, name), JF_SYSTEM_INFO
+        elif kind == "k8s":
+            from homelab_atlas.collectors.kubernetes import VERSION as K8S_VERSION  # noqa: PLC0415
+
+            source, ep = KubernetesCollector.source(inputs.inventory, name), K8S_VERSION
         else:
             return False, "no connection test for this kind yet; use Scan"
     except StopIteration:
@@ -399,7 +405,13 @@ async def test_source(data_dir: Path, audit: AuditSink, kind: str, name: str) ->
     body = res.json()
     data = body.get("data", body) if isinstance(body, dict) else {}
     version = (
-        (data.get("version") or data.get("applicationVersion") or data.get("Version") or "?")
+        (
+            data.get("version")
+            or data.get("applicationVersion")
+            or data.get("Version")
+            or data.get("gitVersion")
+            or "?"
+        )
         if isinstance(data, dict)
         else "?"
     )

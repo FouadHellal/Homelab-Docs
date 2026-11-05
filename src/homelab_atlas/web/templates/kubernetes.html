@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Kubernetes{% endblock %}
+{% macro podchip(p) -%}
+<span class="kp {{ 'bad' if p.reason or p.phase == 'Failed' else 'ok' if p.ready else 'wait' }}" title="{{ p.name }} · {{ p.phase }}{% if p.node %} · {{ p.node }}{% endif %}{% if p.ip %} · {{ p.ip }}{% endif %}{% if p.restarts %} · {{ p.restarts }} restarts{% endif %}">
+  {{ p.name }}{% if p.reason %} · {{ p.reason }}{% endif %}{% if p.restarts %} <small>↻{{ p.restarts }}</small>{% endif %}</span>
+{%- endmacro %}
+{% block main %}
+<header class="page-head"><div>
+  <h1>Kubernetes</h1>
+  <p class="muted">Clusters atlas reads with a read-only ServiceAccount token: nodes, workloads, pods and services. Never Secrets, ConfigMaps, logs or environment values.</p>
+</div></header>
+{% for c in clusters %}
+<section class="card" aria-labelledby="kc-{{ loop.index }}">
+  <h2 id="kc-{{ loop.index }}"><a href="/entity?key={{ c.key | urlencode }}">{{ c.name }}</a> <span class="muted small">{{ c.version or "" }}</span></h2>
+  <p><span class="pill ok">{{ c.running }} / {{ c.pods }} pods ready</span>
+    {% if c.failing %}<span class="pill failed">{{ c.failing | length }} failing</span>{% endif %}
+    <span class="pill info">{{ c.nodes | length }} nodes</span>
+    {% for e in c.errors %}<span class="pill partial">{{ e }}</span>{% endfor %}</p>
+  {% if c.failing %}<ul class="plain small">{% for p in c.failing %}<li><strong>{{ p.namespace }}/{{ p.name }}</strong> — {{ p.reason or p.phase }}{% if p.restarts %}, {{ p.restarts }} restarts{% endif %}{% if p.node %} on {{ p.node }}{% endif %}</li>{% endfor %}</ul>{% endif %}
+  <div class="kn-grid">
+  {% for n in c.nodes %}
+    <div class="kn{{ ' bad' if n.ready is false }}">
+      <div><span class="dot st-{{ 'running' if n.ready else 'failed' }}" aria-hidden="true"></span> <strong>{{ n.name }}</strong>
+        {% for r in n.roles %}<span class="chip">{{ r }}</span>{% endfor %}{% if n.unschedulable %}<span class="pill partial">cordoned</span>{% endif %}</div>
+      <div class="muted small">{{ n.internal_ip or "" }} · {{ n.kubelet or "" }} · {{ n.os_image or "" }}</div>
+      <div class="small">{{ n.cpu or "?" }} CPU · {{ n.memory_bytes | bytes }} RAM · {{ n.pods }} pods{% for pr in n.problems %} <span class="pill failed">{{ pr }}</span>{% endfor %}</div>
+    </div>
+  {% endfor %}
+  </div>
+  {% for ns in c.namespaces %}
+  <details class="kns"{% if ns.name != "kube-system" %} open{% endif %}><summary><strong>{{ ns.name }}</strong> <span class="muted small">{{ ns.workloads | length }} workloads</span></summary>
+    <table class="data"><thead><tr><th>Workload</th><th>Ready</th><th>Images</th><th>Pods</th></tr></thead><tbody>
+    {% for w in ns.workloads %}
+      <tr><td><span class="muted small">{{ w.kind }}</span> <strong>{{ w.name }}</strong></td>
+        <td><span class="pill {{ 'ok' if w.desired is not none and w.ready == w.desired else 'failed' }}">{{ w.ready if w.ready is not none else "?" }} / {{ w.desired if w.desired is not none else "?" }}</span></td>
+        <td class="small wrap">{{ w.images | join(", ") }}</td>
+        <td class="wrap">{% for p in w.pods %}{{ podchip(p) }}{% endfor %}</td></tr>
+    {% endfor %}
+    {% if ns.pods %}<tr><td class="muted small">bare pods</td><td></td><td></td><td class="wrap">{% for p in ns.pods %}{{ podchip(p) }}{% endfor %}</td></tr>{% endif %}
+    </tbody></table>
+  </details>
+  {% endfor %}
+  {% if c.services %}
+  <h3>Services</h3>
+  <table class="data"><thead><tr><th>Service</th><th>Type</th><th>Cluster IP</th><th>Ports</th><th>External</th></tr></thead><tbody>
+  {% for sv in c.services %}<tr><td>{{ sv.namespace }}/<strong>{{ sv.name }}</strong></td><td>{{ sv.type or "" }}</td><td><code>{{ sv.cluster_ip or "" }}</code></td><td class="small">{{ sv.ports | join(", ") }}</td><td class="small">{{ sv.external | join(", ") }}</td></tr>{% endfor %}
+  </tbody></table>
+  {% endif %}
+</section>
+{% else %}
+<section class="card"><p>No cluster yet. Add one on <a href="/targets">Targets</a> (Kubernetes / k3s): the API address and a read-only ServiceAccount token. The manifest that creates that account is in <code>docs/targets/kubernetes-readonly.yaml</code>; the steps are in the guide.</p></section>
+{% endfor %}
+{% endblock %}

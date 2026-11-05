@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% set titles = {"proxmox": "Proxmox VE", "unifi": "UniFi gateway", "unas": "UniFi UNAS", "jellyfin": "Jellyfin"} %}
-{% set placeholders = {"proxmox": "192.168.1.10", "unifi": "192.168.1.1", "unas": "192.168.1.30", "jellyfin": "192.168.1.40 (or http://192.168.1.40:8096)"} %}
-{% set names = {"proxmox": "homelab", "unifi": "ucg", "unas": "unas", "jellyfin": "jellyfin"} %}
-{% set cred_labels = {"proxmox": "API token (user@realm!tokenid=secret)", "unifi": "API key", "unas": "Drive API key", "jellyfin": "API key (Jellyfin → Dashboard → API Keys → +)"} %}
+{% set titles = {"proxmox": "Proxmox VE", "unifi": "UniFi gateway", "unas": "UniFi UNAS", "jellyfin": "Jellyfin", "k8s": "Kubernetes / k3s"} %}
+{% set placeholders = {"proxmox": "192.168.1.10", "unifi": "192.168.1.1", "unas": "192.168.1.30", "jellyfin": "192.168.1.40 (or http://192.168.1.40:8096)", "k8s": "192.168.1.50 (API on :6443)"} %}
+{% set names = {"proxmox": "homelab", "unifi": "ucg", "unas": "unas", "jellyfin": "jellyfin", "k8s": "k3s"} %}
+{% set cred_labels = {"proxmox": "API token (user@realm!tokenid=secret)", "unifi": "API key", "unas": "Drive API key", "jellyfin": "API key (Jellyfin → Dashboard → API Keys → +)", "k8s": "ServiceAccount token (kubectl -n atlas get secret atlas-token -o jsonpath='{.data.token}' | base64 -d)"} %}
 {% block title %}{{ titles[f.kind] }}{% endblock %}
 {% block main %}
 <p class="crumbs"><a href="/targets">Targets</a> /</p>
@@ -58,6 +58,7 @@
   {% if f.kind == "proxmox" %}Create the token with <code>pveum user token add atlas@pve collector --privsep 1</code> and give user and token the <strong>PVEAuditor</strong> role on <code>/</code> (read-only). See docs/SETUP-TARGETS.md §4.
   {% elif f.kind == "unifi" %}Any key works for reading. A UniFi key carries the rights of whoever created it, and atlas only ever sends GET requests.
   {% elif f.kind == "jellyfin" %}Jellyfin API keys are not scoped (they act as an administrator), so atlas only allows itself six read-only GET calls: server info, sessions, item counts, libraries, scheduled tasks and recently added items. The key is stored encrypted on the atlas server and never sent to your browser. Make a dedicated key named “atlas” so you can revoke it alone.
+  {% elif f.kind == "k8s" %}Create the read-only account with <code>kubectl apply -f docs/targets/kubernetes-readonly.yaml</code>: it may only get/list nodes, namespaces, pods, services and workloads, never Secrets, ConfigMaps, logs or exec. atlas itself only calls those seven lists and <code>/version</code>, GET only. Fetch and confirm the API server certificate below (k3s uses its own CA).
   {% else %}The UNAS API is only community-documented; leaving the UNAS out is fine.{% endif %}</p>
   <div class="actions">
     <button type="submit"{% if not editable %} disabled{% endif %}>Save</button>
