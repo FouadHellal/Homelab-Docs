@@ -101,6 +101,11 @@ def render(s: dict[str, Any]) -> dict[str, Any]:
         resources.append({"id": f"{kind}/{vmid}", "type": kind, "vmid": vmid, "name": name, "node": node,
                           "status": status, "maxcpu": cores, "maxmem": mem * 1048576,
                           "cpu": 0.03 if running else 0, "uptime": 86400 if running else 0,
+                          "mem": mem * 1048576 * (30 + vmid % 50) // 100 if running else 0,
+                          "maxdisk": (64 if cores > 2 else 32) * 1073741824,
+                          "disk": (64 if cores > 2 else 32) * 1073741824 * (20 + vmid % 60) // 100,
+                          "netin": vmid * 1048576 * 7 if running else 0,
+                          "netout": vmid * 1048576 * 3 if running else 0,
                           "template": int(vmid == 9000), "tags": tags})  # fmt: skip
         base = f"{BASE}/nodes/{node}/{kind}/{vmid}"
         if kind == "qemu":
@@ -166,7 +171,10 @@ def render(s: dict[str, Any]) -> dict[str, Any]:
             "pveversion": f"pve-manager/{v['pve']}/5a3b1c2d", "uptime": 2592000, "cpu": 0.07,
             "kversion": f"Linux {v['kernel']} #1 SMP PREEMPT_DYNAMIC PMX x86_64",
             "cpuinfo": {"model": "Intel(R) Core(TM) i5-12500", "cpus": 12, "cores": 6, "sockets": 1},
-            "memory": {"total": 68719476736, "used": 21474836480, "free": 47244640256}})  # fmt: skip
+            "memory": {"total": 68719476736, "used": 21474836480, "free": 47244640256},
+            "rootfs": {"total": 100861726720, "used": 12884901888, "free": 87976824832, "avail": 82812289024},
+            "swap": {"total": 8589934592, "used": 0, "free": 8589934592},
+            "loadavg": ["0.42", "0.37", "0.31"]})  # fmt: skip
         ifaces: list[dict[str, Any]] = [
             {"iface": "eno1", "type": "eth", "active": 1, "autostart": 1, "method": "manual"},
             {"iface": "vmbr0", "type": "bridge", "bridge_ports": "eno1", "bridge_vlan_aware": 1,

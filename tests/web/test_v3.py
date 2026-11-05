@@ -293,7 +293,7 @@ def test_proxmox_flow_topology(web: TestClient) -> None:
 
 
 def test_topology_page_summary(web: TestClient) -> None:
-    body = web.get("/topology").text
+    body = web.get("/topology?view=logical").text
     assert 'class="kpis"' in body
     assert "VMs &amp; LXCs" in body
     assert 'id="topo-stopped"' in body
@@ -312,7 +312,7 @@ def test_proxmox_summary_numbers(rt: Runtime) -> None:
 
 
 def test_static_urls_are_cache_busted(web: TestClient) -> None:
-    body = web.get("/topology").text
+    body = web.get("/topology?view=logical").text
     v = re.search(r'/static/app\.js\?v=([0-9a-f]{10})"', body)
     assert v is not None
     assert f"/static/app.css?v={v.group(1)}" in body

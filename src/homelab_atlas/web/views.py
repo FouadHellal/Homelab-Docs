@@ -23,7 +23,7 @@ from homelab_atlas.engine.apps import (
 from homelab_atlas.engine.knowledge import about, search_links
 from homelab_atlas.engine.reconcile import RECONCILE
 from homelab_atlas.store.facets import facet_views
-from homelab_atlas.store.tables import Entity, Facet
+from homelab_atlas.store.tables import CollectorRun, Entity, Facet
 from homelab_atlas.web.queries import _ip_key, context, ip_table
 
 MACHINE_KINDS: Final = ("pve-node", "pve-vm", "pve-lxc", "linux-host", "nas")
@@ -189,6 +189,23 @@ def _card(key: str, e: Entity, facets: dict[str, dict[str, Any]], ents: dict[str
             for n in g.get("nics") or []
         ],
         "pve": _node_info(facets, lx) if key.startswith("pve:node:") else None,
+        "mac": net.get("mac"),
+        "template": bool(g.get("template")),
+        "onboot": g.get("onboot"),
+        "backed_up": g.get("backed_up"),
+        "usage": {
+            "cpu_pct": round(g["cpu_load"] * 100, 1)
+            if isinstance(g.get("cpu_load"), float)
+            else None,
+            "vcpu": g.get("maxcpu") or g.get("cores"),
+            "mem_used": g.get("mem_used_bytes"),
+            "mem_max": g.get("mem_max_bytes") or ((g.get("memory_mb") or 0) * 1048576 or None),
+            "disk_used": g.get("disk_used_bytes"),
+            "disk_max": g.get("disk_max_bytes"),
+            "netin": g.get("netin_bytes"),
+            "netout": g.get("netout_bytes"),
+            "uptime_s": g.get("uptime_s"),
+        },
     }
 
 
@@ -228,7 +245,25 @@ def _node_info(facets: dict[str, dict[str, Any]], lx: dict[str, Any] | None) -> 
             if i.get("kind") == "bridge" and str(i.get("name", "")).startswith(("vmbr", "vnet"))
         ]
     mem = p.get("memory_bytes")
+    storages = [
+        {
+            "name": st.get("storage"),
+            "type": st.get("type"),
+            "shared": st.get("shared"),
+            "status": st.get("status"),
+            "used": st.get("used_bytes"),
+            "total": st.get("total_bytes"),
+        }
+        for st in p.get("storages") or []
+        if isinstance(st, dict) and st.get("storage")
+    ]
     return {
+        "memory_bytes": mem if isinstance(mem, int) else None,
+        "memory_used_bytes": p.get("memory_used_bytes"),
+        "rootfs_total_bytes": p.get("rootfs_total_bytes"),
+        "rootfs_used_bytes": p.get("rootfs_used_bytes"),
+        "loadavg": p.get("loadavg") or [],
+        "storages": sorted(storages, key=lambda x: (not x["shared"], str(x["name"]))),
         "version": p.get("pve_version") or ((lx or {}).get("pve") or {}).get("version"),
         "cpu_cores": p.get("cpu_cores"),
         "cpu_model": p.get("cpu_model"),
@@ -443,6 +478,168 @@ def discovered_not_documented(
                 }
             )
     return sorted(out, key=lambda x: _ip_key(x["ip"] or "z"))
+
+
+def is_pve_host(m: dict[str, Any]) -> bool:
+    """A Linux host that runs Proxmox VE but has no node data (API failing, no sudo)."""
+    return m["kind"] == "linux-host" and any(a["name"] == "Proxmox VE" for a in m["apps"])
+
+
+def proxmox_problem(s: Session) -> str | None:
+    """Why atlas cannot see Proxmox guests right now: the latest error of every Proxmox API
+    source whose last run failed, or None when at least one answers (or none is set up)."""
+    latest: dict[str, CollectorRun] = {}
+    for r in s.scalars(
+        select(CollectorRun).where(CollectorRun.collector == "proxmox").order_by(CollectorRun.id)
+    ):
+        latest[r.target] = r
+    if not latest or any(r.status in ("ok", "partial") for r in latest.values()):
+        return None
+    first = next(iter(latest.values()))
+    errs = first.errors or []
+    return f"{first.target}: {errs[0]}" if errs else f"{first.target}: failed"
+
+
+PVE_MAC_PREFIX: Final = "bc:24:11"  # Proxmox's OUI for generated guest NICs
+
+
+def _pct(used: Any, total: Any) -> float | None:
+    if isinstance(used, int) and isinstance(total, int) and total > 0:
+        return round(used * 100 / total, 1)
+    return None
+
+
+def proxmox_board(s: Session) -> dict[str, Any]:
+    """Topology → Proxmox: one box per node with its own figures and its guests (ADR-045).
+
+    Guests come from the Proxmox API (or /etc/pve over SSH). When neither answers, Linux hosts
+    with a Proxmox guest MAC are placed on the node whose switch port they share, marked
+    *inferred*; the rest go to "node unknown". A machine is never shown twice."""
+    cards = machines(s)
+    by_key = {m["key"]: m for m in cards}
+    ents = {e.key: e for e in s.scalars(select(Entity))}
+    nodes = [m for m in cards if m["kind"] == "pve-node"]
+    seen = {m["short"].lower() for m in nodes} | {ip for m in nodes for ip in m["ips"]}
+    nodes += [
+        m
+        for m in cards
+        if is_pve_host(m) and m["short"].lower() not in seen and not set(m["ips"]) & seen
+    ]
+    boxes: dict[str, dict[str, Any]] = {}
+    for m in sorted(nodes, key=lambda m: m["short"].lower()):
+        p = m.get("pve") or {}
+        cores = p.get("cpu_cores")
+        boxes[m["key"]] = {
+            "node": m,
+            "source": "api" if m["kind"] == "pve-node" else "ssh",
+            "cluster": m["key"].removeprefix("pve:node:").split("/")[0]
+            if m["kind"] == "pve-node"
+            else None,
+            "cpu": {
+                "model": p.get("cpu_model"),
+                "cores": cores,
+                "load_pct": round((p.get("cpu_load") or 0) * 100, 1)
+                if p.get("cpu_load") is not None
+                else None,
+                "loadavg": p.get("loadavg") or [],
+            },
+            "mem": {
+                "used": p.get("memory_used_bytes"),
+                "total": p.get("memory_bytes"),
+                "pct": _pct(p.get("memory_used_bytes"), p.get("memory_bytes")),
+            },
+            "rootfs": {
+                "used": p.get("rootfs_used_bytes"),
+                "total": p.get("rootfs_total_bytes"),
+                "pct": _pct(p.get("rootfs_used_bytes"), p.get("rootfs_total_bytes")),
+            },
+            "storages": [
+                st | {"pct": _pct(st["used"], st["total"])} for st in p.get("storages") or []
+            ],
+            "guests": [],
+        }
+    by_name = {b["node"]["short"].lower(): k for k, b in boxes.items()}
+    unplaced: list[dict[str, Any]] = []
+    for m in cards:
+        if m["kind"] not in ("pve-vm", "pve-lxc"):
+            continue
+        parent = ents[m["key"]].parent_key if m["key"] in ents else None
+        parent = parent if parent in boxes else by_name.get(str(m["node"] or "").lower())
+        (boxes[parent]["guests"] if parent else unplaced).append({**_tile(m), "inferred": False})
+    # Machines atlas knows only over SSH but whose NIC is a Proxmox guest NIC.
+    uplink_of = {k: _uplink_key(b["node"].get("uplink")) for k, b in boxes.items()}
+    others: list[dict[str, Any]] = []
+    pve_unknown: list[dict[str, Any]] = []
+    for m in cards:
+        if m["kind"] not in ("linux-host", "nas") or m["key"] in boxes or is_pve_host(m):
+            continue
+        if not str(m.get("mac") or "").startswith(PVE_MAC_PREFIX):
+            others.append(_tile(m))
+            continue
+        here = _uplink_key(m.get("uplink"))
+        match = [k for k, u in uplink_of.items() if u and u == here]
+        if len(match) == 1:
+            boxes[match[0]]["guests"].append({**_tile(m), "inferred": True})
+        else:
+            pve_unknown.append({**_tile(m), "inferred": True})
+    for b in boxes.values():
+        b["guests"].sort(
+            key=lambda g: (g["status"] != "running", g["vmid"] or 1_000_000, g["name"].lower())
+        )
+        b["running"] = sum(1 for g in b["guests"] if g["status"] == "running")
+        b["vcpu"] = sum(
+            g["usage"].get("vcpu") or 0 for g in b["guests"] if g["status"] == "running"
+        )
+        b["mem_alloc"] = sum(
+            g["usage"].get("mem_max") or 0 for g in b["guests"] if g["status"] == "running"
+        )
+    return {
+        "nodes": list(boxes.values()),
+        "unplaced": unplaced + pve_unknown,
+        "others": sorted(others, key=lambda g: g["name"].lower()),
+        "problem": proxmox_problem(s),
+        "inferred": any(g["inferred"] for b in boxes.values() for g in b["guests"])
+        or bool(pve_unknown),
+        "known": sum(1 for _ in by_key),
+    }
+
+
+def _uplink_key(uplink: Any) -> str | None:
+    """`USW-Fouad · port 6` -> `usw-fouad#6` (switch + port); None without a port."""
+    text = str(uplink or "")
+    if " · port " not in text:
+        return None
+    dev, _, port = text.partition(" · port ")
+    return f"{dev.strip().lower()}#{port.strip()}"
+
+
+def _tile(m: dict[str, Any]) -> dict[str, Any]:
+    u = m.get("usage") or {}
+    return {
+        "key": m["key"],
+        "name": m["short"],
+        "kind": m["kind"],
+        "type": {"pve-vm": "VM", "pve-lxc": "LXC", "nas": "NAS"}.get(m["kind"], "Host"),
+        "vmid": m.get("vmid"),
+        "status": m["status"]
+        if m["kind"] in ("pve-vm", "pve-lxc")
+        else ("running" if m.get("documented") else m["status"]),
+        "ip": (m.get("ips") or [None])[0],
+        "os": m.get("os"),
+        "apps": [a["name"] for a in m.get("apps") or [] if a.get("category") != "system"][:5],
+        "documented": m.get("documented"),
+        "backed_up": m.get("backed_up"),
+        "template": m.get("template"),
+        "uplink": m.get("uplink"),
+        "vlan": m.get("vlan"),
+        "containers": m.get("containers") or 0,
+        "usage": {
+            **u,
+            "vcpu": u.get("vcpu") or m.get("cores"),
+            "mem_pct": _pct(u.get("mem_used"), u.get("mem_max")),
+            "disk_pct": _pct(u.get("disk_used"), u.get("disk_max")),
+        },
+    }
 
 
 def proxmox_summary(cards: list[dict[str, Any]]) -> dict[str, Any]:

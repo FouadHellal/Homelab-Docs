@@ -96,6 +96,27 @@
     });
   }
 
+  // ------------------------------------------------------------ Proxmox board filter (ADR-045)
+  function wireBoard(root) {
+    var q = root.querySelector("#pb-search"), stopped = root.querySelector("#pb-stopped");
+    if (!q || !stopped) return;
+    var count = root.querySelector("#pb-count");
+    function apply() {
+      var needle = q.value.trim().toLowerCase(), shown = 0, all = 0;
+      root.querySelectorAll(".pb-guest").forEach(function (g) {
+        all += 1;
+        var ok = (!needle || (g.dataset.search || "").indexOf(needle) >= 0) &&
+          (stopped.checked || g.dataset.status !== "stopped");
+        g.hidden = !ok;
+        if (ok) shown += 1;
+      });
+      if (count) count.textContent = shown === all ? all + " machines" : shown + " of " + all;
+    }
+    q.addEventListener("input", apply);
+    stopped.addEventListener("change", apply);
+    apply();
+  }
+
   // ------------------------------------------------------------ progress bars (CSP: no style attrs)
   function wireBars(root) {
     root.querySelectorAll("[data-pct]").forEach(function (b) {
@@ -302,6 +323,7 @@
     wrapTables(document);
     wireDropdowns();
     wireBars(document);
+    wireBoard(document);
     wireRadioPills(document);
     wirePalette();
     wireCopy(document);

@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Topology{% endblock %}
-{% block head %}<script src="/static/vendor/cytoscape.min.js" nonce="{{ nonce }}" defer></script>
-<script src="/static/topology.js?v={{ asset_v }}" nonce="{{ nonce }}" defer></script>{% endblock %}
+{% block head %}{% if view != "board" %}<script src="/static/vendor/cytoscape.min.js" nonce="{{ nonce }}" defer></script>
+<script src="/static/topology.js?v={{ asset_v }}" nonce="{{ nonce }}" defer></script>{% endif %}{% endblock %}
 {% block main %}
 <div class="topo-head">
   <nav class="tabs">
-    {% for v, label in [("logical", "Proxmox"), ("physical", "Network"), ("vlan", "VLANs")] %}
+    {% for v, label in [("board", "Proxmox"), ("physical", "Network"), ("vlan", "VLANs"), ("logical", "Proxmox graph")] %}
     <a href="/topology?view={{ v }}"{% if v == view %} aria-current="page"{% endif %}>{{ label }}</a>
     {% endfor %}
   </nav>
-  <div class="topo-tools" role="toolbar" aria-label="Topology tools">
+  {% if view != "board" %}<div class="topo-tools" role="toolbar" aria-label="Topology tools">
     <span class="search-wrap"><input type="search" id="topo-search" placeholder="Find a machine, IP, app…  ( / )" maxlength="64" autocomplete="off"><span id="topo-count" class="muted small" aria-live="polite"></span></span>
     {% if view == "logical" %}
     <label class="toggle" title="Docker containers inside each machine (C)"><input type="checkbox" id="topo-containers"> Containers</label>
@@ -25,9 +25,9 @@
     </div>
     <button type="button" class="ghost small" id="topo-fit" title="Fit to screen">Fit</button>
     <button type="button" class="ghost small" id="topo-png" title="Download as PNG">PNG</button>
-  </div>
+  </div>{% endif %}
 </div>
-{% if view == "logical" and pve and pve.nodes %}
+{% if view in ("board", "logical") and pve and pve.nodes %}
 <section class="kpis" aria-label="Proxmox summary">
   <div class="kpi"><span class="kpi-k">Nodes</span><span class="kpi-n">{{ pve.nodes }}</span>
     <span class="chips">{% for c in pve.clusters %}<span class="chip">{{ c }}</span>{% endfor %}</span></div>
@@ -41,6 +41,9 @@
     <span class="muted small">guests atlas logs in to</span></div>
 </section>
 {% endif %}
+{% if view == "board" %}
+{% include "_pve_board.html" %}
+{% else %}
 <div class="topo-wrap">
   <div id="cy" class="cy" data-src="/api/topology?view={{ view }}" data-view="{{ view }}" role="img" aria-label="{{ view }} topology graph"></div>
   <aside id="topo-panel" class="topo-panel" hidden>
@@ -51,4 +54,5 @@
   <div class="topo-legend" id="topo-legend"></div>
   <div class="topo-hint muted small">Click: details · Right-click: actions · Double-click: open · <kbd>/</kbd> search · <kbd>F</kbd> fit · <kbd>C</kbd> containers</div>
 </div>
+{% endif %}
 {% endblock %}

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from homelab_atlas.engine.classify import classify
 from homelab_atlas.engine.reconcile import RECONCILE
+from homelab_atlas.web import views
 from homelab_atlas.web.queries import Ctx, canonical_key, context, ip_table
 from homelab_atlas.web.views import machines
 
@@ -221,8 +222,7 @@ def _node_box(
 
 
 def _is_pve_host(m: dict[str, Any]) -> bool:
-    """A Linux host that runs Proxmox VE but has no node data yet (old probe, no sudo)."""
-    return m["kind"] == "linux-host" and any(a["name"] == "Proxmox VE" for a in m["apps"])
+    return views.is_pve_host(m)
 
 
 def proxmox(s: Session, c: Ctx) -> list[dict[str, Any]]:

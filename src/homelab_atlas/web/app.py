@@ -211,6 +211,31 @@ def _ago(when: datetime | None, now: datetime | None = None) -> str:
     return "just now"  # pragma: no cover - unreachable
 
 
+def _bytes(n: Any) -> str:
+    """1536 -> '1.5 KB' (binary units, one decimal); '' for anything not a number."""
+    if not isinstance(n, int | float) or isinstance(n, bool) or n < 0:
+        return ""
+    value = float(n)
+    for unit in ("B", "KB", "MB", "GB", "TB", "PB"):
+        if value < 1024 or unit == "PB":
+            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+    return ""  # pragma: no cover - unreachable
+
+
+def _duration(secs: Any) -> str:
+    """93784 -> '1 d 2 h'; '' for anything not a number."""
+    if not isinstance(secs, int | float) or isinstance(secs, bool) or secs < 0:
+        return ""
+    s = int(secs)
+    d, h, m = s // 86400, s % 86400 // 3600, s % 3600 // 60
+    if d:
+        return f"{d} d {h} h" if h else f"{d} d"
+    if h:
+        return f"{h} h {m} min" if m else f"{h} h"
+    return f"{m} min" if m else f"{s} s"
+
+
 def _safe_error(exc: Exception) -> str:
     """Errors from the security layer are already secret-free; keep them short."""
     if isinstance(exc, SecurityRefusal):
@@ -226,6 +251,8 @@ def create_app(cfg: WebConfig) -> FastAPI:
     # never keeps an old app.js/topology.js after an update.
     templates.env.globals["asset_v"] = _asset_version(PKG / "static")
     templates.env.filters["ago"] = _ago
+    templates.env.filters["bytes"] = _bytes
+    templates.env.filters["duration"] = _duration
     templates.env.finalize = _finalize  # None -> "", True/False -> yes/no, everywhere
     apps.configure_custom(cfg.data_dir / apps.CUSTOM_FILE if cfg.data_dir else None)
     throttle = LoginThrottle(*LOGIN_RATE)
@@ -1452,10 +1479,13 @@ def create_app(cfg: WebConfig) -> FastAPI:
         return RedirectResponse("/unknown", 303)
 
     @app.get("/topology", response_class=HTMLResponse)
-    def topology_page(request: Request, s: DB, user: User, view: str = "logical") -> Response:
-        view = view if view in ("physical", "logical", "vlan") else "logical"
-        pve = views.proxmox_summary(views.machines(s)) if view == "logical" else None
-        return page(request, "topology.html", user, view=view, pve=pve)
+    def topology_page(request: Request, s: DB, user: User, view: str = "board") -> Response:
+        # board: Proxmox nodes with their guests (HTML, ADR-045); the graphs stay available.
+        view = view if view in ("board", "physical", "logical", "vlan") else "board"
+        cards = views.machines(s)
+        pve = views.proxmox_summary(cards) if view in ("board", "logical") else None
+        board = views.proxmox_board(s) if view == "board" else None
+        return page(request, "topology.html", user, view=view, pve=pve, board=board)
 
     @app.get("/api/topology")
     def topology_json(s: DB, _user: User, view: str = "logical") -> JSONResponse:

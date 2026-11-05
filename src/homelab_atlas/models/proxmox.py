@@ -75,6 +75,13 @@ class PveNodeFacts(Fact):
     storages: list[Storage] = keyed("storage")
     uptime_s: int | None = volatile()
     cpu_load: float | None = volatile()
+    #: Live usage from /nodes/{node}/status (ADR-045): never diffed.
+    memory_used_bytes: int | None = volatile()
+    rootfs_total_bytes: int | None = volatile()
+    rootfs_used_bytes: int | None = volatile()
+    swap_total_bytes: int | None = volatile()
+    swap_used_bytes: int | None = volatile()
+    loadavg: list[float] = volatile(factory=list)
 
 
 class GuestNic(Fact):
@@ -126,3 +133,11 @@ class PveGuestFacts(Fact):
     notes: list[str] = volatile(factory=list)  # e.g. "guest agent not running"
     cpu_load: float | None = volatile()
     uptime_s: int | None = volatile()
+    #: Live usage from /cluster/resources (ADR-045): never diffed.
+    maxcpu: int | None = volatile()
+    mem_used_bytes: int | None = volatile()
+    mem_max_bytes: int | None = volatile()
+    disk_used_bytes: int | None = volatile()
+    disk_max_bytes: int | None = volatile()
+    netin_bytes: int | None = volatile()
+    netout_bytes: int | None = volatile()

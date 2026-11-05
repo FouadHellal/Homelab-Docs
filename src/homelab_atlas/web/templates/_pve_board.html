@@ -1,0 +1,82 @@
+{# Topology → Proxmox board (ADR-045): one box per node, its own figures, its guests. #}
+{% macro meter(label, pct, text) -%}
+<div class="pb-meter"><span class="pb-meter-k">{{ label }}</span>
+  <span class="bar"><span class="bar-fill" data-pct="{{ pct if pct is not none else 0 }}"></span></span>
+  <span class="pb-meter-v">{{ text }}</span></div>
+{%- endmacro %}
+{% macro tile(g) -%}
+<a class="pb-guest st-{{ g.status }}{% if g.inferred %} inferred{% endif %}" href="/entity?key={{ g.key | urlencode }}" data-search="{{ (g.name ~ ' ' ~ (g.ip or '') ~ ' ' ~ (g.os or '') ~ ' ' ~ g.apps | join(' ')) | lower }}" data-status="{{ g.status }}">
+  <span class="pb-guest-head">
+    <span class="dot st-{{ g.status }}" aria-hidden="true"></span>
+    <strong>{{ g.name }}</strong>
+    <span class="pb-type t-{{ g.type | lower }}">{{ g.type }}{% if g.vmid %} {{ g.vmid }}{% endif %}</span>
+  </span>
+  <span class="pb-guest-sub muted small">{{ g.ip or "no IP" }}{% if g.os %} · {{ g.os }}{% endif %}</span>
+  {% set u = g.usage %}
+  {% if u.cpu_pct is not none or u.vcpu %}{{ meter("CPU", u.cpu_pct, ((u.cpu_pct ~ " %") if u.cpu_pct is not none else "–") ~ (" of " ~ u.vcpu ~ " vCPU" if u.vcpu else "")) }}{% endif %}
+  {% if u.mem_max %}{{ meter("RAM", u.mem_pct, ((u.mem_used | bytes) ~ " / " if u.mem_used is not none else "") ~ (u.mem_max | bytes)) }}{% endif %}
+  {% if u.disk_max %}{{ meter("Disk", u.disk_pct, ((u.disk_used | bytes) ~ " / " if u.disk_used else "") ~ (u.disk_max | bytes)) }}{% endif %}
+  <span class="pb-guest-foot">
+    {% if g.status == "running" and u.uptime_s %}<span class="chip">up {{ u.uptime_s | duration }}</span>{% endif %}
+    {% if u.netin %}<span class="chip">↓ {{ u.netin | bytes }} ↑ {{ u.netout | bytes }}</span>{% endif %}
+    {% if g.containers %}<span class="chip">{{ g.containers }} containers</span>{% endif %}
+    {% for a in g.apps %}<span class="chip" title="app">{{ a }}</span>{% endfor %}
+    {% if g.template %}<span class="pill unknown">template</span>{% elif g.backed_up is false %}<span class="pill partial">no backup</span>{% endif %}
+    {% if g.documented %}<span class="pill ok" title="atlas logs in over SSH">documented</span>{% endif %}
+    {% if g.inferred %}<span class="pill unknown" title="Placed by the switch port it shares with the node; the Proxmox API would confirm it">inferred</span>{% endif %}
+  </span>
+</a>
+{%- endmacro %}
+
+{% if board.problem %}
+<p class="card warn pb-banner" role="status"><strong>Proxmox API not answering</strong> — {{ board.problem }}.
+  {% if board.inferred %}VMs below marked <em>inferred</em> are placed by the switch port they share with a node.{% endif %}
+  For real guest data (state, CPU, RAM, disks), give the API token the <code>PVEAuditor</code> role on <code>/</code>: on a node,
+  <code>pveum acl modify / --tokens 'USER@REALM!TOKEN' --roles PVEAuditor</code> (and the same with <code>--users USER@REALM</code> for a privilege-separated token).</p>
+{% endif %}
+
+<div class="pb-tools" role="toolbar" aria-label="Filter">
+  <input type="search" id="pb-search" placeholder="Filter guests: name, IP, OS, app…" maxlength="64" autocomplete="off">
+  <label class="toggle"><input type="checkbox" id="pb-stopped" checked> Stopped</label>
+  <span id="pb-count" class="muted small" aria-live="polite"></span>
+</div>
+
+<div class="pb-nodes">
+{% for b in board.nodes %}{% set n = b.node %}
+<section class="pb-node" aria-labelledby="pbn-{{ loop.index }}">
+  <header class="pb-node-head">
+    <span class="pb-node-icon" aria-hidden="true">{{ icon("topology") }}</span>
+    <div>
+      <h2 id="pbn-{{ loop.index }}"><a href="/entity?key={{ n.key | urlencode }}">{{ n.short }}</a></h2>
+      <span class="muted small">{{ n.ips | first if n.ips else "" }}{% if n.pve and n.pve.version %} · PVE {{ n.pve.version }}{% endif %}{% if b.cluster %} · cluster {{ b.cluster }}{% endif %}{% if b.source == "ssh" %} · seen over SSH only{% endif %}</span>
+    </div>
+    <span class="pb-node-count"><strong>{{ b.running }}</strong><small> / {{ b.guests | length }} running</small></span>
+  </header>
+  <div class="pb-node-stats">
+    {% if b.cpu.cores %}{{ meter("CPU", b.cpu.load_pct, ((b.cpu.load_pct ~ " %") if b.cpu.load_pct is not none else "–") ~ " of " ~ b.cpu.cores ~ " threads" ~ (" · load " ~ b.cpu.loadavg | join(" ") if b.cpu.loadavg else "")) }}{% endif %}
+    {% if b.mem.total %}{{ meter("RAM", b.mem.pct, ((b.mem.used | bytes) ~ " / " if b.mem.used else "") ~ (b.mem.total | bytes) ~ (" · " ~ (b.mem_alloc | bytes) ~ " allocated" if b.mem_alloc else "")) }}{% endif %}
+    {% if b.rootfs.total %}{{ meter("Root fs", b.rootfs.pct, (b.rootfs.used | bytes) ~ " / " ~ (b.rootfs.total | bytes)) }}{% endif %}
+    {% for st in b.storages %}{{ meter(st.name, st.pct, ((st.used | bytes) ~ " / " ~ (st.total | bytes) if st.total else st.status or "") ~ (" · " ~ st.type if st.type else "") ~ (" · shared" if st.shared else "")) }}{% endfor %}
+    {% if b.cpu.model %}<p class="muted small pb-cpu">{{ b.cpu.model }}{% if b.vcpu %} · {{ b.vcpu }} vCPU allocated to running guests{% endif %}</p>{% endif %}
+    {% if b.source == "ssh" and not b.mem.total %}<p class="muted small">Node figures need the Proxmox API.</p>{% endif %}
+  </div>
+  <div class="pb-guests">
+    {% for g in b.guests %}{{ tile(g) }}{% else %}<p class="muted small">{% if board.problem %}Guests unknown until the API answers.{% else %}No guests.{% endif %}</p>{% endfor %}
+  </div>
+</section>
+{% endfor %}
+</div>
+
+{% if board.unplaced %}
+<section class="pb-node pb-loose" aria-labelledby="pbu-h">
+  <header class="pb-node-head"><div><h2 id="pbu-h">Proxmox guests, node unknown</h2><span class="muted small">A Proxmox guest network card, but no single node shares its switch port.</span></div></header>
+  <div class="pb-guests">{% for g in board.unplaced %}{{ tile(g) }}{% endfor %}</div>
+</section>
+{% endif %}
+{% if board.others %}
+<section class="pb-node pb-loose" aria-labelledby="pbo-h">
+  <header class="pb-node-head"><div><h2 id="pbo-h">Other machines</h2><span class="muted small">Physical machines and hosts outside Proxmox.</span></div></header>
+  <div class="pb-guests">{% for g in board.others %}{{ tile(g) }}{% endfor %}</div>
+</section>
+{% endif %}
+{% if not board.nodes and not board.others and not board.unplaced %}<p class="muted">No machines yet. Add Proxmox and hosts on <a href="/targets">Targets</a>.</p>{% endif %}

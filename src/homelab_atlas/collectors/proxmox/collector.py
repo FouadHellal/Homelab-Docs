@@ -261,5 +261,6 @@ class _Run:
             notes=notes,
             cpu_load=row.get("cpu") if isinstance(row.get("cpu"), float) else None,
             uptime_s=parse._i(row.get("uptime")),
+            **parse.guest_usage(row),
             **cfg,
         )

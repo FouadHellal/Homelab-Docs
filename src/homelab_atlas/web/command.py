@@ -28,6 +28,7 @@ from homelab_atlas.engine.apps import CATEGORY_LABELS
 from homelab_atlas.models.nas import POOL_NOTE, POOL_OK
 from homelab_atlas.store.facets import facet_views
 from homelab_atlas.store.tables import CollectorRun, Entity, Event, Facet
+from homelab_atlas.web import views as vw
 from homelab_atlas.web.queries import latest_runs
 from homelab_atlas.web.views import service_table
 
@@ -137,18 +138,23 @@ def summary(
     nodes = [v for v in views if v.entity_key.startswith("pve:node:") and v.collector == "proxmox"]
     online = sum(1 for n in nodes if n.data.get("online") is True)
     offline = sum(1 for n in nodes if n.data.get("online") is False)
+    # Nodes atlas reaches over SSH only (Proxmox API failing, no /etc/pve access): they are
+    # nodes all the same, just without guest data.
+    ssh_nodes = [c for c in cards if vw.is_pve_host(c)]
+    problem = vw.proxmox_problem(s)
     out.append(
         {
             "id": "nodes",
             "label": "Proxmox nodes",
-            "n": online,
-            "total": len(nodes),
+            "n": online + len(ssh_nodes),
+            "total": len(nodes) + len(ssh_nodes),
             "parts": [
                 _part("online", online, "ok"),
                 _part("offline", offline, "bad"),
                 _part("unknown", len(nodes) - online - offline, "unknown"),
+                _part("seen over SSH only", len(ssh_nodes), "unknown"),
             ],
-            "href": "/entities?kind=pve-node",
+            "href": "/topology",
             "icon": "topology",
         }
     )
@@ -160,6 +166,20 @@ def summary(
         mine = [c for c in cards if c["kind"] == kind]
         run = sum(1 for c in mine if c["status"] == "running")
         stop = sum(1 for c in mine if c["status"] == "stopped")
+        if problem and not mine:
+            # Not "0": atlas cannot see the guests at all. Say why, and where to fix it.
+            out.append(
+                {
+                    "id": kind,
+                    "label": label,
+                    "n": "?",
+                    "total": None,
+                    "parts": [_part(f"unknown: {problem}"[:140], 0, "bad", count=False)],
+                    "href": "/targets",
+                    "icon": "inventory",
+                }
+            )
+            continue
         out.append(
             {
                 "id": kind,

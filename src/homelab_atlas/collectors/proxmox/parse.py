@@ -255,6 +255,28 @@ def not_backed_up(payload: Any) -> list[str]:
     )
 
 
+def _float(v: Any) -> float | None:
+    """PVE sends load averages as strings ("0.42")."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if 0 <= f < 1e6 else None
+
+
+def guest_usage(row: dict[str, Any]) -> dict[str, Any]:
+    """Live usage of one /cluster/resources qemu/lxc row (bytes; maxcpu = vCPUs)."""
+    return {
+        "maxcpu": _i(row.get("maxcpu")),
+        "mem_used_bytes": _i(row.get("mem")),
+        "mem_max_bytes": _i(row.get("maxmem")),
+        "disk_used_bytes": _i(row.get("disk")),
+        "disk_max_bytes": _i(row.get("maxdisk")),
+        "netin_bytes": _i(row.get("netin")),
+        "netout_bytes": _i(row.get("netout")),
+    }
+
+
 def node_status(payload: Any) -> dict[str, Any]:
     raw = data(payload)
     s: dict[str, Any] = raw if isinstance(raw, dict) else {}
@@ -264,7 +286,17 @@ def node_status(payload: Any) -> dict[str, Any]:
     pveversion = str(s.get("pveversion") or "")  # "pve-manager/9.2.1/abcdef"
     kversion = str(s.get("kversion") or "").split()  # "Linux 6.14.8-2-pve #1 SMP ..."
     cpu_load = s.get("cpu")
+    rootfs_raw, swap_raw = s.get("rootfs"), s.get("swap")
+    rootfs: dict[str, Any] = rootfs_raw if isinstance(rootfs_raw, dict) else {}
+    swap: dict[str, Any] = swap_raw if isinstance(swap_raw, dict) else {}
+    loads = [float(x) for x in s.get("loadavg") or [] if _float(x) is not None][:3]
     return {
+        "memory_used_bytes": _i(mem.get("used")),
+        "rootfs_total_bytes": _i(rootfs.get("total")),
+        "rootfs_used_bytes": _i(rootfs.get("used")),
+        "swap_total_bytes": _i(swap.get("total")),
+        "swap_used_bytes": _i(swap.get("used")),
+        "loadavg": loads,
         "pve_version": _s(pveversion.split("/")[1], 32) if pveversion.count("/") >= 1 else None,
         "kernel": _s(kversion[1], 64) if len(kversion) > 1 else None,
         "cpu_model": _s(cpu.get("model"), 128),
