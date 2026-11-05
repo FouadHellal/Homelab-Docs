@@ -7,6 +7,15 @@ Evaluated after every scan from data atlas already holds:
 * `media.space:<jellyfin>`    a media mount below its free-space threshold
 * `host.unreachable:<target>` a machine's SSH scan failed twice in a row
 * `nas.pool:<nas>:<pool>`     a NAS pool not fully operational
+* `source.failed:<collector>:<source>`  an API source (Proxmox, UniFi, NAS) failed twice in a
+                              row: atlas is blind there until it is fixed (ADR-043)
+* `guest.stopped:<guest>`     a Proxmox VM/LXC set to start at boot is not running
+* `container.down:<host>/<container>`  a container that should run is unhealthy, restarting,
+                              or exited with an error under an always/unless-stopped policy
+* `disk.full:<host>:<mount>`  a real filesystem at 90 % or more
+
+Facts from a collector whose latest run failed are stale and never open or keep an incident
+(the source failure is the incident instead).
 
 One open incident per key. A condition that clears resolves it; one that comes back within
 COOLDOWN reopens the same incident instead of starting a new one (no flapping spam).
@@ -26,11 +35,50 @@ from homelab_atlas.engine import media
 from homelab_atlas.engine.notify import Notification
 from homelab_atlas.inventory.hosts import Inventory
 from homelab_atlas.models.nas import POOL_NOTE, POOL_OK
+from homelab_atlas.store.facets import facet_views
 from homelab_atlas.store.tables import CollectorRun, Facet, Incident
 
 COOLDOWN: Final = timedelta(minutes=30)
 NOTIFY_AFTER: Final = timedelta(minutes=5)
 HOST_FAILURES: Final = 2
+SOURCE_FAILURES: Final = 2
+#: API collectors whose failure is its own incident (Jellyfin has media.down already).
+API_COLLECTORS: Final = {"proxmox": "Proxmox API", "unifi": "UniFi", "nas": "NAS"}
+FULL_PCT: Final = 90
+#: Filesystems that are full by design or not storage (snaps, overlays, RAM disks…).
+PSEUDO_FS: Final = frozenset(
+    {"tmpfs", "devtmpfs", "squashfs", "overlay", "ramfs", "iso9660", "efivarfs", "proc", "sysfs",
+     "cgroup2", "autofs", "nsfs", "tracefs", "fuse.lxcfs", "fuse.snapfuse"}
+)  # fmt: skip
+PSEUDO_PREFIXES: Final = ("/snap/", "/run", "/dev", "/sys", "/proc", "/var/lib/docker/")
+RESTART_LOOP: Final = 5
+
+
+def full_mounts(mounts: list[Any]) -> list[tuple[str, int]]:
+    """(mount point, % used) of real filesystems at FULL_PCT or more."""
+    out = []
+    for m in mounts:
+        if not isinstance(m, dict):
+            continue
+        target, fstype = str(m.get("target") or ""), str(m.get("fstype") or "")
+        size, used = m.get("size_bytes"), m.get("used_bytes")
+        if fstype in PSEUDO_FS or target.startswith(PSEUDO_PREFIXES) or not target:
+            continue
+        if isinstance(size, int) and size > 0 and isinstance(used, int):
+            pct = used * 100 // size
+            if pct >= FULL_PCT:
+                out.append((target, pct))
+    return out
+
+
+def _latest_runs(s: Session) -> dict[tuple[str, str], list[CollectorRun]]:
+    """Newest runs (up to 2) per (target, collector)."""
+    out: dict[tuple[str, str], list[CollectorRun]] = {}
+    for r in s.scalars(select(CollectorRun).order_by(CollectorRun.id.desc()).limit(4000)):
+        runs = out.setdefault((r.target, r.collector), [])
+        if len(runs) < SOURCE_FAILURES:
+            runs.append(r)
+    return out
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,6 +155,7 @@ def conditions(
                     errs,
                 )
             )
+    out.extend(_more_conditions(s))
     for f in s.scalars(select(Facet).where(Facet.collector == "nas")):
         for p in f.data.get("pools") or []:
             if p.get("status") and p["status"] not in POOL_OK | POOL_NOTE:
@@ -118,6 +167,97 @@ def conditions(
                         "warning",
                         f.entity_key,
                         (),
+                    )
+                )
+    return out
+
+
+def _more_conditions(s: Session) -> list[Condition]:
+    out: list[Condition] = []
+    runs = _latest_runs(s)
+    failing = {key for key, rs in runs.items() if rs and rs[0].status in ("failed", "refused")}
+    for (target, collector), rs in sorted(runs.items()):
+        label = API_COLLECTORS.get(collector)
+        if label is None or len(rs) < SOURCE_FAILURES:
+            continue
+        if all(r.status in ("failed", "refused") for r in rs):
+            errs = tuple(str(e)[:300] for e in (rs[0].errors or [])[:3])
+            why = f": {errs[0]}" if errs else ""
+            out.append(
+                Condition(
+                    f"source.failed:{collector}:{target}",
+                    "source.failed",
+                    f"{label} source {target} fails{why}"[:256],
+                    "warning",
+                    None,
+                    errs,
+                )
+            )
+    for v in facet_views(s.scalars(select(Facet))):
+        if (v.target, v.collector) in failing:
+            continue  # stale facts: the failing source is the incident
+        d = v.data
+        if v.collector == "proxmox" and "vmid" in d and not d.get("template"):
+            if d.get("onboot") and d.get("status") == "stopped":
+                kind = "LXC" if d.get("type") == "lxc" else "VM"
+                out.append(
+                    Condition(
+                        f"guest.stopped:{v.entity_key}",
+                        "guest.stopped",
+                        f"{kind} {d.get('name')} ({d.get('vmid')}) stopped, set to start at boot",
+                        "warning",
+                        v.entity_key,
+                        (f"node {d.get('node')}: status stopped, onboot=1",),
+                    )
+                )
+        elif v.collector == "docker":
+            for c in d.get("containers") or []:
+                if not isinstance(c, dict):
+                    continue
+                status, health = c.get("status"), c.get("health")
+                raw_restarts = c.get("restart_count")
+                restarts = raw_restarts if isinstance(raw_restarts, int) else 0
+                policy = c.get("restart_policy") or ""
+                exited_bad = (
+                    status == "exited"
+                    and isinstance(c.get("exit_code"), int)
+                    and c["exit_code"] != 0
+                    and policy in ("always", "unless-stopped")
+                )
+                looping = status == "restarting" or (
+                    restarts >= RESTART_LOOP and status != "running"
+                )
+                if health == "unhealthy" or looping or exited_bad:
+                    what = (
+                        "unhealthy"
+                        if health == "unhealthy"
+                        else "restarting"
+                        if looping
+                        else f"exited with code {c.get('exit_code')}"
+                    )
+                    out.append(
+                        Condition(
+                            f"container.down:{v.target}/{c.get('name')}",
+                            "container.down",
+                            f"Container {c.get('name')} on {v.target} is {what}"[:256],
+                            "warning",
+                            v.entity_key,
+                            (
+                                f"image {c.get('image')}",
+                                f"status {status}, health {health or 'n/a'}, restarts {restarts}",
+                            ),
+                        )
+                    )
+        elif v.collector == "linux-ssh":
+            for target, pct in full_mounts(d.get("mounts") or []):
+                out.append(
+                    Condition(
+                        f"disk.full:{v.target}:{target}",
+                        "disk.full",
+                        f"{target} on {v.target} is {pct}% full",
+                        "warning" if pct >= 95 else "notice",
+                        v.entity_key,
+                        (f"{target}: {pct}% used",),
                     )
                 )
     return out

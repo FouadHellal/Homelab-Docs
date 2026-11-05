@@ -218,7 +218,7 @@ def test_demo_a_healthy_then_b_storage_incident(rt: Runtime) -> None:
         assert d.status == "healthy" and d.condition == 0, d.headline
         assert d.host == "media01"
         assert all(r["network"] for r in d.storage)
-        assert incidents.open_incidents(s) == []
+        assert [i for i in incidents.open_incidents(s) if i.kind.startswith("media.")] == []
     _scan(rt, "B")
     inv, _ = load_lab("B", LAB)
     with rt.sessions() as s:

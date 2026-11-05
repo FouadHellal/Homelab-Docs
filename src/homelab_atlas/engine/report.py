@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from homelab_atlas.engine import media
-from homelab_atlas.engine.incidents import open_incidents
+from homelab_atlas.engine.incidents import full_mounts, open_incidents
 from homelab_atlas.engine.notify import Notification
 from homelab_atlas.inventory.hosts import Inventory
 from homelab_atlas.store.facets import facet_views
@@ -44,12 +44,10 @@ def daily_summary(
     views = list(facet_views(s.scalars(select(Facet))))
     full: list[str] = []
     for v in views:
-        for m in v.data.get("mounts") or [] if v.collector == "linux-ssh" else []:
-            size, used = m.get("size_bytes"), m.get("used_bytes")
-            if isinstance(size, int) and size > 0 and isinstance(used, int):
-                pct = used * 100 // size
-                if pct >= FULL_PCT:
-                    full.append(f"{m.get('target')} on {v.target} ({pct}%)")
+        if v.collector == "linux-ssh":
+            full += [
+                f"{t} on {v.target} ({pct}%)" for t, pct in full_mounts(v.data.get("mounts") or [])
+            ]
     no_backup = sorted(
         str(v.data.get("name"))
         for v in views
