@@ -54,6 +54,10 @@ when atlas last checked.
   `config` (token revoked, scope missing, integration disabled, no company: fix it, atlas
   retries every 30 min or press *Retry failed deliveries*), `permanent` (Taskora refused this
   payload: held until the incident changes or you retry).
+- **Taskora created no ticket: …** Taskora took the incident but opened no ticket (usually
+  *Create tickets automatically* is off in Taskora, or the ticket was deleted). Fix it in
+  Taskora; atlas sends the incident again every 30 minutes, or press *Retry failed deliveries*.
+  Taskora 0.3.3+ then creates the ticket.
 - **Taskora restored from a backup?** Press *Re-send all*: Taskora ignores what it already has
   and re-creates what it lost, without duplicates.
 - **Revoking the token** in Taskora stops everything immediately; atlas keeps the outbox and

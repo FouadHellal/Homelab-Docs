@@ -2,6 +2,15 @@
 
 All notable changes. Versions follow [SemVer](https://semver.org/); dates are UTC.
 
+## 0.12.1 (2026-11-09)
+
+### Fixed
+- **Taskora: incidents without a ticket stayed without one.** When Taskora accepted an incident
+  but opened no ticket (its automatic ticket creation was off, or the ticket was deleted), atlas
+  counted it as delivered and never sent it again. Deliveries now show *Taskora created no
+  ticket: …* with Taskora's reason, and atlas sends the incident again every 30 minutes (or on
+  *Retry failed deliveries*) until it has a ticket. Needs Taskora 0.3.3 to catch up.
+
 ## 0.12.0 (2026-11-05)
 
 ### Added

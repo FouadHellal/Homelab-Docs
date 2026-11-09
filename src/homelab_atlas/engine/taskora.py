@@ -834,6 +834,16 @@ async def deliver(
         # digest: the next stage() sends "still failing" (or that it stopped).
         _persisting(inc, link)
         st.last_ok_at, st.last_error = now, None
+        if inc.resolved_at is None and res.get("ticket") is None:
+            # Accepted, but no ticket (automatic creation off in Taskora, or the ticket was
+            # deleted): say why, and send it again later; Taskora 0.3.3+ then creates it.
+            why = re.sub(r"[^\w .,:;()'/-]", "", str(res.get("note") or ""))[:160]
+            link.ticket_id = link.ticket_number = link.ticket_path = None
+            link.sent_revision = ev.revision - 1
+            link.error_kind = "config"
+            link.last_error = f"Taskora created no ticket{f': {why}' if why else ''}"[:256]
+            link.next_attempt_at = now + CONFIG_RETRY
+            st.last_error = link.last_error
     return ok, failed
 
 

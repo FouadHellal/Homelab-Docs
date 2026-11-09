@@ -35,6 +35,7 @@ class FakeTaskora:
         self.requests: list[tuple[str, str, dict[str, Any] | None]] = []
         self.fail: list[int] = []
         self.inventories: list[dict[str, Any]] = []
+        self.auto_create = True  # Taskora's "create tickets automatically"
 
     def snapshot(self, tid: int) -> dict[str, Any]:
         t = self.tickets[tid]
@@ -117,13 +118,27 @@ class FakeTaskora:
         link = self.links.setdefault(
             key, {"revision": 0, "ticket": None, "state": "new", "persisting": False}
         )
-        if ev["revision"] <= link["revision"]:
+        open_without_ticket = (
+            link["ticket"] is None
+            and self.auto_create
+            and ev["state"] != "resolved"
+            and link["state"] != "resolved"
+        )
+        if ev["revision"] <= link["revision"] and not open_without_ticket:  # 0.3.3: catch-up
             return 200, {
                 "applied": False,
                 "created": False,
                 "ticket": self.snapshot(link["ticket"]) if link["ticket"] else None,
             }
         created = False
+        if link["ticket"] is None and not self.auto_create:
+            link.update(revision=ev["revision"], state=ev["state"], last=ev)
+            return 200, {
+                "applied": True,
+                "created": False,
+                "ticket": None,
+                "note": "Automatic ticket creation is off",
+            }
         if link["ticket"] is None and ev["state"] != "resolved":
             tid = len(self.tickets) + 1
             self.tickets[tid] = {
@@ -316,6 +331,36 @@ def test_revoked_token_is_a_configuration_error_and_bad_payloads_are_held(rt: Ru
     run(rt, fake)
     with rt.sessions() as s:
         assert not [x for x in s.scalars(select(TaskoraLink)) if x.error_kind]
+
+
+def test_incident_taken_without_a_ticket_is_sent_again_until_taskora_opens_one(
+    rt: Runtime,
+) -> None:
+    fake = FakeTaskora()
+    fake.auto_create = False
+    now = later()
+    out = run(rt, fake, now=now)
+    assert out["delivered"] >= 3 and fake.tickets == {}
+    with rt.sessions() as s:
+        links = list(s.scalars(select(TaskoraLink)))
+        assert all(lk.error_kind == "config" and lk.sent_revision < lk.revision for lk in links)
+        assert all(
+            lk.last_error == "Taskora created no ticket: Automatic ticket creation is off"
+            for lk in links
+        )
+        assert tk.status(s)["failing"] == len(links)  # the Integrations page shows why
+    before = len(fake.requests)
+    run(rt, fake, now=now + timedelta(minutes=1))
+    assert [r for r in fake.requests[before:] if r[0] == "POST"] == []  # no hammering
+    # Turned on in Taskora: the next re-send opens the tickets; then all is quiet.
+    fake.auto_create = True
+    out = run(rt, fake, now=now + timedelta(minutes=31))
+    assert len(fake.tickets) == out["delivered"] == len(links)
+    with rt.sessions() as s:
+        assert all(
+            lk.ticket_number and not lk.error_kind and lk.sent_revision == lk.revision
+            for lk in s.scalars(select(TaskoraLink))
+        )
 
 
 def test_blips_and_old_resolved_incidents_never_become_tickets(rt: Runtime) -> None:
