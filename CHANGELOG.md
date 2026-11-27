@@ -2,6 +2,28 @@
 
 All notable changes. Versions follow [SemVer](https://semver.org/); dates are UTC.
 
+## 0.13.0 (2026-11-27)
+
+### Added
+- **Portal** (`/portal`): one-click shortcuts to your web UIs, with favorites, category filters
+  and search (`/` to focus, Enter opens the first match). Unauthenticated visitors land on it
+  when it is public and get a clear **Log in to Atlas** button; signed in, it also lists web UIs
+  atlas found in the inventory that have no shortcut yet.
+- **Edit shortcuts** (`/portal/edit`): add, edit, delete and reorder shortcuts and categories;
+  name, URL, logo, description, favorite and *visible before login* per shortcut, plus a global
+  "show anything before login" switch, and YAML import. Stored in the database (migration
+  0009, additive; the portal starts private), so backups include them. Your own bookmarks can
+  be put in `config/portal-seed.yaml`, imported once on first start.
+- Logos from Simple Icons (CC0), rendered inline from vendored paths: no third-party requests,
+  strict CSP unchanged. Lettermarks and simple glyphs where no logo exists.
+- `atlas tls trust` / `sudo atlas tls-trust` and `/atlas-ca.crt`: a certificate browsers can
+  trust, from a one-time, name-constrained CA whose private key is never stored.
+
+### Fixed
+- **Chrome never offered to save the atlas password.** The login form was already standard;
+  Chrome disables its password manager on pages with a certificate error, which the self-signed
+  certificate always caused. Trusting atlas's certificate (above, `/docs#https`) fixes it.
+
 ## 0.12.1 (2026-11-09)
 
 ### Fixed

@@ -960,3 +960,49 @@ security…; make sure everything gets opened as a ticket in Taskora."
   Secret. A test fails if it ever grants more.
 - Known limitation: generated pod-name suffixes sometimes look random enough for the redactor's
   entropy rule, which then masks the name. The redactor errs on the side of hiding.
+
+## ADR-049 Portal: shortcuts next to the login, editable, optionally public (v13)
+
+**Context.** "One page with all my web UIs (home lab, IT services, PhD) and a visible way to log
+in to atlas. Customisable from atlas. Everything visible before login" (owner's choice).
+
+**Decisions.**
+- Three additive tables (`portal_categories`, `portal_links`, `portal_settings`), migration
+  0009. The migration creates no shortcuts and leaves the portal private, so existing installs
+  behave exactly as before. The repository is public and installed by others: nobody's
+  bookmarks belong in it.
+- An installation's own shortcuts come from `config/portal-seed.yaml` (outside git), imported
+  once at startup. A `seeded` marker in `portal_settings` makes it once-only: later edits and
+  deletions are never overwritten, and a broken file is logged and retried, never fatal. The
+  same YAML can be pasted in *Edit shortcuts → Import*; links already present (same name and
+  URL) are skipped, so nothing is duplicated.
+- Visibility is two switches: a global `public` setting and a per-shortcut `public` flag. Only
+  both together show a shortcut before login. New shortcuts start private. The inventory
+  suggestions ("Found in your inventory") are only shown signed in.
+- Unauthenticated `/` redirects to `/portal` while the portal is public, else to `/login` as
+  before. `/login` itself is unchanged apart from a back link, so password managers still see
+  a plain standalone form.
+- URLs are http/https only, must have a host, may not carry a user name or password, at most
+  2048 characters; names, descriptions and categories are single-line and bounded. All text
+  is autoescaped (the `|safe` ban test still applies); links use `noopener noreferrer`.
+- Logos: Simple Icons paths (CC0) vendored into `brands.json` by `scripts/vendor_brands.py`;
+  colours come from generated classes (`brands.css`) because the CSP forbids inline styles.
+  atlas never fetches favicons: no outbound requests to arbitrary URLs.
+- The Ctrl+K palette keeps its "never off-site" rule: it lists the Portal page, not the
+  external shortcuts.
+
+## ADR-050 Trusted HTTPS for password managers (v13)
+
+**Context.** Chrome did not offer to save the atlas password. The login form already used
+standard semantics (POST form, `username` / `current-password` autocomplete, labels, no JS).
+Chrome disables saving and filling on pages with a certificate error, and the self-signed
+certificate (ADR-026) is always one.
+
+**Decisions.**
+- `atlas tls trust --name <host>` (and `sudo atlas tls-trust`, which uses `ATLAS_HOSTS`) makes a
+  one-time CA with critical X.509 name constraints limited to atlas's names, signs an 825-day
+  server certificate with it and discards the CA private key in memory: importing the CA on a
+  PC trusts atlas and nothing else, and a stolen data volume cannot mint more certificates.
+- The previous certificate and key are moved to `tls/previous-<time>/` (rollback = move back,
+  restart). `serve --self-signed-tls` keeps using whatever files exist.
+- `/atlas-ca.crt` serves the CA's public certificate without login (no secret, no inventory).

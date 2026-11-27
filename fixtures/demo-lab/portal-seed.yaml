@@ -1,0 +1,22 @@
+# Demo lab portal: example shortcuts (fake addresses). Your own go in config/portal-seed.yaml
+# on the atlas server, which is imported once on first start; see docs/GUIDE.md "Portal".
+public: true
+categories:
+  - name: Home Lab
+    links:
+      - {name: Proxmox VE, url: "https://192.0.2.10:8006/", description: Hypervisor, icon: "brand:proxmox", favorite: true}
+      - {name: Pi-hole, url: "http://192.0.2.53/admin/", description: Network-wide DNS filtering, favorite: true}
+      - {name: Jellyfin, url: "http://192.0.2.20:8096/", description: Media server, favorite: true}
+      - {name: Home Assistant, url: "http://192.0.2.30:8123/", description: Home automation}
+      - {name: Grafana, url: "http://192.0.2.40:3000/", description: Dashboards}
+      - {name: UniFi Site Manager, url: "https://unifi.ui.com/", description: Ubiquiti cloud console}
+      - {name: Router, url: "http://192.0.2.1/", description: ISP gateway, icon: "glyph:router", public: false}
+  - name: Work
+    links:
+      - {name: Tailscale Admin Console, url: "https://login.tailscale.com/admin/machines", description: Tailnet machines}
+      - {name: Project board, url: "https://trello.com/", description: Kanban, icon: "brand:trello"}
+  - name: Study
+    links:
+      - {name: Course site, url: "https://moodle.example.edu/my/", description: Moodle dashboard, icon: "brand:moodle", favorite: true}
+      - {name: Reading list, url: "https://www.zotero.org/", description: References}
+      - {name: Webmail, url: "https://mail.example.edu/", description: University mail}

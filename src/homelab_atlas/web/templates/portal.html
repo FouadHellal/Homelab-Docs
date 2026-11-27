@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% from "_portal.html" import logo %}
+{% from "_icons.html" import icon %}
+{% block title %}Portal{% endblock %}
+{% block body_class %}portal-page{% if not user %} portal-public{% endif %}{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/brands.css?v={{ asset_v }}">{% endblock %}
+{% block main %}
+<div class="portal" data-portal>
+  <header class="p-top">
+    {% if not user %}
+    <a class="brand p-brand" href="/portal" aria-label="atlas portal">
+      <img src="/static/logo.svg?v={{ asset_v }}" alt="" width="30" height="30">
+      <span class="brand-name">atlas</span>{% if lab %}<span class="badge lab">demo</span>{% endif %}
+    </a>
+    {% else %}
+    <h1 class="p-title">Portal</h1>
+    {% endif %}
+    <p class="p-clock" aria-live="off"><time id="p-time"></time><span id="p-date"></span></p>
+    {% if p.count %}
+    <div class="p-search" role="search">
+      {{ icon("search") }}
+      <label class="sr-only" for="p-q">Search shortcuts</label>
+      <input id="p-q" type="search" placeholder="Search shortcuts" maxlength="64" autocomplete="off" spellcheck="false" enterkeyhint="go">
+      <kbd aria-hidden="true">/</kbd>
+    </div>
+    {% endif %}
+    <div class="p-actions">
+      {% if user %}
+      <a class="btn ghost" href="/portal/edit">{{ icon("edit") }}<span>Edit shortcuts</span></a>
+      {% else %}
+      <a class="btn p-login" href="/login">{{ icon("lock") }}<span>Log in to Atlas</span></a>
+      {% endif %}
+    </div>
+  </header>
+
+  {% if p.count %}
+  <nav class="p-filter" aria-label="Show category">
+    <button type="button" class="p-chip" data-show="all" aria-pressed="true">All <span class="p-n">{{ p.count }}</span></button>
+    {% if p.favorites %}<button type="button" class="p-chip" data-show="fav" aria-pressed="false">{{ icon("star-on") }}Favorites <span class="p-n">{{ p.favorites | length }}</span></button>{% endif %}
+    {% for g in p.groups if g.links %}
+    <button type="button" class="p-chip" data-show="{{ g.slug }}" aria-pressed="false">{{ g.name }} <span class="p-n">{{ g.links | length }}</span></button>
+    {% endfor %}
+  </nav>
+
+  {% if p.favorites %}
+  <section class="p-favs" data-group="fav" aria-labelledby="p-fav-h">
+    <h2 class="p-group-h" id="p-fav-h"><span>Favorites</span></h2>
+    <ul class="p-dock" role="list">
+      {% for x in p.favorites %}
+      <li data-search="{{ x.search }}"><a class="p-fav" href="{{ x.url }}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" title="{{ x.name }} · {{ x.host }}">{{ logo(x.icon) }}<span class="p-name">{{ x.name }}</span><span class="sr-only"> (opens in a new tab)</span></a></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <div class="p-groups">
+    {% for g in p.groups if g.links %}
+    <section class="p-group" id="{{ g.slug }}" data-group="{{ g.slug }}" aria-labelledby="{{ g.slug }}-h">
+      <h2 class="p-group-h" id="{{ g.slug }}-h"><span>{{ g.name }}</span><span class="p-n">{{ g.links | length }}</span></h2>
+      <ul class="p-grid" role="list">
+        {% for x in g.links %}
+        <li data-search="{{ x.search }}">
+          <a class="p-link" href="{{ x.url }}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" title="{{ x.url }}">
+            {{ logo(x.icon) }}
+            <span class="p-text"><span class="p-name">{{ x.name }}</span><span class="p-desc">{% if x.description %}{{ x.description }}{% else %}<span class="p-host">{{ x.host }}</span>{% endif %}</span></span>
+            <span class="sr-only"> (opens in a new tab)</span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endfor %}
+  </div>
+  <div class="p-empty" id="p-empty" hidden>
+    <p>No shortcut matches <strong id="p-empty-q"></strong>.</p>
+    <button type="button" class="ghost" id="p-clear">Clear search</button>
+  </div>
+  {% if not user and p.hidden %}
+  <p class="p-more muted small">{{ icon("lock") }}{{ p.hidden }} more shortcut{{ "s" if p.hidden != 1 }} after you <a href="/login">log in</a>.</p>
+  {% endif %}
+
+  {% elif user %}
+  <section class="p-blank">
+    <h2>No shortcuts yet</h2>
+    <p class="muted">Add the web UIs you open every day: Proxmox, your router, Pi-hole, course sites.</p>
+    <a class="btn" href="/portal/edit#add">{{ icon("plus") }}<span>Add a shortcut</span></a>
+  </section>
+  {% else %}
+  <section class="p-blank">
+    <img src="/static/logo.svg?v={{ asset_v }}" alt="" width="48" height="48">
+    <h2>atlas</h2>
+    <p class="muted">Your homelab, documented. Log in to see your shortcuts and inventory.</p>
+    <a class="btn p-login" href="/login">{{ icon("lock") }}<span>Log in to Atlas</span></a>
+  </section>
+  {% endif %}
+
+  {% if user and suggest %}
+  <section class="p-suggest" aria-labelledby="p-sug-h">
+    <h2 class="p-group-h" id="p-sug-h"><span>Found in your inventory</span><span class="p-n">{{ suggest | length }}</span></h2>
+    <p class="muted small">Web interfaces atlas discovered that no shortcut points to yet. Adding one opens the editor with the name and address filled in.</p>
+    <ul class="p-sug-list" role="list">
+      {% for x in suggest %}
+      <li>{{ logo(x.icon, "sm") }}<span class="p-text"><span class="p-name">{{ x.name }}</span><span class="p-host">{{ x.host }}</span></span>
+        <a class="btn ghost small" href="/portal/edit?{{ {'add_name': x.name, 'add_url': x.url} | urlencode }}#add" aria-label="Add {{ x.name }} as a shortcut">{{ icon("plus") }}<span>Add</span></a></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

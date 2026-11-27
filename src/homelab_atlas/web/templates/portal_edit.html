@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% from "_portal.html" import logo %}
+{% from "_icons.html" import icon %}
+{% block title %}Edit shortcuts{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/brands.css?v={{ asset_v }}">{% endblock %}
+{% macro fields(d, fid) -%}
+  {% set cur_icon = d.icon_value if (d and d.icon_value is defined) else (d.icon if d else "") %}
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  {% if d and d.id %}<input type="hidden" name="id" value="{{ d.id }}">{% endif %}
+  <div class="pe-fields">
+    <label for="{{ fid }}-name">Name
+      <input id="{{ fid }}-name" name="name" required maxlength="80" value="{{ d.name if d else '' }}" autocomplete="off"></label>
+    <label for="{{ fid }}-url">URL <span class="muted small">http:// or https://, no passwords</span>
+      <input id="{{ fid }}-url" name="url" type="url" inputmode="url" required maxlength="2048" spellcheck="false" autocomplete="off" value="{{ d.url if d else '' }}" placeholder="https://10.0.0.100:8006/"></label>
+    <label for="{{ fid }}-cat">Category
+      <select id="{{ fid }}-cat" name="category_id" required>
+        {% for c in cats %}<option value="{{ c.id }}"{% if d and d.category_id == c.id %} selected{% endif %}>{{ c.name }}</option>{% endfor %}
+      </select></label>
+    <label for="{{ fid }}-icon">Icon
+      <select id="{{ fid }}-icon" name="icon">
+        <option value="">Automatic (matched from the name)</option>
+        {% for group, opts in icons.items() %}<optgroup label="{{ group }}">{% for v, label in opts %}<option value="{{ v }}"{% if cur_icon == v %} selected{% endif %}>{{ label }}</option>{% endfor %}</optgroup>{% endfor %}
+      </select></label>
+    <label class="pe-wide" for="{{ fid }}-desc">Description <span class="muted small">optional, one short line</span>
+      <input id="{{ fid }}-desc" name="description" maxlength="160" value="{{ d.description if d else '' }}" autocomplete="off"></label>
+  </div>
+  <div class="actions">
+    <label class="check"><input type="checkbox" name="favorite" value="1"{% if d and d.favorite %} checked{% endif %}><span>Favorite</span></label>
+    <label class="check"><input type="checkbox" name="public" value="1"{% if d and d.public %} checked{% endif %}><span>Visible before login</span></label>
+  </div>
+{%- endmacro %}
+{% block main %}
+<header class="page-head pe-head"><div>
+  {% if error %}<p class="card pe-flash bad" role="alert">{{ error }}</p>
+  {% elif msg %}<p class="card pe-flash" role="status">{{ msg }}</p>{% endif %}
+  <h1>Edit shortcuts</h1>
+  <p class="muted">Shortcuts live in atlas's database and are included in <code>atlas backup</code>. Order, favorites and visibility are saved as you change them.</p>
+</div>
+<a class="btn ghost" href="/portal">{{ icon("portal") }}<span>View portal</span></a>
+</header>
+
+<section class="card pe-settings" aria-labelledby="pe-vis-h">
+  <h2 id="pe-vis-h">Before login</h2>
+  <form method="post" action="/portal/settings" class="pe-row">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label class="check"><input type="checkbox" name="public" value="1"{% if p.public %} checked{% endif %}><span>Show shortcuts marked <strong>Visible before login</strong> to anyone who opens atlas</span></label>
+    <button type="submit" class="ghost">Save visibility</button>
+  </form>
+  <p class="muted small">Anyone who can reach atlas on your network sees those names and addresses. When this is off, the portal shows only the login button. Signed in, you always see everything.</p>
+</section>
+
+<section class="card" id="add" aria-labelledby="pe-add-h">
+  {% set editing = draft and draft.id %}
+  <h2 id="pe-add-h">{{ "Fix this shortcut" if editing else "Add a shortcut" }}</h2>
+  {% if cats %}
+  <form method="post" action="/portal/links" class="target-form pe-form">
+    {{ fields(draft, "new") }}
+    <div class="actions"><button type="submit">{{ icon("plus") if not editing }}{{ "Save shortcut" if editing else "Add shortcut" }}</button>{% if draft %}<a class="btn ghost" href="/portal/edit">Cancel</a>{% endif %}</div>
+  </form>
+  {% else %}
+  <p class="muted">Add a category first; shortcuts are grouped by category.</p>
+  {% endif %}
+</section>
+
+<section class="card" aria-labelledby="pe-cat-h">
+  <h2 id="pe-cat-h">Add a category</h2>
+  <form method="post" action="/portal/categories" class="pe-row">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label for="pe-cat-new" class="sr-only">Category name</label>
+    <input id="pe-cat-new" name="name" required maxlength="64" placeholder="e.g. Network" autocomplete="off">
+    <button type="submit" class="ghost">{{ icon("plus") }}Add category</button>
+  </form>
+</section>
+
+<section class="card" aria-labelledby="pe-imp-h">
+  <details><summary><strong id="pe-imp-h">Import shortcuts</strong> <span class="muted small">paste YAML; shortcuts already here are skipped</span></summary>
+    <form method="post" action="/portal/import" class="target-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <label for="pe-seed">Shortcuts (same format as <code>config/portal-seed.yaml</code>)
+        <textarea id="pe-seed" name="seed" rows="10" spellcheck="false" autocomplete="off" placeholder="public: true
+categories:
+  - name: Home Lab
+    links:
+      - {name: Proxmox VE, url: &quot;https://10.0.0.2:8006/&quot;, icon: brand:proxmox, favorite: true}"></textarea></label>
+      <div class="actions"><button type="submit" class="ghost">Import shortcuts</button></div>
+    </form>
+  </details>
+</section>
+
+{% for g in p.groups %}
+<section class="card pe-cat" id="{{ g.slug }}" aria-labelledby="{{ g.slug }}-h">
+  <div class="pe-cat-head">
+    <h2 id="{{ g.slug }}-h">{{ g.name }} <span class="muted small">{{ g.links | length }}</span></h2>
+    <div class="pe-tools">
+      <form method="post" action="/portal/categories/{{ g.id }}/move" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="direction" value="up">
+        <button type="submit" class="icon-btn" aria-label="Move {{ g.name }} up" title="Move category up"{% if loop.first %} disabled{% endif %}>{{ icon("up") }}</button></form>
+      <form method="post" action="/portal/categories/{{ g.id }}/move" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="direction" value="down">
+        <button type="submit" class="icon-btn" aria-label="Move {{ g.name }} down" title="Move category down"{% if loop.last %} disabled{% endif %}>{{ icon("down") }}</button></form>
+    </div>
+  </div>
+  <div class="pe-cat-edit">
+    <details><summary class="small">Rename</summary>
+      <form method="post" action="/portal/categories" class="pe-row">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="id" value="{{ g.id }}">
+        <label for="{{ g.slug }}-rn" class="sr-only">New name for {{ g.name }}</label>
+        <input id="{{ g.slug }}-rn" name="name" required maxlength="64" value="{{ g.name }}" autocomplete="off">
+        <button type="submit" class="ghost">Rename</button>
+      </form>
+    </details>
+    <details><summary class="small">Delete</summary>
+      <form method="post" action="/portal/categories/{{ g.id }}/delete" class="pe-row">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <p class="small">This removes {{ g.name }}{% if g.links %} and its {{ g.links | length }} shortcut{{ "s" if g.links | length != 1 }}{% endif %}. It cannot be undone (an <code>atlas backup</code> still has them).</p>
+        <button type="submit" class="danger">Delete {{ g.name }}</button>
+      </form>
+    </details>
+  </div>
+  {% if g.links %}
+  <ol class="pe-list">
+    {% for x in g.links %}
+    <li class="pe-item" id="l-{{ x.id }}">
+      <div class="pe-line">
+        {{ logo(x.icon, "sm") }}
+        <span class="p-text"><span class="p-name">{{ x.name }}</span><span class="p-host">{{ x.host }}</span></span>
+        <span class="pe-flags">
+          {% if x.favorite %}<span class="pill info">favorite</span>{% endif %}
+          {% if x.public %}<span class="pill ok" title="Shown on the portal before login">before login</span>{% else %}<span class="pill unknown" title="Only after login">signed in only</span>{% endif %}
+        </span>
+        <span class="pe-tools">
+          <form method="post" action="/portal/links/{{ x.id }}/move" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="direction" value="up">
+            <button type="submit" class="icon-btn" aria-label="Move {{ x.name }} up" title="Move up"{% if loop.first %} disabled{% endif %}>{{ icon("up") }}</button></form>
+          <form method="post" action="/portal/links/{{ x.id }}/move" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="direction" value="down">
+            <button type="submit" class="icon-btn" aria-label="Move {{ x.name }} down" title="Move down"{% if loop.last %} disabled{% endif %}>{{ icon("down") }}</button></form>
+          <form method="post" action="/portal/links/{{ x.id }}/toggle" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="field" value="favorite">
+            <button type="submit" class="icon-btn{{ ' on' if x.favorite }}" aria-pressed="{{ 'true' if x.favorite else 'false' }}" aria-label="Favorite: {{ x.name }}" title="{{ 'Remove from favorites' if x.favorite else 'Add to favorites' }}">{{ icon("star-on" if x.favorite else "star") }}</button></form>
+          <form method="post" action="/portal/links/{{ x.id }}/toggle" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="field" value="public">
+            <button type="submit" class="icon-btn{{ ' on' if x.public }}" aria-pressed="{{ 'true' if x.public else 'false' }}" aria-label="Visible before login: {{ x.name }}" title="{{ 'Hide before login' if x.public else 'Show before login' }}">{{ icon("eye" if x.public else "eye-off") }}</button></form>
+        </span>
+      </div>
+      <div class="pe-more">
+        <details><summary class="small">Edit</summary>
+          <form method="post" action="/portal/links" class="target-form pe-form">
+            {{ fields(x, "l" ~ x.id) }}
+            <div class="actions"><button type="submit">Save {{ x.name }}</button></div>
+          </form>
+        </details>
+        <details><summary class="small">Delete</summary>
+          <form method="post" action="/portal/links/{{ x.id }}/delete" class="pe-row">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}">
+            <button type="submit" class="danger">Delete {{ x.name }}</button>
+          </form>
+        </details>
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p class="muted small">No shortcuts in {{ g.name }} yet. Add one above and pick this category.</p>
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

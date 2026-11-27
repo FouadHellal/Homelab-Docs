@@ -3,6 +3,7 @@
 {% block body_class %}login-page{% endblock %}
 {% block main %}
 <section class="login">
+  {% if portal_public %}<a class="login-back" href="/portal">&larr; Shortcuts</a>{% endif %}
   <div class="login-card">
     <img class="login-logo" src="/static/logo.svg?v={{ asset_v }}" alt="" width="56" height="56">
     <h1>Welcome to atlas</h1>
@@ -22,6 +23,7 @@
       <button type="submit" class="block">Log in</button>
     </form>
   </div>
-  <p class="muted small login-foot">atlas never changes anything on your machines.</p>
+  <p class="muted small login-foot">atlas never changes anything on your machines.<br>
+    Browser not offering to save the password? <a href="/docs#https">Trust atlas's certificate</a>.</p>
 </section>
 {% endblock %}

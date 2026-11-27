@@ -22,6 +22,8 @@ known_hosts.real
 /atlas.toml
 /hosts.yaml
 /annotations/
+/portal-seed.yaml
+/config/portal-seed.yaml
 
 # Python
 __pycache__/

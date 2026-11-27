@@ -59,7 +59,7 @@ from homelab_atlas.security.audit import verify as audit_verify
 from homelab_atlas.security.errors import HttpStatusError, SecurityRefusal, TransportError
 from homelab_atlas.store.tables import Annotation, CollectorRun, Entity, Event, Facet, Scan
 from homelab_atlas.store.tables import User as UserRow
-from homelab_atlas.web import auth, command, queries, topology, views
+from homelab_atlas.web import auth, command, portal, queries, topology, views
 from homelab_atlas.web.targets import (
     HOST_COLLECTORS,
     HOST_TYPES,
@@ -70,6 +70,7 @@ from homelab_atlas.web.targets import (
     host_form_from,
     source_form_from,
 )
+from homelab_atlas.web.tls import ca_certificate
 
 SESSION_COOKIE: Final = "__Host-atlas"
 log = structlog.get_logger()
@@ -109,6 +110,8 @@ class WebConfig:
     notifier: Callable[[], WebhookNotifier | None] | None = None
     #: Builds the Taskora client (ADR-042); None or returning None = not configured.
     taskora: Callable[[], tk.TaskoraClient | None] | None = None
+    #: The installation's own shortcuts, imported once on first start (ADR-049).
+    portal_seed: Path | None = None
 
 
 class LoginThrottle:
@@ -154,6 +157,8 @@ def safe_next(target: str | None) -> str:
 
 PALETTE_PAGES: Final = (
     ("/", "Dashboard"),
+    ("/portal", "Portal: shortcuts"),
+    ("/portal/edit", "Edit shortcuts"),
     ("/topology", "Topology: Proxmox"),
     ("/topology?view=physical", "Topology: network"),
     ("/topology?view=vlan", "Topology: VLANs"),
@@ -264,6 +269,16 @@ def create_app(cfg: WebConfig) -> FastAPI:
         with cfg.sessions() as s:
             errors = ann.sync(s, cfg.annotations_dir)
             s.commit()
+        with cfg.sessions() as s:
+            try:
+                seeded = portal.seed_once(s, cfg.portal_seed)
+                s.commit()
+            except (portal.PortalError, OSError) as exc:
+                s.rollback()
+                log.warning("portal.seed_failed", file=str(cfg.portal_seed), error=str(exc)[:200])
+            else:
+                if seeded is not None:
+                    log.info("portal.seeded", added=seeded[0], skipped=seeded[1])
         _app.state.annotation_errors = errors
         if cfg.scheduler is not None and cfg.schedule:
             cfg.scheduler.start()
@@ -320,6 +335,8 @@ def create_app(cfg: WebConfig) -> FastAPI:
                 if request.url.query and len(back) + len(request.url.query) < 500:
                     back += f"?{request.url.query}"
                 location = f"/login?next={quote(back, safe='/')}"
+                if back == "/" and portal.is_public(s):
+                    location = "/portal"  # the public shortcut page, with "Log in to Atlas"
                 raise HTTPException(303, headers={"Location": location})
             raise HTTPException(401, "login required")
         return user
@@ -360,6 +377,18 @@ def create_app(cfg: WebConfig) -> FastAPI:
 
     def partial(request: Request) -> bool:
         return request.headers.get("hx-request") == "true"
+
+    @app.get("/atlas-ca.crt", include_in_schema=False)
+    def ca_cert() -> Response:
+        """Public CA certificate from `atlas tls trust` (public data: no key, no inventory)."""
+        data = ca_certificate(cfg.data_dir) if cfg.data_dir is not None else None
+        if data is None:
+            raise HTTPException(404, "no trusted certificate issued yet (atlas tls trust)")
+        return Response(
+            data,
+            media_type="application/x-x509-ca-cert",
+            headers={"Content-Disposition": 'attachment; filename="atlas-ca.crt"'},
+        )
 
     @app.get("/healthz", include_in_schema=False)
     def healthz() -> Response:
@@ -453,7 +482,15 @@ def create_app(cfg: WebConfig) -> FastAPI:
         if auth.resolve(s, request.cookies.get(SESSION_COOKIE)) is not None:
             return RedirectResponse(safe_next(next), 303)
         token = secrets.token_urlsafe(32)
-        resp = page(request, "login.html", None, login_csrf=token, next=safe_next(next), error=None)
+        resp = page(
+            request,
+            "login.html",
+            None,
+            login_csrf=token,
+            next=safe_next(next),
+            error=None,
+            portal_public=portal.is_public(s),
+        )
         resp.set_cookie(
             LOGIN_COOKIE,
             token,
@@ -491,6 +528,7 @@ def create_app(cfg: WebConfig) -> FastAPI:
                 login_csrf=token,
                 next=safe_next(next),
                 error=result.reason,
+                portal_public=portal.is_public(s),
             )
             resp.set_cookie(
                 LOGIN_COOKIE,
@@ -515,6 +553,190 @@ def create_app(cfg: WebConfig) -> FastAPI:
         resp = RedirectResponse("/login", 303)
         resp.delete_cookie(SESSION_COOKIE, path="/", secure=True, httponly=True, samesite="strict")
         return resp
+
+    # ------------------------------------------------------------------ portal (ADR-049)
+
+    @app.get("/portal", response_class=HTMLResponse)
+    def portal_page(request: Request, s: DB) -> Response:
+        """Public when the owner allows it: shows only shortcuts marked visible before login."""
+        user = auth.resolve(s, request.cookies.get(SESSION_COOKIE))
+        data = portal.view(s, signed_in=user is not None)
+        suggest = portal.suggestions(s, _command(s)["quick"]) if user is not None else []
+        return page(request, "portal.html", user, p=data, suggest=suggest[:12])
+
+    def _portal_edit(
+        request: Request,
+        s: Session,
+        user: auth.CurrentUser,
+        status: int = 200,
+        *,
+        error: str | None = None,
+        draft: dict[str, Any] | None = None,
+    ) -> HTMLResponse:
+        q = request.query_params
+        if draft is None and q.get("add_url"):
+            draft = {
+                "id": None,
+                "name": q.get("add_name", "")[: portal.MAX_NAME],
+                "url": q.get("add_url", "")[: portal.MAX_URL],
+                "category_id": None,
+                "description": "",
+                "icon": "",
+                "favorite": False,
+                "public": False,
+            }
+        return page(
+            request,
+            "portal_edit.html",
+            user,
+            status,
+            p=portal.view(s, signed_in=True),
+            cats=portal.categories(s),
+            icons=portal.icon_choices(),
+            draft=draft,
+            error=error,
+            msg=q.get("msg", "")[:200],
+        )
+
+    def _back(msg: str, anchor: str = "") -> RedirectResponse:
+        return RedirectResponse(
+            f"/portal/edit?{urlencode({'msg': msg})}{'#' + anchor if anchor else ''}", 303
+        )
+
+    async def _form(request: Request) -> dict[str, str]:
+        form = await request.form(max_fields=32, max_part_size=8 * 1024)
+        return {k: v for k, v in form.items() if isinstance(v, str)}
+
+    def _int(value: str | None) -> int | None:
+        return int(value) if value and value.isdigit() and len(value) < 10 else None
+
+    @app.get("/portal/edit", response_class=HTMLResponse)
+    def portal_edit(request: Request, s: DB, user: User) -> Response:
+        return _portal_edit(request, s, user)
+
+    @app.post("/portal/links", response_class=HTMLResponse)
+    async def portal_link_save(request: Request, s: DB, user: Csrf) -> Response:
+        f = await _form(request)
+        lid = _int(f.get("id"))
+        draft: dict[str, Any] = {
+            "id": lid,
+            "name": f.get("name", "")[:200],
+            "url": f.get("url", "")[: portal.MAX_URL + 1],
+            "category_id": _int(f.get("category_id")),
+            "description": f.get("description", "")[:400],
+            "icon": f.get("icon", "")[:64],
+            "favorite": f.get("favorite") == "1",
+            "public": f.get("public") == "1",
+        }
+        try:
+            link = portal.save_link(
+                s,
+                lid,
+                category_id=draft["category_id"] or 0,
+                name=draft["name"],
+                url=draft["url"],
+                description=draft["description"],
+                icon=draft["icon"],
+                favorite=draft["favorite"],
+                public=draft["public"],
+            )
+        except portal.PortalError as exc:
+            s.rollback()
+            return _portal_edit(request, s, user, 422, error=str(exc), draft=draft)
+        log.info("portal.link_saved", link=link.id, new=lid is None, by=user.username)
+        return _back(f"Saved {link.name}.", f"l-{link.id}")
+
+    @app.post("/portal/links/{lid}/delete")
+    def portal_link_delete(s: DB, user: Csrf, lid: int) -> Response:
+        try:
+            name = portal.delete_link(s, lid)
+        except portal.PortalError as exc:
+            return _back(str(exc))
+        log.info("portal.link_deleted", link=lid, by=user.username)
+        return _back(f"Deleted {name}.")
+
+    @app.post("/portal/links/{lid}/move")
+    async def portal_link_move(request: Request, s: DB, user: Csrf, lid: int) -> Response:
+        direction = (await _form(request)).get("direction", "")
+        if direction not in ("up", "down"):
+            raise HTTPException(400, "direction must be up or down")
+        try:
+            link = portal.move_link(s, lid, direction)
+        except portal.PortalError as exc:
+            return _back(str(exc))
+        return _back(f"Moved {link.name} {direction}.", f"l-{link.id}")
+
+    @app.post("/portal/links/{lid}/toggle")
+    async def portal_link_toggle(request: Request, s: DB, user: Csrf, lid: int) -> Response:
+        field = (await _form(request)).get("field", "")
+        if field not in ("favorite", "public"):
+            raise HTTPException(400, "field must be favorite or public")
+        try:
+            link = portal.toggle(s, lid, field)  # type: ignore[arg-type]
+        except portal.PortalError as exc:
+            return _back(str(exc))
+        if field == "favorite":
+            msg = f"{link.name} {'added to' if link.favorite else 'removed from'} favorites."
+        else:
+            msg = f"{link.name} is {'visible' if link.public else 'hidden'} before login."
+        log.info("portal.link_toggled", link=lid, field=field, by=user.username)
+        return _back(msg, f"l-{link.id}")
+
+    @app.post("/portal/categories", response_class=HTMLResponse)
+    async def portal_category_save(request: Request, s: DB, user: Csrf) -> Response:
+        f = await _form(request)
+        try:
+            cat = portal.save_category(s, _int(f.get("id")), f.get("name", "")[:200])
+        except portal.PortalError as exc:
+            s.rollback()
+            return _portal_edit(request, s, user, 422, error=str(exc))
+        log.info("portal.category_saved", category=cat.id, by=user.username)
+        return _back(f"Saved {cat.name}.", f"c{cat.id}")
+
+    @app.post("/portal/categories/{cid}/delete")
+    def portal_category_delete(s: DB, user: Csrf, cid: int) -> Response:
+        try:
+            name, n = portal.delete_category(s, cid)
+        except portal.PortalError as exc:
+            return _back(str(exc))
+        log.info("portal.category_deleted", category=cid, links=n, by=user.username)
+        return _back(f"Deleted {name} and its {n} shortcut{'s' if n != 1 else ''}.")
+
+    @app.post("/portal/categories/{cid}/move")
+    async def portal_category_move(request: Request, s: DB, user: Csrf, cid: int) -> Response:
+        direction = (await _form(request)).get("direction", "")
+        if direction not in ("up", "down"):
+            raise HTTPException(400, "direction must be up or down")
+        try:
+            cat = portal.move_category(s, cid, direction)
+        except portal.PortalError as exc:
+            return _back(str(exc))
+        return _back(f"Moved {cat.name} {direction}.", f"c{cat.id}")
+
+    @app.post("/portal/import", response_class=HTMLResponse)
+    async def portal_import(request: Request, s: DB, user: Csrf) -> Response:
+        form = await request.form(max_fields=8, max_part_size=portal.MAX_SEED_BYTES + 1024)
+        text = form.get("seed")
+        try:
+            doc = portal.parse_seed(text if isinstance(text, str) else "")
+            added, skipped = portal.import_seed(s, doc)
+        except portal.PortalError as exc:
+            s.rollback()
+            return _portal_edit(request, s, user, 422, error=f"Import: {exc}")
+        log.info("portal.imported", added=added, skipped=skipped, by=user.username)
+        msg = f"Imported {added} shortcut{'s' if added != 1 else ''}"
+        return _back(msg + (f"; {skipped} were already there." if skipped else "."))
+
+    @app.post("/portal/settings")
+    async def portal_settings(request: Request, s: DB, user: Csrf) -> Response:
+        on = (await _form(request)).get("public") == "1"
+        portal.set_public(s, on)
+        log.info("portal.public", on=on, by=user.username)
+        return _back(
+            "Shortcuts marked visible now show before login."
+            if on
+            else "Nothing shows before login now; the portal only offers the login button."
+        )
 
     # ------------------------------------------------------------------ pages
 

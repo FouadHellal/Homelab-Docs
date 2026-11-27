@@ -247,3 +247,40 @@ class TaskoraState(Base):
     inventory_at: Mapped[datetime | None] = mapped_column(default=None)
     inventory_mode: Mapped[str | None] = mapped_column(String(16), default=None)
     inventory_result: Mapped[dict[str, Any] | None] = mapped_column(JSON, default=None)
+
+
+class PortalCategory(Base):
+    """A group of shortcuts on the portal (ADR-049)."""
+
+    __tablename__ = "portal_categories"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(64))
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class PortalLink(Base):
+    """One shortcut: a name, an http(s) URL, an icon and who may see it (ADR-049)."""
+
+    __tablename__ = "portal_links"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    category_id: Mapped[int] = mapped_column(ForeignKey("portal_categories.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    url: Mapped[str] = mapped_column(String(2048))
+    description: Mapped[str] = mapped_column(String(160), default="")
+    #: "" = automatic (matched from the name/host), else "brand:<slug>", "glyph:<name>", "letters".
+    icon: Mapped[str] = mapped_column(String(64), default="")
+    favorite: Mapped[bool] = mapped_column(default=False)
+    #: Shown on the portal before login (when the portal is public at all).
+    public: Mapped[bool] = mapped_column(default=False)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class PortalSetting(Base):
+    """Small key/value settings for the portal (e.g. whether anything shows before login)."""
+
+    __tablename__ = "portal_settings"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(String(256))

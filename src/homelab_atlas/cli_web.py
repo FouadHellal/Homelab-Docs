@@ -39,11 +39,12 @@ from homelab_atlas.store.retention import DEFAULT_SNAPSHOT_DAYS, prune
 from homelab_atlas.store.tables import User
 from homelab_atlas.web import auth
 from homelab_atlas.web.targets import TargetsService
-from homelab_atlas.web.tls import ensure_self_signed, fingerprint
+from homelab_atlas.web.tls import ensure_self_signed, fingerprint, issue_trusted
 
 log = structlog.get_logger()
 console = Console()
 user_app = typer.Typer(help="Local web accounts (argon2id).", no_args_is_help=True)
+tls_app = typer.Typer(help="Built-in HTTPS certificate.", no_args_is_help=True)
 
 LabFlag = Annotated[
     str | None, typer.Option("--lab", help="Demo lab, e.g. demo (uses its data dir).")
@@ -244,6 +245,11 @@ def serve(
         WebConfig(
             sessions=rt.sessions,
             annotations_dir=annotations,
+            portal_seed=(
+                LAB_SEED_ANNOTATIONS.parent / "portal-seed.yaml"
+                if lab
+                else config_dir() / "portal-seed.yaml"
+            ),
             allowed_hosts=hosts,
             hsts=hsts,
             lab=bool(lab),
@@ -302,6 +308,35 @@ def first_run_setup(rt: Runtime) -> Path | None:
     return path
 
 
+@tls_app.command("trust")
+def tls_trust(
+    name: Annotated[
+        list[str],
+        typer.Option("--name", help="Name or IP you open atlas with (repeat, or comma-separate)."),
+    ],
+    lab: LabFlag = None,
+    data_dir: DataOpt = None,
+) -> None:
+    """Issue a certificate your browser can trust, so password managers work (ADR-050).
+
+    Replaces the self-signed certificate (the old one is kept under tls/previous-*). Import
+    the printed atlas-ca.crt once on each PC, then restart atlas.
+    """
+    names = [
+        n.strip() for value in name for n in value.split(",") if n.strip() and n.strip() != "*"
+    ]
+    rt = _runtime(lab, data_dir)
+    try:
+        cert, _key, ca = issue_trusted(rt.data_dir, names)
+    except ValueError as exc:
+        console.print(f"[red]error:[/] {exc}")
+        raise typer.Exit(2) from None
+    console.print(f"certificate {cert} (SHA-256 {fingerprint(cert)})")
+    console.print(f"CA to import on your PCs: {ca} (SHA-256 {fingerprint(ca)})")
+    console.print("restart atlas to serve it; it is also downloadable at /atlas-ca.crt")
+
+
 def register(app: typer.Typer) -> None:
     app.command("serve")(serve)
     app.add_typer(user_app, name="user")
+    app.add_typer(tls_app, name="tls")

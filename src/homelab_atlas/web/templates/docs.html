@@ -13,6 +13,8 @@
     <li><a href="#pages">The pages</a></li>
     <li><a href="#keys">Keyboard shortcuts</a></li>
     <li><a href="#claude">Ask Claude (MCP)</a></li>
+    <li><a href="#portal">Portal and shortcuts</a></li>
+    <li><a href="#https">Trusted HTTPS</a></li>
     <li><a href="#update">Updating</a></li>
     <li><a href="#trouble">Troubleshooting</a></li>
     <li><a href="#security">Security</a></li>
@@ -137,6 +139,31 @@
   <pre><code>sudo atlas update</code></pre>
   <p>This pulls the new code (<code>git pull --ff-only</code>, run as the clone's owner), writes a backup to <code>/opt/atlas/backups</code> (the last five are kept), pulls the new image and restarts. Your targets, stored passwords and keys, accounts, notes and history are kept. Database changes are applied automatically. The first time, if the shortcut doesn't exist yet, run <code>git pull &amp;&amp; sudo ./deploy/atlas.sh update</code> in your clone.</p>
   <p><strong>Nothing changed?</strong> <code>sudo atlas version</code> shows the running version and the clone's last commit. If the pull failed, run <code>git pull</code> in the clone as yourself, then <code>sudo atlas update --no-pull</code>, then reload with <kbd>Ctrl</kbd> <kbd>F5</kbd>.</p>
+</section>
+
+<section id="portal" class="card">
+  <h2>Portal and shortcuts</h2>
+  <p><strong>Portal</strong> is a page of one-click shortcuts to your web UIs (Proxmox, Pi-hole, router, cloud consoles, course sites). Open it from the menu, or go to <code>/portal</code>. Search with <kbd>/</kbd>, press <kbd>Enter</kbd> to open the first match, filter by category, and keep favorites on top.</p>
+  <p><strong>Edit shortcuts</strong> adds, renames, reorders and deletes shortcuts and categories, picks the logo, and sets two switches per shortcut: <em>favorite</em> and <em>visible before login</em>. They are stored in atlas's database, so <code>atlas backup</code> includes them.</p>
+  <p><strong>Your bookmarks in one go</strong>: put them in <code>/opt/atlas/config/portal-seed.yaml</code> (readable by the container, e.g. <code>chmod 644</code>) and restart atlas. It is imported once and never again, so later edits stay. The same YAML can be pasted under <em>Edit shortcuts → Import shortcuts</em>; shortcuts already there are skipped.</p>
+  <pre><code>public: true                 # show "visible before login" shortcuts to visitors
+categories:
+  - name: Home Lab
+    links:
+      - {name: Proxmox VE, url: "https://10.0.0.2:8006/", icon: "brand:proxmox", favorite: true}
+      - {name: Pi-hole, url: "http://10.0.0.53/admin/", description: DNS filtering}</code></pre>
+  <p><strong>Before login</strong>: with "Show shortcuts marked Visible before login" on, people who open atlas without logging in see those shortcuts (names and addresses, never passwords) next to <strong>Log in to Atlas</strong>. Turn it off and the portal only shows the login button. The inventory itself always needs a login. The <strong>Found in your inventory</strong> list (only when you're logged in) suggests web UIs atlas discovered that have no shortcut yet.</p>
+</section>
+
+<section id="https" class="card">
+  <h2>Trusted HTTPS and password managers</h2>
+  <p>By default atlas serves HTTPS with a self-signed certificate, so the browser shows a warning. Chrome also turns its <strong>password manager off on pages with a certificate error</strong>: it won't offer to save or fill the atlas password, however the login form is built. The fix is to make the certificate trusted:</p>
+  <ol class="steps">
+    <li>On the atlas VM: <code>sudo atlas tls-trust</code>. It issues a certificate for the names in <code>ATLAS_HOSTS</code> from a one-time CA that can only vouch for those names, throws that CA's private key away, keeps the old certificate under <code>tls/previous-*</code> and restarts atlas.</li>
+    <li>Download <a href="/atlas-ca.crt">atlas-ca.crt</a> (also copied to <code>/opt/atlas/atlas-ca.crt</code>) and import it once on each PC. <em>Windows</em>: double-click it, Install Certificate, Current User, "Trusted Root Certification Authorities". <em>macOS</em>: add it to the login keychain and set it to Always Trust. <em>Linux / Chrome</em>: Settings, Privacy and security, Security, Manage certificates, Authorities, Import.</li>
+    <li>Restart Chrome and open atlas by the same name or IP. No warning, and Chrome offers to save the password after you log in.</li>
+  </ol>
+  <p class="muted small">The certificate is valid for 825 days (the most Apple platforms accept); run the command again before then and import the new CA. Behind your own reverse proxy with a real certificate you don't need any of this.</p>
 </section>
 
 <section id="trouble" class="card">

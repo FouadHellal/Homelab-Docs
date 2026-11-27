@@ -92,7 +92,7 @@ def csrf_of(c: TestClient) -> str:
 
 
 @pytest.mark.parametrize(
-    "path", ["/", "/entities", "/ips", "/vlans", "/ports", "/changes", "/unknown", "/topology"]
+    "path", ["/entities", "/ips", "/vlans", "/ports", "/changes", "/unknown", "/topology"]
 )
 def test_pages_require_login(client: TestClient, path: str) -> None:
     r = client.get(path, follow_redirects=False)

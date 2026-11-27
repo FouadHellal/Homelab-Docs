@@ -316,7 +316,89 @@
     });
   }
 
+
+  // ------------------------------------------------------------ portal (ADR-049)
+  // Search, category filter, clock and keyboard shortcuts. The page works without this:
+  // every shortcut is a plain link and every category is visible.
+  function wirePortal() {
+    var root = document.querySelector("[data-portal]");
+    if (!root) return;
+    var time = document.getElementById("p-time"), date = document.getElementById("p-date");
+    function tick() {
+      var now = new Date();
+      if (time) { time.textContent = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); time.dateTime = now.toISOString(); }
+      if (date) date.textContent = now.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" });
+    }
+    tick();
+    setInterval(tick, 15000);
+
+    var q = document.getElementById("p-q");
+    var chips = Array.prototype.slice.call(root.querySelectorAll(".p-chip"));
+    var groups = Array.prototype.slice.call(root.querySelectorAll("[data-group]"));
+    var empty = document.getElementById("p-empty"), emptyQ = document.getElementById("p-empty-q");
+    var show = "all";
+    try { show = sessionStorage.getItem("atlas-portal-show") || "all"; } catch (e) { /* storage off */ }
+    if (!chips.some(function (c) { return c.dataset.show === show; })) show = "all";
+
+    function apply() {
+      var text = q ? q.value.trim().toLowerCase() : "";
+      var any = false;
+      chips.forEach(function (c) { c.setAttribute("aria-pressed", c.dataset.show === show ? "true" : "false"); });
+      groups.forEach(function (g) {
+        var key = g.dataset.group;
+        // While searching, look everywhere except the favorites strip (no duplicate hits).
+        var inScope = text ? key !== "fav" : (show === "all" || show === key);
+        var hits = 0;
+        g.querySelectorAll("li[data-search]").forEach(function (li) {
+          var ok = inScope && (!text || li.dataset.search.indexOf(text) >= 0);
+          li.hidden = !ok;
+          if (ok) hits++;
+        });
+        g.hidden = hits === 0;
+        if (hits) any = true;
+      });
+      if (empty) {
+        empty.hidden = any || !text;
+        if (emptyQ) emptyQ.textContent = "“" + (q ? q.value.trim() : "") + "”";
+      }
+    }
+    chips.forEach(function (c) {
+      c.addEventListener("click", function () {
+        show = c.dataset.show;
+        try { sessionStorage.setItem("atlas-portal-show", show); } catch (e) { /* storage off */ }
+        if (q && q.value) q.value = "";
+        apply();
+      });
+    });
+    if (q) {
+      q.addEventListener("input", apply);
+      q.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && q.value) { e.preventDefault(); q.value = ""; apply(); }
+        if (e.key === "Enter") {
+          var first = root.querySelector(".p-groups li[data-search]:not([hidden]) a");
+          if (first) { e.preventDefault(); window.open(first.href, "_blank", "noopener,noreferrer"); }
+        }
+        if (e.key === "ArrowDown") {
+          var link = root.querySelector(".p-groups li[data-search]:not([hidden]) a");
+          if (link) { e.preventDefault(); link.focus(); }
+        }
+      });
+    }
+    var clear = document.getElementById("p-clear");
+    if (clear && q) clear.addEventListener("click", function () { q.value = ""; apply(); q.focus(); });
+    document.addEventListener("keydown", function (e) {
+      if (!q || e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
+      var el = document.activeElement;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
+      e.preventDefault();
+      q.focus();
+      q.select();
+    });
+    apply();
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
+    wirePortal();
     wireFacets(document);
     wireSort(document);
     wireSide();

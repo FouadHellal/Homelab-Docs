@@ -18,7 +18,8 @@ What it collects:
   Assistant, Jellyfin, NetBox…) are recognised from that.
 
 From that you get a **Command Center** (what runs, what's down or stale, what changed, quick
-access to every web UI), a **Media** page that tells you whether Jellyfin is down or just lost
+access to every web UI), a **Portal** of one-click shortcuts you edit in the UI (optionally
+visible before login, next to a *Log in to Atlas* button), a **Media** page that tells you whether Jellyfin is down or just lost
 its NAS share, optional n8n notifications for incidents, optional [Taskora](docs/integrations/taskora.md)
 tickets and CMDB sync, a topology view, searchable tables, a
 change history ("port 8080 opened on

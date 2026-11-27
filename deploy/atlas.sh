@@ -39,6 +39,8 @@ Usage: atlas.sh <command> [options]
   user add <name>                 create a web account (asks for the password)
   user passwd <name>              change a password (ends that user's sessions)
   status                          containers, health, URL, certificate fingerprint
+  tls-trust                       trusted HTTPS certificate (so password managers work); prints
+                                  atlas-ca.crt to import on your PCs. Backs up the old one.
   logs                            follow atlas logs
   backup [file.tar.gz]            consistent DB copy + config (NOT the master key)
   version                         running atlas version
@@ -336,6 +338,21 @@ running_version() {  # "atlas 0.3.0" from the running container, empty if none
     compose exec -T atlas atlas --version 2>/dev/null | tail -n 1 | tr -d '\r' || true
 }
 
+cmd_tls_trust() {  # replace the self-signed certificate with one browsers can trust (ADR-050)
+    local hosts
+    [ "$(env_get ATLAS_MODE)" = proxy ] && die "behind a reverse proxy, its certificate is the one browsers see"
+    hosts="$(env_get ATLAS_HOSTS)"
+    [ -n "$hosts" ] || die "set ATLAS_HOSTS in $ATLAS_DIR/.env (the names/IPs you open atlas with)"
+    [ -n "$(compose ps -q atlas 2>/dev/null || true)" ] || die "atlas is not running: $0 start"
+    compose exec -T atlas atlas tls trust --name "$hosts"
+    docker cp "$(compose ps -q atlas):/data/tls/atlas-ca.crt" "$ATLAS_DIR/atlas-ca.crt"
+    chmod 0644 "$ATLAS_DIR/atlas-ca.crt"
+    compose restart atlas
+    wait_healthy
+    say "import $ATLAS_DIR/atlas-ca.crt (or https://<atlas>/atlas-ca.crt) once on each PC; see /docs#https"
+    print_access
+}
+
 cmd_version() {
     local v
     v="$(running_version)"
@@ -413,6 +430,7 @@ main() {
                 *) die "usage: atlas.sh user add|passwd <name>" ;;
             esac ;;
         status) compose ps; print_access ;;
+        tls-trust) cmd_tls_trust ;;
         logs) compose logs -f atlas ;;
         backup) cmd_backup "$@" ;;
         version) cmd_version ;;

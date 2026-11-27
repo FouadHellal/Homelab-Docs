@@ -1,0 +1,10 @@
+{#- Portal logo tile. Brand paths come from the vendored brands.json (never from user input);
+    the colour is a class (b-<slug> / t-<n>) because the CSP allows no inline styles. -#}
+{% macro logo(i, cls="") -%}
+<span class="p-ico {{ i.css }} k-{{ i.kind }} {{ cls }}" aria-hidden="true">
+{%- if i.kind == "atlas" %}<img src="/static/logo.svg?v={{ asset_v }}" alt="" width="24" height="24">
+{%- elif i.kind == "brand" and i.path %}<svg viewBox="0 0 24 24" fill="currentColor" focusable="false"><path d="{{ i.path }}"/></svg>
+{%- elif i.path %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="{{ i.path }}"/></svg>
+{%- else %}<span class="p-letters{{ ' long' if i.text | length > 1 }}">{{ i.text }}</span>{% endif -%}
+</span>
+{%- endmacro %}
