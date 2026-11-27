@@ -26,9 +26,13 @@ LABEL org.opencontainers.image.title="atlas" \
       org.opencontainers.image.description="Read-only, agentless homelab inventory" \
       org.opencontainers.image.source="https://github.com/FouadHellal/Homelab-Docs"
 # Debian security fixes released after the pinned base digest (the Trivy gate fails on fixable
-# HIGH/CRITICAL, e.g. apt CVE-2026-109518 in 3.0.3), then the unprivileged user.
+# HIGH/CRITICAL, e.g. apt CVE-2026-109518 in 3.0.3), then the unprivileged user. The explicit
+# --only-upgrade list also changes this layer's cache key, so a cached upgrade can't hide new
+# fixes (zlib1g CVE-2026-85091, libzstd1 CVE-2026-124851).
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get -y upgrade --no-install-recommends \
+ && DEBIAN_FRONTEND=noninteractive apt-get -y install --only-upgrade --no-install-recommends \
+      zlib1g libzstd1 \
  && apt-get clean \
  && groupadd --system --gid 10001 atlas \
  && useradd --system --uid 10001 --gid atlas --no-create-home --home-dir /nonexistent \
