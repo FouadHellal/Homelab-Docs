@@ -126,10 +126,13 @@ def test_migration_starts_private_and_empty(rt: Runtime, tmp_path: Path) -> None
     with rt.sessions() as s:
         assert portal.categories(s) == []
         assert not portal.is_public(s)
-    with _app(rt, tmp_path, None) as c:  # no seed file: atlas behaves as before
+    with _app(rt, tmp_path, None) as c:  # no seed file: the classic login page
         r = c.get("/", follow_redirects=False)
         assert r.headers["location"] == "/login?next=/"
-        assert "Log in to Atlas" in c.get("/portal").text
+        page = c.get("/login").text
+        assert "Welcome to atlas" in page
+        assert "login-overlay" not in page
+        assert c.get("/portal", follow_redirects=False).headers["location"] == "/login"
 
 
 def test_seed_is_imported_once_and_never_overwrites_edits(
@@ -202,18 +205,22 @@ def test_import_in_the_editor_skips_duplicates(client: TestClient, rt: Runtime) 
 # ---------------------------------------------------------------- visibility
 
 
-def test_unauthenticated_root_opens_the_portal_with_a_login_button(client: TestClient) -> None:
+def test_login_screen_is_the_shortcut_dashboard(client: TestClient) -> None:
     r = client.get("/", follow_redirects=False)
     assert r.status_code == 303
-    assert r.headers["location"] == "/portal"
-    page = client.get("/portal")
-    assert page.status_code == 200
-    assert 'href="/login"' in page.text
-    assert "Log in to Atlas" in page.text
-    assert "Proxmox VE · pve" in page.text
-    assert "/portal/edit" not in page.text  # no editor for anonymous visitors
-    assert 'rel="noopener noreferrer"' in page.text
-    assert "Found in your inventory" not in page.text
+    assert r.headers["location"] == "/login?next=/"
+    page = client.get(r.headers["location"]).text
+    assert "Log in to Atlas" in page
+    assert 'href="#login" data-login-open' in page
+    assert "Proxmox VE · pve" in page
+    assert 'rel="noopener noreferrer"' in page
+    assert '<div class="login-overlay" id="login">' in page  # closed until the button
+    assert 'id="login-form"' in page  # but always in the page for password managers
+    assert "/portal/edit" not in page  # no editor for anonymous visitors
+    assert "Found in your inventory" not in page
+    deep = client.get("/login?next=/entities").text
+    assert '<div class="login-overlay open" id="login">' in deep  # sent from a page: form open
+    assert client.get("/portal", follow_redirects=False).headers["location"] == "/login"
 
 
 def test_private_links_and_disabled_portal_stay_hidden(client: TestClient, rt: Runtime) -> None:
@@ -222,15 +229,15 @@ def test_private_links_and_disabled_portal_stay_hidden(client: TestClient, rt: R
         assert hidden is not None
         hidden.public = False
         s.commit()
-    page = client.get("/portal").text
+    page = client.get("/login").text
     assert "zabbix.php" not in page
     assert "1 more shortcut after you" in page
     with rt.sessions() as s:
         portal.set_public(s, False)
         s.commit()
-    page = client.get("/portal").text
+    page = client.get("/login").text
     assert "192.0.2." not in page
-    assert "Log in to Atlas" in page
+    assert "Welcome to atlas" in page
     r = client.get("/", follow_redirects=False)
     assert r.headers["location"] == "/login?next=/"
     _login(client)
@@ -362,7 +369,7 @@ def test_user_text_is_escaped_everywhere(client: TestClient, rt: Runtime) -> Non
         assert "<img src=x" not in page
         assert "&lt;img src=x onerror=alert(1)&gt;" in page
     client.cookies.clear()
-    assert "<img src=x" not in client.get("/portal").text
+    assert "<img src=x" not in client.get("/login").text
 
 
 def test_bad_icon_and_lengths_are_refused(client: TestClient, rt: Runtime) -> None:
@@ -427,7 +434,6 @@ def test_login_form_is_what_password_managers_expect(client: TestClient) -> None
     assert 'name="password"' in pw[0] and 'type="password"' in pw[0]
     assert 'autocomplete="current-password"' in pw[0]
     assert '<button type="submit"' in page
-    assert 'href="/portal"' in page  # back to the shortcuts
     assert 'href="/docs#https"' in page
 
 

@@ -1,12 +1,13 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}Log in{% endblock %}
-{% block body_class %}login-page{% endblock %}
-{% block main %}
-<section class="login">
-  {% if portal_public %}<a class="login-back" href="/portal">&larr; Shortcuts</a>{% endif %}
-  <div class="login-card">
+{% block body_class %}{% if p and p.count %}portal-page portal-public login-portal{% else %}login-page{% endif %}{% endblock %}
+{% block head %}{% if p and p.count %}<link rel="stylesheet" href="/static/brands.css?v={{ asset_v }}">{% endif %}{% endblock %}
+{% macro login_card(closable) -%}
+  <section class="login-card"{% if closable %} role="dialog" aria-modal="true" aria-labelledby="login-h"{% endif %}>
+    {% if closable %}<a class="icon-btn login-close" href="#" data-login-close aria-label="Close" title="Close (Esc)">{{ icon("close") }}</a>{% endif %}
     <img class="login-logo" src="/static/logo.svg?v={{ asset_v }}" alt="" width="56" height="56">
-    <h1>Welcome to atlas</h1>
+    <h1 id="login-h">{{ "Log in to Atlas" if closable else "Welcome to atlas" }}</h1>
     <p class="muted">Your homelab, documented. Read-only{% if lab %} · demo lab{% endif %}.</p>
     {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
     {# Password managers fill a form they can recognise: a real POST form with an id/name,
@@ -17,13 +18,43 @@
       <input type="hidden" name="next" value="{{ next }}">
       <label for="username">Username</label>
       <input id="username" name="username" type="text" autocomplete="username" autocapitalize="none"
-             autocorrect="off" spellcheck="false" inputmode="text" required maxlength="64" autofocus>
+             autocorrect="off" spellcheck="false" inputmode="text" required maxlength="64"{% if not closable %} autofocus{% endif %}>
       <label for="password">Password</label>
       <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="1024">
       <button type="submit" class="block">Log in</button>
     </form>
-  </div>
-  <p class="muted small login-foot">atlas never changes anything on your machines.<br>
-    Browser not offering to save the password? <a href="/docs#https">Trust atlas's certificate</a>.</p>
+    <p class="muted small login-foot">Browser not offering to save the password? <a href="/docs#https">Trust atlas's certificate</a>.</p>
+  </section>
+{%- endmacro %}
+{% block main %}
+{% if p and p.count %}
+<div class="portal" data-portal>
+  <header class="p-top">
+    <a class="brand p-brand" href="/login" aria-label="atlas">
+      <img src="/static/logo.svg?v={{ asset_v }}" alt="" width="30" height="30">
+      <span class="brand-name">atlas</span>{% if lab %}<span class="badge lab">demo</span>{% endif %}
+    </a>
+    <p class="p-clock" aria-live="off"><time id="p-time"></time><span id="p-date"></span></p>
+    <div class="p-search" role="search">
+      {{ icon("search") }}
+      <label class="sr-only" for="p-q">Search shortcuts</label>
+      <input id="p-q" type="search" placeholder="Search shortcuts" maxlength="64" autocomplete="off" spellcheck="false" enterkeyhint="go">
+      <kbd aria-hidden="true">/</kbd>
+    </div>
+    <div class="p-actions">
+      <a class="btn p-login" href="#login" data-login-open aria-controls="login">{{ icon("lock") }}<span>Log in to Atlas</span></a>
+    </div>
+  </header>
+  {% include "_portal_body.html" %}
+</div>
+<div class="login-overlay{% if error or open %} open{% endif %}" id="login">
+  <a class="login-scrim" href="#" data-login-close tabindex="-1" aria-hidden="true"></a>
+  {{ login_card(true) }}
+</div>
+{% else %}
+<section class="login">
+  {{ login_card(false) }}
+  <p class="muted small login-foot">atlas never changes anything on your machines.</p>
 </section>
+{% endif %}
 {% endblock %}

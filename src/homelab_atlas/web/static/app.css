@@ -820,3 +820,15 @@ button.danger { background: var(--bad); border-color: var(--bad); color: #fff; b
 .login-back { display: inline-block; margin: 0 0 12px; font-size: 13px; font-weight: 550; color: var(--muted); }
 .login-back:hover { color: var(--fg); }
 #pe-seed { font: 12.5px/1.5 var(--mono); }
+
+/* ---------- login over the shortcut dashboard (ADR-049) */
+.login-overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px;
+  visibility: hidden; opacity: 0; transition: opacity .14s ease, visibility 0s linear .14s; }
+.login-overlay.open, .login-overlay:target { visibility: visible; opacity: 1; transition: opacity .14s ease; }
+.login-scrim { position: absolute; inset: 0; background: color-mix(in srgb, #05070c 62%, transparent); }
+.login-overlay .login-card { position: relative; width: min(400px, 100%); max-height: calc(100dvh - 32px); overflow: auto;
+  background: var(--card); backdrop-filter: none; box-shadow: var(--shadow-up); transform: translateY(6px); transition: transform .14s ease; }
+.login-overlay.open .login-card, .login-overlay:target .login-card { transform: none; }
+.login-close { position: absolute; top: 10px; right: 10px; }
+.login-overlay .login-foot { margin: 14px 0 0; }
+@media (prefers-reduced-motion: reduce) { .login-overlay, .login-overlay .login-card { transition: none; transform: none; } }

@@ -397,7 +397,38 @@
     apply();
   }
 
+
+  // ------------------------------------------------------------ login over the shortcuts (ADR-049)
+  // The form is always in the page (password managers see it); the button only shows it.
+  function wireLoginOverlay() {
+    var box = document.getElementById("login");
+    if (!box || !box.classList.contains("login-overlay")) return;
+    var page = document.querySelector("[data-portal]");
+    var opener = null;
+    function open(e) {
+      if (e) { e.preventDefault(); opener = e.currentTarget; }
+      box.classList.add("open");
+      if (page) page.inert = true;
+      var user = document.getElementById("username");
+      if (user) setTimeout(function () { user.focus(); }, 30);
+    }
+    function close(e) {
+      if (e) e.preventDefault();
+      box.classList.remove("open");
+      if (page) page.inert = false;
+      if (location.hash === "#login") history.replaceState(null, "", location.pathname + location.search);
+      (opener || document.querySelector("[data-login-open]") || document.body).focus();
+    }
+    document.querySelectorAll("[data-login-open]").forEach(function (a) { a.addEventListener("click", open); });
+    box.querySelectorAll("[data-login-close]").forEach(function (a) { a.addEventListener("click", close); });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && box.classList.contains("open")) close(e);
+    });
+    if (box.classList.contains("open") || location.hash === "#login") open();
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
+    wireLoginOverlay();
     wirePortal();
     wireFacets(document);
     wireSort(document);

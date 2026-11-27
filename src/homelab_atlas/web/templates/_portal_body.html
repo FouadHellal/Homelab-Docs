@@ -1,0 +1,47 @@
+{#- Shortcut grid shared by the login screen and the signed-in portal (ADR-049). -#}
+{% from "_portal.html" import logo %}
+{% from "_icons.html" import icon %}
+  <nav class="p-filter" aria-label="Show category">
+    <button type="button" class="p-chip" data-show="all" aria-pressed="true">All <span class="p-n">{{ p.count }}</span></button>
+    {% if p.favorites %}<button type="button" class="p-chip" data-show="fav" aria-pressed="false">{{ icon("star-on") }}Favorites <span class="p-n">{{ p.favorites | length }}</span></button>{% endif %}
+    {% for g in p.groups if g.links %}
+    <button type="button" class="p-chip" data-show="{{ g.slug }}" aria-pressed="false">{{ g.name }} <span class="p-n">{{ g.links | length }}</span></button>
+    {% endfor %}
+  </nav>
+
+  {% if p.favorites %}
+  <section class="p-favs" data-group="fav" aria-labelledby="p-fav-h">
+    <h2 class="p-group-h" id="p-fav-h"><span>Favorites</span></h2>
+    <ul class="p-dock" role="list">
+      {% for x in p.favorites %}
+      <li data-search="{{ x.search }}"><a class="p-fav" href="{{ x.url }}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" title="{{ x.name }} · {{ x.host }}">{{ logo(x.icon) }}<span class="p-name">{{ x.name }}</span><span class="sr-only"> (opens in a new tab)</span></a></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <div class="p-groups">
+    {% for g in p.groups if g.links %}
+    <section class="p-group" id="{{ g.slug }}" data-group="{{ g.slug }}" aria-labelledby="{{ g.slug }}-h">
+      <h2 class="p-group-h" id="{{ g.slug }}-h"><span>{{ g.name }}</span><span class="p-n">{{ g.links | length }}</span></h2>
+      <ul class="p-grid" role="list">
+        {% for x in g.links %}
+        <li data-search="{{ x.search }}">
+          <a class="p-link" href="{{ x.url }}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" title="{{ x.url }}">
+            {{ logo(x.icon) }}
+            <span class="p-text"><span class="p-name">{{ x.name }}</span><span class="p-desc">{% if x.description %}{{ x.description }}{% else %}<span class="p-host">{{ x.host }}</span>{% endif %}</span></span>
+            <span class="sr-only"> (opens in a new tab)</span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endfor %}
+  </div>
+  <div class="p-empty" id="p-empty" hidden>
+    <p>No shortcut matches <strong id="p-empty-q"></strong>.</p>
+    <button type="button" class="ghost" id="p-clear">Clear search</button>
+  </div>
+  {% if not user and p.hidden %}
+  <p class="p-more muted small">{{ icon("lock") }}{{ p.hidden }} more shortcut{{ "s" if p.hidden != 1 }} after you <a href="#login" data-login-open>log in</a>.</p>
+  {% endif %}

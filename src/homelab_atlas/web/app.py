@@ -335,8 +335,6 @@ def create_app(cfg: WebConfig) -> FastAPI:
                 if request.url.query and len(back) + len(request.url.query) < 500:
                     back += f"?{request.url.query}"
                 location = f"/login?next={quote(back, safe='/')}"
-                if back == "/" and portal.is_public(s):
-                    location = "/portal"  # the public shortcut page, with "Log in to Atlas"
                 raise HTTPException(303, headers={"Location": location})
             raise HTTPException(401, "login required")
         return user
@@ -489,7 +487,8 @@ def create_app(cfg: WebConfig) -> FastAPI:
             login_csrf=token,
             next=safe_next(next),
             error=None,
-            portal_public=portal.is_public(s),
+            p=portal.view(s, signed_in=False),
+            open=safe_next(next) != "/",  # sent here from a page: go straight to the form
         )
         resp.set_cookie(
             LOGIN_COOKIE,
@@ -528,7 +527,7 @@ def create_app(cfg: WebConfig) -> FastAPI:
                 login_csrf=token,
                 next=safe_next(next),
                 error=result.reason,
-                portal_public=portal.is_public(s),
+                p=portal.view(s, signed_in=False),
             )
             resp.set_cookie(
                 LOGIN_COOKIE,
@@ -558,10 +557,12 @@ def create_app(cfg: WebConfig) -> FastAPI:
 
     @app.get("/portal", response_class=HTMLResponse)
     def portal_page(request: Request, s: DB) -> Response:
-        """Public when the owner allows it: shows only shortcuts marked visible before login."""
+        """Signed in: every shortcut plus inventory suggestions. Visitors see theirs on /login."""
         user = auth.resolve(s, request.cookies.get(SESSION_COOKIE))
-        data = portal.view(s, signed_in=user is not None)
-        suggest = portal.suggestions(s, _command(s)["quick"]) if user is not None else []
+        if user is None:
+            return RedirectResponse("/login", 303)  # visitors get the shortcuts there
+        data = portal.view(s, signed_in=True)
+        suggest = portal.suggestions(s, _command(s)["quick"])
         return page(request, "portal.html", user, p=data, suggest=suggest[:12])
 
     def _portal_edit(

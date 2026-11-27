@@ -2,6 +2,17 @@
 
 All notable changes. Versions follow [SemVer](https://semver.org/); dates are UTC.
 
+## 0.13.1 (2026-11-27)
+
+### Changed
+- **The login screen is the shortcut dashboard.** Visitors see the shortcuts marked visible
+  before login right on `/login`; **Log in to Atlas** opens the login form over them (Esc
+  closes it). Opening a page while logged out goes straight to the open form. With no public
+  shortcuts the classic login page is unchanged.
+
+### Fixed
+- Image: the Debian zlib1g and libzstd1 security fixes are installed (Trivy gate).
+
 ## 0.13.0 (2026-11-27)
 
 ### Added
